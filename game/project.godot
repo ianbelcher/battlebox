@@ -28,6 +28,9 @@ window/stretch/mode="disabled"
 [rendering]
 
 renderer/rendering_method="forward_plus"
+; Required for the macOS universal/arm64 export (Apple Silicon needs
+; ETC2/ASTC textures imported alongside S3TC).
+textures/vram_compression/import_etc2_astc=true
 anti_aliasing/quality/msaa_3d=2
 lights_and_shadows/directional_shadow/size=4096
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3

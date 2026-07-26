@@ -31,8 +31,7 @@ RUN mkdir -p /game/build/server /game/build/downloads \
     && godot --headless --path /game --export-release "Linux Server" build/server/world-server.x86_64 \
     && godot --headless --path /game --export-release "Linux Client" build/downloads/belcher-world-linux.x86_64 \
     && godot --headless --path /game --export-release "Windows Client" build/downloads/belcher-world-windows.exe \
-    && (godot --headless --path /game --export-release "macOS Client" build/downloads/belcher-world-macos.zip \
-        || echo "WARNING: macOS export failed; shipping without it")
+    && godot --headless --path /game --export-release "macOS Client" build/downloads/belcher-world-macos.zip
 
 # Runtime stage: one image, two roles. The k8s deployment runs two containers
 # from this image — `server` (the world) and `web` (nginx serving the
