@@ -95,7 +95,8 @@ func _add_cell(slot: int, frac: Rect2) -> void:
 	_cells.append({"slot": slot, "container": container, "viewport": viewport,
 		"rig": rig, "cam": cam, "hud": hud,
 		"yaw_index": 0, "yaw": Player.ISO_ROT, "zoom_index": DEFAULT_ZOOM,
-		"size": ZOOM_SIZES[DEFAULT_ZOOM], "prev_rot": 0, "prev_zoom": 0})
+		"size": ZOOM_SIZES[DEFAULT_ZOOM], "prev_rot": 0, "prev_zoom": 0,
+		"fp": false, "prev_view": false})
 
 func _spectator_prompt() -> Control:
 	var center := CenterContainer.new()
@@ -113,7 +114,7 @@ func _spectator_prompt() -> Control:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)
 	var prompt := Label.new()
-	prompt.text = "Press SPACE, ENTER or a gamepad's A button to jump in!"
+	prompt.text = "Press SPACE or a gamepad's A button to jump in!"
 	prompt.add_theme_font_size_override("font_size", 26)
 	prompt.add_theme_color_override("font_color", Color.WHITE)
 	prompt.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
@@ -165,9 +166,32 @@ func _process(delta: float) -> void:
 		var player := _find_player(cell.slot)
 		if player == null:
 			continue
+		var input: InputSlot = Game.local_inputs.get(cell.slot)
+		# First-person toggle (T / gamepad Y); Esc also exits on keyboard.
+		if input != null:
+			var view := input.is_view_toggle_pressed()
+			if view and not cell.prev_view:
+				cell.fp = not cell.fp
+				Sfx.play("tick", -8.0)
+			cell.prev_view = view
+			if cell.fp and input.kind == InputSlot.Kind.KEYBOARD_WASD \
+					and Input.is_physical_key_pressed(KEY_ESCAPE):
+				cell.fp = false
+		player.set_fp(cell.fp)
+		if cell.fp:
+			# Through the character's eyes: perspective, own body culled.
+			cam.projection = Camera3D.PROJECTION_PERSPECTIVE
+			cam.fov = 78.0
+			cam.near = 0.05
+			cam.cull_mask = ((1 << 20) - 1) & ~player.render_layer_bit()
+			var eye: Vector3 = player.position + Vector3(0, 1.12, 0)
+			cam.look_at_from_position(eye, eye + player.look_dir(), Vector3.UP)
+			continue
+		cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+		cam.near = 0.5
+		cam.cull_mask = (1 << 20) - 1
 		# Poll this player's spin/zoom controls (edge-latched so one press or
 		# stick flick = one step).
-		var input: InputSlot = Game.local_inputs.get(cell.slot)
 		if input != null:
 			var rot := input.rotate_direction()
 			if rot != 0 and cell.prev_rot == 0:
@@ -189,3 +213,13 @@ func _process(delta: float) -> void:
 		var yaw: float = cell.yaw
 		var offset := Vector3(sin(yaw) * CAM_DISTANCE, CAM_HEIGHT, cos(yaw) * CAM_DISTANCE)
 		cam.look_at_from_position(rig.position + offset, rig.position + Vector3(0, 1.0, 0), Vector3.UP)
+	# The mouse belongs to the keyboard player while they're in first person.
+	var want_capture := false
+	for cell: Dictionary in _cells:
+		var input: InputSlot = Game.local_inputs.get(cell.slot)
+		if cell.get("fp", false) and input != null \
+				and input.kind == InputSlot.Kind.KEYBOARD_WASD:
+			want_capture = true
+	var target_mode := Input.MOUSE_MODE_CAPTURED if want_capture else Input.MOUSE_MODE_VISIBLE
+	if Input.mouse_mode != target_mode:
+		Input.mouse_mode = target_mode

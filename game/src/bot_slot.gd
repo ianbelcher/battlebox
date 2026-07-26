@@ -41,6 +41,14 @@ func rotate_direction() -> int:
 	# A quarter spin roughly every 12s, staggered per bot.
 	return 1 if fmod(_t() * 0.08 + bot_index * 0.5, 1.0) < 0.015 else 0
 
+func is_view_toggle_pressed() -> bool:
+	# Hop in and out of first person every ~45s.
+	return fmod(_t() * 0.022 + bot_index * 0.4, 1.0) < 0.01
+
+func get_look_vector() -> Vector2:
+	# Slow look wander so first-person frames aren't all the horizon.
+	return Vector2(sin(_t() * 0.4 + bot_index), sin(_t() * 0.23 + bot_index * 2.0) * 0.5) * 0.4
+
 func zoom_direction() -> int:
 	var phase := fmod(_t() * 0.05 + bot_index * 0.3, 1.0)
 	if phase < 0.01:

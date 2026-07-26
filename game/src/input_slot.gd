@@ -1,18 +1,15 @@
 class_name InputSlot
 extends RefCounted
-## One local player's physical controls. Up to four of these per machine:
-## two keyboard layouts plus any number of gamepads. Everything is polled
-## directly (no InputMap) so slots never fight over actions.
+## One local player's physical controls: the keyboard (one player, normal
+## WASD controls) plus any number of gamepads. Everything is polled directly
+## (no InputMap) so slots never fight over actions.
 ##
-##                 move        jump    dig/collect  place  cycle block  leave (hold)
-## Keyboard WASD   WASD        Space   E            F      Tab / R      Q
-## Keyboard Arrows Arrows      Enter   .            ,      Right Shift  Backspace
-## Gamepad         Left stick  A       B            X      Y / bumpers  Back/Select
+##           move        jump    dig      place  cycle blk  spin   zoom     1st person  leave(hold)
+## Keyboard  WASD        Space   E        F      Tab / R    Z / C  X / V    T           Q
+## Gamepad   Left stick  A       B        X      bumpers    R stick ←→ / ↕  Y           Back/Select
 ##
-##                 spin view      zoom
-## Keyboard WASD   Z / C          X out / V in
-## Keyboard Arrows ; / '          [ out / ] in
-## Gamepad         R stick left/right   R stick up in / down out
+## In first person the right stick looks around; on keyboard the mouse looks
+## and left/right click also dig/place. Esc leaves first person.
 
 enum Kind { KEYBOARD_WASD, KEYBOARD_ARROWS, GAMEPAD }
 
@@ -106,17 +103,33 @@ func cycle_direction() -> int:
 				return 1
 			if Input.is_physical_key_pressed(KEY_R):
 				return -1
-		Kind.KEYBOARD_ARROWS:
-			if Input.is_physical_key_pressed(KEY_SHIFT) \
-					and not Input.is_physical_key_pressed(KEY_LEFT):
-				return 1
 		Kind.GAMEPAD:
-			if Input.is_joy_button_pressed(device, JOY_BUTTON_RIGHT_SHOULDER) \
-					or Input.is_joy_button_pressed(device, JOY_BUTTON_Y):
+			if Input.is_joy_button_pressed(device, JOY_BUTTON_RIGHT_SHOULDER):
 				return 1
 			if Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER):
 				return -1
 	return 0
+
+## Toggle between the isometric view and first person (T / gamepad Y).
+func is_view_toggle_pressed() -> bool:
+	match kind:
+		Kind.KEYBOARD_WASD:
+			return Input.is_physical_key_pressed(KEY_T)
+		Kind.GAMEPAD:
+			return Input.is_joy_button_pressed(device, JOY_BUTTON_Y)
+	return false
+
+## First-person look input per frame (gamepad right stick; the keyboard
+## looks with the mouse, handled by the player via input events).
+func get_look_vector() -> Vector2:
+	if kind != Kind.GAMEPAD:
+		return Vector2.ZERO
+	var v := Vector2(
+		Input.get_joy_axis(device, JOY_AXIS_RIGHT_X),
+		Input.get_joy_axis(device, JOY_AXIS_RIGHT_Y))
+	if v.length() < DEADZONE:
+		return Vector2.ZERO
+	return v
 
 ## Spin the camera a quarter turn. Returns -1, 0 or +1 (caller edge-latches).
 func rotate_direction() -> int:
@@ -179,10 +192,10 @@ func _key_axis(neg: Key, pos: Key) -> float:
 	return v
 
 ## All slots that could join right now (used by the drop-in poller).
+## One keyboard player only — the arrows layout confused everyone.
 static func candidate_slots() -> Array[InputSlot]:
 	var slots: Array[InputSlot] = []
 	slots.append(InputSlot.new(Kind.KEYBOARD_WASD))
-	slots.append(InputSlot.new(Kind.KEYBOARD_ARROWS))
 	for device_id in Input.get_connected_joypads():
 		slots.append(InputSlot.new(Kind.GAMEPAD, device_id))
 	return slots

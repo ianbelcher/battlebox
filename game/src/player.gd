@@ -34,6 +34,11 @@ var hotbar_index := 0
 var anim: int = Anim.IDLE
 var leave_hold := 0.0
 
+## First-person state (driven by the split-screen cell).
+var fp_mode := false
+var look_yaw := 0.0
+var look_pitch := 0.0
+
 var _avatar: Node3D
 var _tag: Label3D
 var _highlight: MeshInstance3D
@@ -79,6 +84,7 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 		_highlight.top_level = true
 		_highlight.visible = false
 		add_child(_highlight)
+	_apply_render_layer()
 
 func refresh_from_roster(entry: Dictionary) -> void:
 	_tag.text = str(entry.name)
@@ -89,6 +95,43 @@ func refresh_from_roster(entry: Dictionary) -> void:
 		_avatar.rotation = old.rotation
 		add_child(_avatar)
 		old.queue_free()
+		_apply_render_layer()
+
+## Local players' visuals live on a per-slot render layer so their own
+## first-person camera can cull them (everyone else still sees them).
+func render_layer_bit() -> int:
+	return 1 << (1 + slot)
+
+func _apply_render_layer() -> void:
+	if not is_local:
+		return
+	for node in _avatar.find_children("*", "VisualInstance3D", true, false):
+		(node as VisualInstance3D).layers = render_layer_bit()
+	_tag.layers = render_layer_bit()
+
+func set_fp(enabled: bool) -> void:
+	if fp_mode == enabled:
+		return
+	fp_mode = enabled
+	if enabled:
+		look_yaw = atan2(-heading.x, -heading.z)
+		look_pitch = -0.2
+	else:
+		heading = Vector3(-sin(look_yaw), 0, -cos(look_yaw))
+
+## Unit vector the player is looking along in first person.
+func look_dir() -> Vector3:
+	var cp := cos(look_pitch)
+	return Vector3(-sin(look_yaw) * cp, sin(look_pitch), -cos(look_yaw) * cp)
+
+## Mouse look for the keyboard player while in first person.
+func _input(event: InputEvent) -> void:
+	if not (is_local and fp_mode and input != null \
+			and input.kind == InputSlot.Kind.KEYBOARD_WASD):
+		return
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		look_yaw -= event.relative.x * 0.0032
+		look_pitch = clampf(look_pitch - event.relative.y * 0.0032, -1.45, 1.45)
 
 func teleport(pos: Vector3) -> void:
 	position = pos
@@ -144,6 +187,13 @@ func _collides(at: Vector3) -> bool:
 	return false
 
 func _local_move(delta: float) -> void:
+	# In first person the gamepad right stick steers the look; movement is
+	# relative to wherever you're facing (camera_yaw tracks look_yaw).
+	if fp_mode:
+		var look := input.get_look_vector()
+		look_yaw -= look.x * 2.8 * delta
+		look_pitch = clampf(look_pitch - look.y * 2.2 * delta, -1.45, 1.45)
+		camera_yaw = look_yaw
 	var move := input.get_move_vector()
 	var dir := Vector3(move.x, 0, move.y).rotated(Vector3.UP, camera_yaw)
 	var feet := Vector3i(floori(position.x), floori(position.y + 0.3), floori(position.z))
@@ -214,7 +264,11 @@ func _local_move(delta: float) -> void:
 		next = v_attempt
 		on_floor = false
 	position = next
-	rotation.y = lerp_angle(rotation.y, atan2(-heading.x, -heading.z), minf(1.0, delta * 12.0))
+	if fp_mode:
+		heading = Vector3(-sin(look_yaw), 0, -cos(look_yaw))
+		rotation.y = look_yaw
+	else:
+		rotation.y = lerp_angle(rotation.y, atan2(-heading.x, -heading.z), minf(1.0, delta * 12.0))
 
 	if in_water:
 		anim = Anim.SWIM
@@ -237,8 +291,15 @@ func _local_actions(delta: float) -> void:
 		Sfx.play("tick", -10.0)
 	_cycle_latch = cycle != 0
 
-	var dig_target := _find_dig_target()
-	var place_target := _find_place_target()
+	var dig_target: Vector3i
+	var place_target: Vector3i
+	if fp_mode:
+		var targets := _find_fp_targets()
+		dig_target = targets[0]
+		place_target = targets[1]
+	else:
+		dig_target = _find_dig_target()
+		place_target = _find_place_target()
 	if _highlight != null:
 		var show := dig_target if input.is_dig_pressed() or not input.is_place_pressed() else place_target
 		if input.is_place_pressed():
@@ -251,7 +312,15 @@ func _local_actions(delta: float) -> void:
 
 	if _edit_cooldown > 0.0:
 		return
-	if input.is_dig_pressed():
+	# In first person the keyboard player can also mouse-click: left digs,
+	# right places (mouse is captured for looking anyway).
+	var mouse_ok: bool = fp_mode and input.kind == InputSlot.Kind.KEYBOARD_WASD \
+		and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var wants_dig: bool = input.is_dig_pressed() \
+		or (mouse_ok and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT))
+	var wants_place: bool = input.is_place_pressed() \
+		or (mouse_ok and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+	if wants_dig:
 		# Petting beats digging when a critter is close.
 		var critter: int = world.critter_view.nearest_id(position, 1.9)
 		if critter >= 0:
@@ -261,7 +330,7 @@ func _local_actions(delta: float) -> void:
 		if dig_target != Vector3i(0, -99, 0):
 			world.send_edit(slot, dig_target, Blocks.AIR)
 			_edit_cooldown = EDIT_REPEAT
-	elif input.is_place_pressed():
+	elif wants_place:
 		if place_target != Vector3i(0, -99, 0):
 			world.send_edit(slot, place_target, selected_block())
 			_edit_cooldown = EDIT_REPEAT
@@ -271,6 +340,40 @@ func _front_cell(dy: int) -> Vector3i:
 	return Vector3i(floori(front.x), floori(position.y + 0.3) + dy, floori(front.z))
 
 const NO_TARGET := Vector3i(0, -99, 0)
+
+## First person: march a ray from the eyes along the look direction. The
+## first breakable block is the dig target; the last open cell before it is
+## the place target — so you can dig straight up out of a hole, or look down
+## and build under your feet mid-jump.
+func _find_fp_targets() -> Array:
+	var chunks := _chunks()
+	var eye := position + Vector3(0, 1.12, 0)
+	var dir := look_dir()
+	var last_open := NO_TARGET
+	var last_cell := Vector3i(floori(eye.x), floori(eye.y), floori(eye.z))
+	var t := 0.3
+	while t < 4.4:
+		var sample := eye + dir * t
+		var cell := Vector3i(floori(sample.x), floori(sample.y), floori(sample.z))
+		if cell != last_cell:
+			last_cell = cell
+			var block := chunks.get_block(cell)
+			if block != Blocks.AIR and block != Blocks.WATER and not Blocks.is_cross(block):
+				if Blocks.is_breakable(block):
+					return [cell, last_open]
+				return [NO_TARGET, last_open]
+			if Blocks.is_cross(block) and Blocks.is_breakable(block):
+				return [cell, last_open]
+			if not _cell_overlaps_self(cell):
+				last_open = cell
+		t += 0.12
+	return [NO_TARGET, last_open]
+
+func _cell_overlaps_self(cell: Vector3i) -> bool:
+	var center := Vector3(cell) + Vector3(0.5, 0.5, 0.5)
+	var delta := center - (position + Vector3(0, HEIGHT * 0.5, 0))
+	return absf(delta.x) < HALF_WIDTH + 0.5 and absf(delta.z) < HALF_WIDTH + 0.5 \
+		and delta.y > -HEIGHT * 0.5 - 0.5 and delta.y < HEIGHT * 0.5 + 0.5
 
 func _find_dig_target() -> Vector3i:
 	var chunks := _chunks()

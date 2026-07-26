@@ -23,15 +23,19 @@ the Minecraft save is never modified.
    machine, the screen splits automatically. Characters (name, look,
    position, treasures) persist per device and per name.
 
-| Player      | Move       | Jump  | Dig / collect / pet | Place | Cycle block | Spin view | Zoom (out/in)  | Leave (hold) |
-| ----------- | ---------- | ----- | ------------------- | ----- | ----------- | --------- | -------------- | ------------ |
-| Keyboard 1  | WASD       | Space | E                   | F     | Tab / R     | Z / C     | X / V          | Q            |
-| Keyboard 2  | Arrows     | Enter | .                   | ,     | Right Shift | ; / '     | [ / ]          | Backspace    |
-| Gamepads    | Left stick | A     | B                   | X     | Y / bumpers | R stick ←→| R stick ↓ / ↑  | Back/Select  |
+| Player     | Move       | Jump  | Dig / collect / pet | Place | Cycle block | Spin view  | Zoom (out/in) | 1st person | Leave (hold) |
+| ---------- | ---------- | ----- | ------------------- | ----- | ----------- | ---------- | ------------- | ---------- | ------------ |
+| Keyboard   | WASD       | Space | E                   | F     | Tab / R     | Z / C      | X / V         | T          | Q            |
+| Gamepads   | Left stick | A     | B                   | X     | Bumpers     | R stick ←→ | R stick ↓ / ↑ | Y          | Back/Select  |
 
-Each player spins their own camera in quarter turns (to peek behind hills
-and houses) and steps through four zoom levels; movement stays
-camera-relative. Characters are chunky mini-figures — click your name chip
+One keyboard player per machine (normal WASD controls) plus any number of
+gamepads. Each player spins their own isometric camera in quarter turns (to
+peek behind hills and houses) and steps through four zoom levels; movement
+stays camera-relative. **First person** (T / gamepad Y) puts you behind your
+character's eyes — mouse look with left-click dig / right-click place on
+keyboard, right-stick look on gamepads, Esc or T to come back out. It's the
+view for digging yourself out of a hole (or mining straight down... good
+luck). Characters are chunky mini-figures — click your name chip
 to type a name, and click the three swatches to cycle **skin tone**,
 **shirt color** and **hat** (7 of each, remembered per device). Blocks are
 infinite (creative-style); digging flowers, shells,
