@@ -56,9 +56,7 @@ func join_local(input: InputSlot) -> void:
 	# Each physical device remembers its character between sessions, so every
 	# kid's character comes back when they grab "their" controller.
 	var profile := _load_profile(input.claim_key())
-	var pname: String = profile.name if profile.name != "" else ""
-	var style: int = profile.style if profile.style >= 0 else randi() % AvatarFactory.STYLE_COUNT
-	sv_register_player.rpc_id(1, slot, pname, style)
+	sv_register_player.rpc_id(1, slot, profile.name, profile.style)
 
 func leave_local(slot: int) -> void:
 	if not local_inputs.has(slot):
@@ -69,8 +67,9 @@ func leave_local(slot: int) -> void:
 func set_local_name(slot: int, pname: String) -> void:
 	sv_set_name.rpc_id(1, slot, pname)
 
-func cycle_local_style(slot: int, direction: int) -> void:
-	sv_cycle_style.rpc_id(1, slot, direction)
+## attr is "body", "shirt" or "hat" — each HUD swatch cycles one part.
+func cycle_local_style(slot: int, attr: String, direction: int) -> void:
+	sv_cycle_style.rpc_id(1, slot, attr, direction)
 
 func local_player_ids() -> Array[String]:
 	var ids: Array[String] = []
@@ -98,7 +97,7 @@ func _pick_name() -> String:
 # ------------------------------------------------------------------
 
 @rpc("any_peer", "call_local", "reliable")
-func sv_register_player(slot: int, pname: String, style := -1) -> void:
+func sv_register_player(slot: int, pname: String, style: Dictionary) -> void:
 	if not multiplayer.is_server():
 		return
 	var peer := _sender_id()
@@ -108,9 +107,8 @@ func sv_register_player(slot: int, pname: String, style := -1) -> void:
 	pname = pname.strip_edges().left(12)
 	if pname.is_empty():
 		pname = _pick_name()
-	if style < 0 or style >= AvatarFactory.STYLE_COUNT:
-		style = randi() % AvatarFactory.STYLE_COUNT
-	roster[id] = {"peer": peer, "slot": slot, "name": pname, "style": style}
+	roster[id] = {"peer": peer, "slot": slot, "name": pname,
+		"style": AvatarFactory.normalize_style(style)}
 	print("Player joined: %s (%s), %d in world" % [pname, id, roster.size()])
 	_broadcast_roster()
 
@@ -138,13 +136,16 @@ func sv_set_name(slot: int, pname: String) -> void:
 	_broadcast_roster()
 
 @rpc("any_peer", "call_local", "reliable")
-func sv_cycle_style(slot: int, direction: int) -> void:
+func sv_cycle_style(slot: int, attr: String, direction: int) -> void:
 	if not multiplayer.is_server():
 		return
 	var id := player_id(_sender_id(), slot)
-	if roster.has(id):
-		roster[id].style = posmod(roster[id].style + signi(direction), AvatarFactory.STYLE_COUNT)
-		_broadcast_roster()
+	if not roster.has(id) or not (attr in ["body", "shirt", "hat"]):
+		return
+	var style: Dictionary = AvatarFactory.normalize_style(roster[id].style)
+	style[attr] = int(style[attr]) + signi(direction)
+	roster[id].style = AvatarFactory.normalize_style(style)
+	_broadcast_roster()
 
 func _sender_id() -> int:
 	var sender := multiplayer.get_remote_sender_id()
@@ -162,9 +163,16 @@ const PROFILE_PATH := "user://characters.cfg"
 func _load_profile(device_key: String) -> Dictionary:
 	var config := ConfigFile.new()
 	config.load(PROFILE_PATH)
+	var style := AvatarFactory.random_style()
+	if config.has_section_key(device_key, "body"):
+		style = AvatarFactory.normalize_style({
+			"body": int(config.get_value(device_key, "body", 0)),
+			"shirt": int(config.get_value(device_key, "shirt", 0)),
+			"hat": int(config.get_value(device_key, "hat", 0)),
+		})
 	return {
 		"name": str(config.get_value(device_key, "name", "")),
-		"style": int(config.get_value(device_key, "style", -1)),
+		"style": style,
 	}
 
 func _save_local_profiles() -> void:
@@ -178,11 +186,13 @@ func _save_local_profiles() -> void:
 		if entry.peer != me or not local_inputs.has(entry.slot):
 			continue
 		var device_key: String = local_inputs[entry.slot].claim_key()
-		var style: int = entry.get("style", 0)
-		if str(config.get_value(device_key, "name", "")) != entry.name \
-				or int(config.get_value(device_key, "style", -1)) != style:
+		var style: Dictionary = AvatarFactory.normalize_style(entry.get("style"))
+		for attr in ["body", "shirt", "hat"]:
+			if int(config.get_value(device_key, attr, -1)) != int(style[attr]):
+				config.set_value(device_key, attr, int(style[attr]))
+				dirty = true
+		if str(config.get_value(device_key, "name", "")) != entry.name:
 			config.set_value(device_key, "name", entry.name)
-			config.set_value(device_key, "style", style)
 			dirty = true
 	if dirty:
 		config.save(PROFILE_PATH)

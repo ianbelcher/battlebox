@@ -204,6 +204,10 @@ func _maybe_start_autotest() -> void:
 	for i in mini(bots.to_int(), Game.MAX_LOCAL):
 		Game.join_local(BotSlot.new(i))
 	_split.update_layout()
+	# Exercise the customization RPCs the way HUD swatch clicks would.
+	get_tree().create_timer(3.0).timeout.connect(func() -> void:
+		for slot: int in Game.local_inputs.keys():
+			Game.cycle_local_style(slot, ["body", "shirt", "hat"][slot % 3], 1))
 
 func _on_server_lost() -> void:
 	Net.go_offline()

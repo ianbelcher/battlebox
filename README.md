@@ -23,14 +23,18 @@ the Minecraft save is never modified.
    machine, the screen splits automatically. Characters (name, look,
    position, treasures) persist per device and per name.
 
-| Player      | Move       | Jump  | Dig / collect / pet | Place | Cycle block | Leave (hold) |
-| ----------- | ---------- | ----- | ------------------- | ----- | ----------- | ------------ |
-| Keyboard 1  | WASD       | Space | E                   | F     | Tab / R     | Q            |
-| Keyboard 2  | Arrows     | Enter | .                   | ,     | Right Shift | Backspace    |
-| Gamepads    | Left stick | A     | B                   | X     | Y / bumpers | Back/Select  |
+| Player      | Move       | Jump  | Dig / collect / pet | Place | Cycle block | Spin view | Zoom (out/in)  | Leave (hold) |
+| ----------- | ---------- | ----- | ------------------- | ----- | ----------- | --------- | -------------- | ------------ |
+| Keyboard 1  | WASD       | Space | E                   | F     | Tab / R     | Z / C     | X / V          | Q            |
+| Keyboard 2  | Arrows     | Enter | .                   | ,     | Right Shift | ; / '     | [ / ]          | Backspace    |
+| Gamepads    | Left stick | A     | B                   | X     | Y / bumpers | R stick ←→| R stick ↓ / ↑  | Back/Select  |
 
-Click your name chip to type a name; click the color swatch to change your
-look. Blocks are infinite (creative-style); digging flowers, shells,
+Each player spins their own camera in quarter turns (to peek behind hills
+and houses) and steps through four zoom levels; movement stays
+camera-relative. Characters are chunky mini-figures — click your name chip
+to type a name, and click the three swatches to cycle **skin tone**,
+**shirt color** and **hat** (7 of each, remembered per device). Blocks are
+infinite (creative-style); digging flowers, shells,
 mushrooms and berries counts treasures (✦). Saplings grow into trees after a
 couple of minutes, fresh flowers bloom at dawn, fireflies come out at night,
 and walking up to a critter and pressing dig pets it.

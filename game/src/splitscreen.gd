@@ -8,12 +8,16 @@ extends Control
 ## a big "press a button to join" prompt. 3 players -> the fourth cell is a
 ## join hint.
 
-const ISO_OFFSET := Vector3(30.0, 37.0, 30.0)
-const ORTHO_SIZE_SOLO := 18.0
-const ORTHO_SIZE_SPLIT := 15.0
+## Camera orbit: fixed pitch, four 90-degree yaw stops (spin to see behind
+## things), and stepped zoom. Both tween smoothly toward their snap targets.
+const CAM_DISTANCE := 42.4
+const CAM_HEIGHT := 37.0
+const ZOOM_SIZES: Array[float] = [10.0, 15.0, 21.0, 28.0]
+const DEFAULT_ZOOM := 1
 
 var world: Node = null
-var _cells: Array = []   # [{slot:int(-1=spectator), container, viewport, rig, cam, hud}]
+var _cells: Array = []   # [{slot:int(-1=spectator), container, viewport, rig, cam, hud,
+                         #   yaw_index, yaw, zoom_index, size, prev_rot, prev_zoom}]
 var _orbit_angle := 0.0
 
 func _ready() -> void:
@@ -76,7 +80,7 @@ func _add_cell(slot: int, frac: Rect2) -> void:
 	viewport.add_child(rig)
 	var cam := Camera3D.new()
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
-	cam.size = ORTHO_SIZE_SOLO if Game.local_inputs.size() <= 1 else ORTHO_SIZE_SPLIT
+	cam.size = ZOOM_SIZES[DEFAULT_ZOOM]
 	cam.near = 0.5
 	cam.far = 300.0
 	viewport.add_child(cam)
@@ -89,7 +93,9 @@ func _add_cell(slot: int, frac: Rect2) -> void:
 	else:
 		container.add_child(_spectator_prompt())
 	_cells.append({"slot": slot, "container": container, "viewport": viewport,
-		"rig": rig, "cam": cam, "hud": hud})
+		"rig": rig, "cam": cam, "hud": hud,
+		"yaw_index": 0, "yaw": Player.ISO_ROT, "zoom_index": DEFAULT_ZOOM,
+		"size": ZOOM_SIZES[DEFAULT_ZOOM], "prev_rot": 0, "prev_zoom": 0})
 
 func _spectator_prompt() -> Control:
 	var center := CenterContainer.new()
@@ -159,6 +165,27 @@ func _process(delta: float) -> void:
 		var player := _find_player(cell.slot)
 		if player == null:
 			continue
-		# Smooth-follow the player from a fixed isometric direction.
+		# Poll this player's spin/zoom controls (edge-latched so one press or
+		# stick flick = one step).
+		var input: InputSlot = Game.local_inputs.get(cell.slot)
+		if input != null:
+			var rot := input.rotate_direction()
+			if rot != 0 and cell.prev_rot == 0:
+				cell.yaw_index = posmod(cell.yaw_index + rot, 4)
+				Sfx.play("tick", -12.0)
+			cell.prev_rot = rot
+			var zoom := input.zoom_direction()
+			if zoom != 0 and cell.prev_zoom == 0:
+				cell.zoom_index = clampi(int(cell.zoom_index) - zoom, 0, ZOOM_SIZES.size() - 1)
+			cell.prev_zoom = zoom
+		# Tween toward the snap targets.
+		var target_yaw: float = Player.ISO_ROT + cell.yaw_index * PI / 2.0
+		cell.yaw = lerp_angle(cell.yaw, target_yaw, minf(1.0, delta * 5.0))
+		cell.size = lerpf(cell.size, ZOOM_SIZES[cell.zoom_index], minf(1.0, delta * 5.0))
+		cam.size = cell.size
+		player.camera_yaw = cell.yaw
+		# Smooth-follow the player from the current orbit direction.
 		rig.position = rig.position.lerp(player.position, minf(1.0, delta * 6.0))
-		cam.look_at_from_position(rig.position + ISO_OFFSET, rig.position + Vector3(0, 1.0, 0), Vector3.UP)
+		var yaw: float = cell.yaw
+		var offset := Vector3(sin(yaw) * CAM_DISTANCE, CAM_HEIGHT, cos(yaw) * CAM_DISTANCE)
+		cam.look_at_from_position(rig.position + offset, rig.position + Vector3(0, 1.0, 0), Vector3.UP)

@@ -7,9 +7,16 @@ extends Control
 var slot := -1
 var world: Node = null
 
+## Hat swatch colors: the hat itself is 3D, so the chip just needs a
+## distinct color per index so clicks visibly cycle something.
+const HAT_CHIP_COLORS: Array[Color] = [
+	Color("8d6748"), Color("ffd166"), Color("f0b429"), Color("4a9df8"),
+	Color("ff9ff3"), Color("1dd1a1"), Color("f5f6fa"),
+]
+
 var _name_label: Label
 var _treasure_label: Label
-var _swatch: ColorRect
+var _swatches: Dictionary = {}   # attr -> ColorRect
 var _hotbar: HBoxContainer
 var _chips: Array = []
 var _last_index := -1
@@ -32,15 +39,20 @@ func _ready() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	chip.add_child(row)
-	_swatch = ColorRect.new()
-	_swatch.custom_minimum_size = Vector2(22, 22)
-	_swatch.mouse_filter = Control.MOUSE_FILTER_STOP
-	_swatch.gui_input.connect(func(event: InputEvent) -> void:
-		if event is InputEventMouseButton and event.pressed \
-				and event.button_index == MOUSE_BUTTON_LEFT:
-			Game.cycle_local_style(slot, 1)
-			Sfx.play("pop", -4.0))
-	row.add_child(_swatch)
+	# Three swatches: skin tone, shirt, hat. Click to cycle that part.
+	for attr in ["body", "shirt", "hat"]:
+		var swatch := ColorRect.new()
+		swatch.custom_minimum_size = Vector2(22, 22)
+		swatch.mouse_filter = Control.MOUSE_FILTER_STOP
+		swatch.tooltip_text = attr
+		var attr_name := str(attr)
+		swatch.gui_input.connect(func(event: InputEvent) -> void:
+			if event is InputEventMouseButton and event.pressed \
+					and event.button_index == MOUSE_BUTTON_LEFT:
+				Game.cycle_local_style(slot, attr_name, 1)
+				Sfx.play("pop", -4.0))
+		row.add_child(swatch)
+		_swatches[attr_name] = swatch
 	_name_label = Label.new()
 	_name_label.add_theme_font_size_override("font_size", 18)
 	_name_label.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -101,7 +113,10 @@ func _refresh_identity() -> void:
 	if entry.is_empty():
 		return
 	_name_label.text = str(entry.name)
-	_swatch.color = AvatarFactory.body_color(int(entry.get("style", 0)))
+	var style: Dictionary = AvatarFactory.normalize_style(entry.get("style"))
+	_swatches["body"].color = AvatarFactory.skin_color(style)
+	_swatches["shirt"].color = AvatarFactory.shirt_color(style)
+	_swatches["hat"].color = HAT_CHIP_COLORS[int(style.hat) % HAT_CHIP_COLORS.size()]
 	var id := Game.player_id(multiplayer.get_unique_id(), slot)
 	var count: int = world.treasures.get(id, 0) if world != null else 0
 	_treasure_label.text = "✦ %d" % count

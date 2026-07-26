@@ -13,7 +13,8 @@ const HALF_WIDTH := 0.32
 const HEIGHT := 1.25
 const SEND_HZ := 12.0
 const EDIT_REPEAT := 0.24
-## Stick up moves the player away from the fixed isometric camera.
+## Default camera yaw; the split-screen rig updates camera_yaw as the view
+## spins so "stick up" always moves away from the camera.
 const ISO_ROT := PI / 4.0
 
 enum Anim { IDLE, WALK, AIR, SWIM }
@@ -25,6 +26,7 @@ var input: InputSlot = null
 var world: Node = null
 
 var velocity := Vector3.ZERO
+var camera_yaw := ISO_ROT
 var on_floor := false
 var in_water := false
 var heading := Vector3(0, 0, -1)
@@ -50,7 +52,7 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	is_local = p_local
 	input = p_input
 	world = p_world
-	_avatar = AvatarFactory.build_blob(int(entry.get("style", 0)))
+	_avatar = AvatarFactory.build_character(entry.get("style", {}))
 	add_child(_avatar)
 	_tag = Label3D.new()
 	_tag.text = str(entry.name)
@@ -61,7 +63,7 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	_tag.modulate = Color.WHITE
 	_tag.outline_modulate = Color(0.05, 0.05, 0.1, 0.9)
 	_tag.outline_size = 16
-	_tag.position = Vector3(0, 1.55, 0)
+	_tag.position = Vector3(0, 1.85, 0)
 	add_child(_tag)
 	if is_local:
 		_highlight = MeshInstance3D.new()
@@ -80,10 +82,11 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 
 func refresh_from_roster(entry: Dictionary) -> void:
 	_tag.text = str(entry.name)
-	var style := int(entry.get("style", 0))
-	if _avatar.get_meta("style", -1) != style:
+	var style: Dictionary = AvatarFactory.normalize_style(entry.get("style"))
+	if str(_avatar.get_meta("style", "")) != str(style):
 		var old := _avatar
-		_avatar = AvatarFactory.build_blob(style)
+		_avatar = AvatarFactory.build_character(style)
+		_avatar.rotation = old.rotation
 		add_child(_avatar)
 		old.queue_free()
 
@@ -142,7 +145,7 @@ func _collides(at: Vector3) -> bool:
 
 func _local_move(delta: float) -> void:
 	var move := input.get_move_vector()
-	var dir := Vector3(move.x, 0, move.y).rotated(Vector3.UP, ISO_ROT)
+	var dir := Vector3(move.x, 0, move.y).rotated(Vector3.UP, camera_yaw)
 	var feet := Vector3i(floori(position.x), floori(position.y + 0.3), floori(position.z))
 	in_water = _chunks().get_block(feet) == Blocks.WATER
 
@@ -323,16 +326,38 @@ func _animate(delta: float) -> void:
 	if _avatar == null:
 		return
 	_bob_time += delta
+	var swing := 0.0
+	var arms_up := 0.0
 	match anim:
 		Anim.WALK:
-			_avatar.position.y = absf(sin(_bob_time * 9.0)) * 0.08
+			_avatar.position.y = absf(sin(_bob_time * 9.0)) * 0.05
 			_avatar.scale = _avatar.scale.lerp(Vector3.ONE, minf(1.0, delta * 8.0))
+			swing = sin(_bob_time * 9.0) * 0.7
 		Anim.AIR:
 			_avatar.position.y = 0.05
-			_avatar.scale = _avatar.scale.lerp(Vector3(0.92, 1.1, 0.92), minf(1.0, delta * 6.0))
+			_avatar.scale = _avatar.scale.lerp(Vector3(0.96, 1.06, 0.96), minf(1.0, delta * 6.0))
+			arms_up = 2.6
 		Anim.SWIM:
-			_avatar.position.y = sin(_bob_time * 4.0) * 0.06 - 0.25
-			_avatar.scale = _avatar.scale.lerp(Vector3(1.05, 0.9, 1.05), minf(1.0, delta * 6.0))
+			_avatar.position.y = sin(_bob_time * 4.0) * 0.06 - 0.35
+			_avatar.scale = _avatar.scale.lerp(Vector3.ONE, minf(1.0, delta * 6.0))
+			swing = sin(_bob_time * 5.0) * 0.9
 		_:
-			_avatar.position.y = sin(_bob_time * 2.2) * 0.02
+			_avatar.position.y = sin(_bob_time * 2.2) * 0.015
 			_avatar.scale = _avatar.scale.lerp(Vector3.ONE, minf(1.0, delta * 8.0))
+			swing = sin(_bob_time * 2.2) * 0.06
+	_swing_limb("LegL", swing, delta)
+	_swing_limb("LegR", -swing, delta)
+	_swing_limb("ArmL", -swing, delta, arms_up)
+	_swing_limb("ArmR", swing, delta, arms_up)
+
+## Limbs ease toward their pose so animation switches never pop. arms_up
+## rotates the pivot so hands point skyward (jumping — kids love it).
+func _swing_limb(limb: String, angle: float, delta: float, up := 0.0) -> void:
+	var pivot: Node3D = _avatar.get_node_or_null(limb)
+	if pivot == null:
+		return
+	var target := angle if up == 0.0 else 0.0
+	pivot.rotation.x = lerp_angle(pivot.rotation.x, target, minf(1.0, delta * 10.0))
+	pivot.rotation.z = lerp_angle(pivot.rotation.z,
+		(up if limb == "ArmR" else -up) if up > 0.0 and limb.begins_with("Arm") else 0.0,
+		minf(1.0, delta * 8.0))

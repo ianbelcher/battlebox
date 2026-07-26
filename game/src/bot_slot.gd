@@ -37,5 +37,17 @@ func is_place_pressed() -> bool:
 func cycle_direction() -> int:
 	return 1 if fmod(_t() * 0.11 + bot_index, 1.0) < 0.02 else 0
 
+func rotate_direction() -> int:
+	# A quarter spin roughly every 12s, staggered per bot.
+	return 1 if fmod(_t() * 0.08 + bot_index * 0.5, 1.0) < 0.015 else 0
+
+func zoom_direction() -> int:
+	var phase := fmod(_t() * 0.05 + bot_index * 0.3, 1.0)
+	if phase < 0.01:
+		return 1
+	if phase > 0.5 and phase < 0.51:
+		return -1
+	return 0
+
 func is_leave_pressed() -> bool:
 	return false

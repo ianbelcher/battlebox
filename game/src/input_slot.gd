@@ -8,6 +8,11 @@ extends RefCounted
 ## Keyboard WASD   WASD        Space   E            F      Tab / R      Q
 ## Keyboard Arrows Arrows      Enter   .            ,      Right Shift  Backspace
 ## Gamepad         Left stick  A       B            X      Y / bumpers  Back/Select
+##
+##                 spin view      zoom
+## Keyboard WASD   Z / C          X out / V in
+## Keyboard Arrows ; / '          [ out / ] in
+## Gamepad         R stick left/right   R stick up in / down out
 
 enum Kind { KEYBOARD_WASD, KEYBOARD_ARROWS, GAMEPAD }
 
@@ -110,6 +115,48 @@ func cycle_direction() -> int:
 					or Input.is_joy_button_pressed(device, JOY_BUTTON_Y):
 				return 1
 			if Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER):
+				return -1
+	return 0
+
+## Spin the camera a quarter turn. Returns -1, 0 or +1 (caller edge-latches).
+func rotate_direction() -> int:
+	match kind:
+		Kind.KEYBOARD_WASD:
+			if Input.is_physical_key_pressed(KEY_Z):
+				return -1
+			if Input.is_physical_key_pressed(KEY_C):
+				return 1
+		Kind.KEYBOARD_ARROWS:
+			if Input.is_physical_key_pressed(KEY_SEMICOLON):
+				return -1
+			if Input.is_physical_key_pressed(KEY_APOSTROPHE):
+				return 1
+		Kind.GAMEPAD:
+			var x := Input.get_joy_axis(device, JOY_AXIS_RIGHT_X)
+			if x < -0.6:
+				return -1
+			if x > 0.6:
+				return 1
+	return 0
+
+## Step the zoom. Returns -1 (out), 0 or +1 (in); caller edge-latches.
+func zoom_direction() -> int:
+	match kind:
+		Kind.KEYBOARD_WASD:
+			if Input.is_physical_key_pressed(KEY_X):
+				return -1
+			if Input.is_physical_key_pressed(KEY_V):
+				return 1
+		Kind.KEYBOARD_ARROWS:
+			if Input.is_physical_key_pressed(KEY_BRACKETLEFT):
+				return -1
+			if Input.is_physical_key_pressed(KEY_BRACKETRIGHT):
+				return 1
+		Kind.GAMEPAD:
+			var y := Input.get_joy_axis(device, JOY_AXIS_RIGHT_Y)
+			if y < -0.6:
+				return 1
+			if y > 0.6:
 				return -1
 	return 0
 
