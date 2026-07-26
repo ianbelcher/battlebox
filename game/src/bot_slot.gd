@@ -1,0 +1,41 @@
+class_name BotSlot
+extends InputSlot
+## Scripted "player" for smoke tests (WORLD_AUTOTEST=1): wanders, hops,
+## digs and places on a schedule. Never touches real input devices.
+
+var bot_index := 0
+
+func _init(p_index: int) -> void:
+	super(Kind.GAMEPAD, -100 - p_index)
+	bot_index = p_index
+
+func describe() -> String:
+	return "Bot %d" % bot_index
+
+func claim_key() -> String:
+	return "bot:%d" % bot_index
+
+func _t() -> float:
+	return Time.get_ticks_msec() / 1000.0
+
+func get_move_vector() -> Vector2:
+	# A new heading every couple of seconds, unique per bot.
+	var step := floori(_t() / 1.7) + bot_index * 31
+	var angle := WorldGen.hash01(step, bot_index, 5) * TAU
+	return Vector2(cos(angle), sin(angle)) * 0.9
+
+func is_primary_pressed() -> bool:
+	return fmod(_t() * 0.31 + bot_index * 0.4, 1.0) > 0.92
+
+func is_dig_pressed() -> bool:
+	return fmod(_t() * 0.2 + bot_index * 0.7, 1.0) < 0.06
+
+func is_place_pressed() -> bool:
+	var phase := fmod(_t() * 0.2 + bot_index * 0.7, 1.0)
+	return phase > 0.5 and phase < 0.56
+
+func cycle_direction() -> int:
+	return 1 if fmod(_t() * 0.11 + bot_index, 1.0) < 0.02 else 0
+
+func is_leave_pressed() -> bool:
+	return false

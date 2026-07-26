@@ -1,0 +1,414 @@
+class_name McaWorld
+extends RefCounted
+## Read-only Minecraft world importer: parses Anvil region files (r.X.Z.mca)
+## and converts modern paletted chunk sections (1.16+ packing, 1.18+ layout,
+## with the pre-1.18 "Level" wrapper also handled) into our block palette.
+## The Minecraft save is NEVER written to — Godot-side edits live in the
+## ChunkStore overlay files.
+##
+## Env knobs:
+##   WORLD_MCA_DIR     directory containing the region/*.mca files (or the
+##                     world dir itself; "region" is appended if present)
+##   WORLD_MCA_Y0      Minecraft y that becomes our y=1 (default 40)
+##   WORLD_MCA_CENTER  "x,z" Minecraft block coords that become our origin
+##                     (snapped to chunk alignment; default 0,0)
+
+const TAG_END := 0
+const TAG_BYTE := 1
+const TAG_SHORT := 2
+const TAG_INT := 3
+const TAG_LONG := 4
+const TAG_FLOAT := 5
+const TAG_DOUBLE := 6
+const TAG_BYTE_ARRAY := 7
+const TAG_STRING := 8
+const TAG_LIST := 9
+const TAG_COMPOUND := 10
+const TAG_INT_ARRAY := 11
+const TAG_LONG_ARRAY := 12
+
+var region_dir := ""
+var y0 := 40           # Minecraft y mapped to our y=1
+var center := Vector2i.ZERO  # Minecraft block coords of our origin, chunk-aligned
+
+var _regions: Dictionary = {}   # Vector2i -> PackedByteArray (whole file) or false
+
+func _init(world_dir: String) -> void:
+	if world_dir.is_empty():
+		return
+	region_dir = world_dir
+	if DirAccess.dir_exists_absolute(world_dir.path_join("region")):
+		region_dir = world_dir.path_join("region")
+	var y_env := OS.get_environment("WORLD_MCA_Y0")
+	if y_env.is_valid_int():
+		y0 = y_env.to_int()
+	var center_env := OS.get_environment("WORLD_MCA_CENTER")
+	var parts := center_env.split(",")
+	if parts.size() == 2 and parts[0].strip_edges().is_valid_int() and parts[1].strip_edges().is_valid_int():
+		# Snap to chunk alignment so chunk borders line up 1:1.
+		center = Vector2i(
+			(parts[0].strip_edges().to_int() >> 4) << 4,
+			(parts[1].strip_edges().to_int() >> 4) << 4)
+	print("MCA world: %s (y0=%d, center=%s)" % [region_dir, y0, center])
+
+func is_valid() -> bool:
+	if region_dir.is_empty():
+		return false
+	var dir := DirAccess.open(region_dir)
+	if dir == null:
+		return false
+	for file in dir.get_files():
+		if file.ends_with(".mca"):
+			return true
+	return false
+
+## Our chunk (cx, cz) -> block data, or empty if the save has no such chunk.
+func read_chunk(cx: int, cz: int) -> PackedByteArray:
+	var mc_cx := cx + (center.x >> 4)
+	var mc_cz := cz + (center.y >> 4)
+	var nbt := _read_chunk_nbt(mc_cx, mc_cz)
+	if nbt.is_empty():
+		return PackedByteArray()
+	# Pre-1.18 wraps everything in "Level".
+	var root: Dictionary = nbt.get("Level", nbt)
+	var sections: Array = root.get("sections", root.get("Sections", []))
+	if sections.is_empty():
+		return PackedByteArray()
+	var data := PackedByteArray()
+	data.resize(WorldGen.CHUNK_SIZE * WorldGen.CHUNK_SIZE * WorldGen.CHUNK_H)
+	for section: Dictionary in sections:
+		_apply_section(data, section)
+	# A safety floor so nobody falls out of the world.
+	for lz in 16:
+		for lx in 16:
+			data[WorldGen.idx(lx, 0, lz)] = Blocks.BEDROCK
+	return data
+
+func _apply_section(data: PackedByteArray, section: Dictionary) -> void:
+	var sy := int(section.get("Y", 127))
+	if sy == 127:
+		return
+	var states: Dictionary = section.get("block_states", {})
+	var palette: Array = states.get("palette", section.get("Palette", []))
+	if palette.is_empty():
+		return
+	var longs: PackedInt64Array = states.get("data", section.get("BlockStates", PackedInt64Array()))
+	# Map the palette once per section.
+	var mapped := PackedByteArray()
+	mapped.resize(palette.size())
+	for i in palette.size():
+		var entry: Dictionary = palette[i]
+		mapped[i] = map_block(str(entry.get("Name", "")))
+	var base_y := sy * 16 - y0 + 1   # our y for the section's mc y floor
+	if base_y >= WorldGen.CHUNK_H or base_y + 16 <= 1:
+		return
+	if longs.is_empty() or palette.size() == 1:
+		var block := mapped[0]
+		if block == Blocks.AIR:
+			return
+		for y in range(maxi(base_y, 1), mini(base_y + 16, WorldGen.CHUNK_H)):
+			for lz in 16:
+				for lx in 16:
+					data[WorldGen.idx(lx, y, lz)] = block
+		return
+	var bits := maxi(4, _bit_length(palette.size() - 1))
+	var per_long := 64 / bits
+	var mask := (1 << bits) - 1
+	for my in 16:
+		var y := base_y + my
+		if y < 1 or y >= WorldGen.CHUNK_H:
+			continue
+		for lz in 16:
+			for lx in 16:
+				var index := (my * 16 + lz) * 16 + lx
+				var value := (longs[index / per_long] >> ((index % per_long) * bits)) & mask
+				if value < mapped.size():
+					var block := mapped[value]
+					if block != Blocks.AIR:
+						data[WorldGen.idx(lx, y, lz)] = block
+
+static func _bit_length(value: int) -> int:
+	var bits := 0
+	while value > 0:
+		bits += 1
+		value >>= 1
+	return maxi(bits, 1)
+
+## Find somewhere sensible to spawn: the first grassy-ish column near origin.
+func find_spawn() -> Vector3i:
+	for radius in range(0, 10):
+		for attempt in 16:
+			var wx := int(cos(attempt * TAU / 16.0) * radius * 10.0)
+			var wz := int(sin(attempt * TAU / 16.0) * radius * 10.0)
+			var chunk := read_chunk(floori(wx / 16.0), floori(wz / 16.0))
+			if chunk.is_empty():
+				continue
+			var lx := posmod(wx, 16)
+			var lz := posmod(wz, 16)
+			for y in range(WorldGen.CHUNK_H - 8, 1, -1):
+				var b := chunk[WorldGen.idx(lx, y, lz)]
+				if b == Blocks.WATER:
+					break
+				if Blocks.is_solid(b):
+					return Vector3i(wx, y, wz)
+	return Vector3i(0, WorldGen.CHUNK_H - 12, 0)
+
+# ------------------------------------------------------------------
+# Region file + NBT plumbing
+# ------------------------------------------------------------------
+
+func _read_chunk_nbt(mc_cx: int, mc_cz: int) -> Dictionary:
+	var rpos := Vector2i(mc_cx >> 5, mc_cz >> 5)
+	var blob := _region_blob(rpos)
+	if blob.is_empty():
+		return {}
+	var lx := mc_cx & 31
+	var lz := mc_cz & 31
+	var head := 4 * (lx + lz * 32)
+	if blob.size() < head + 4:
+		return {}
+	var offset_sectors := (blob[head] << 16) | (blob[head + 1] << 8) | blob[head + 2]
+	if offset_sectors == 0:
+		return {}
+	var at := offset_sectors * 4096
+	if blob.size() < at + 5:
+		return {}
+	var length := (blob[at] << 24) | (blob[at + 1] << 16) | (blob[at + 2] << 8) | blob[at + 3]
+	var compression := blob[at + 4]
+	if length <= 1 or blob.size() < at + 4 + length:
+		return {}
+	var payload := blob.slice(at + 5, at + 4 + length)
+	var raw: PackedByteArray
+	match compression:
+		1:
+			raw = payload.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
+		2:
+			raw = payload.decompress_dynamic(-1, FileAccess.COMPRESSION_DEFLATE)
+		3:
+			raw = payload
+		_:
+			push_error("Region %s chunk %d,%d: unsupported compression %d" % [rpos, mc_cx, mc_cz, compression])
+			return {}
+	if raw.is_empty():
+		return {}
+	var stream := StreamPeerBuffer.new()
+	stream.data_array = raw
+	stream.big_endian = true
+	var tag_type := stream.get_u8()
+	if tag_type != TAG_COMPOUND:
+		return {}
+	_read_string(stream)  # root name, usually ""
+	return _read_compound(stream)
+
+func _region_blob(rpos: Vector2i) -> PackedByteArray:
+	if _regions.has(rpos):
+		var cached = _regions[rpos]
+		return cached if cached is PackedByteArray else PackedByteArray()
+	var path := region_dir.path_join("r.%d.%d.mca" % [rpos.x, rpos.y])
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		_regions[rpos] = false
+		return PackedByteArray()
+	var blob := file.get_buffer(file.get_length())
+	file.close()
+	# Cap the region cache; whole files are ~5-30 MiB each.
+	if _regions.size() > 9:
+		_regions.clear()
+	_regions[rpos] = blob
+	return blob
+
+func _read_string(stream: StreamPeerBuffer) -> String:
+	var length := stream.get_u16()
+	if length == 0:
+		return ""
+	return stream.get_utf8_string(length)
+
+func _read_compound(stream: StreamPeerBuffer) -> Dictionary:
+	var result := {}
+	while stream.get_available_bytes() > 0:
+		var tag_type := stream.get_u8()
+		if tag_type == TAG_END:
+			break
+		var tag_name := _read_string(stream)
+		result[tag_name] = _read_payload(stream, tag_type)
+	return result
+
+func _read_payload(stream: StreamPeerBuffer, tag_type: int):
+	match tag_type:
+		TAG_BYTE:
+			return stream.get_8()
+		TAG_SHORT:
+			return stream.get_16()
+		TAG_INT:
+			return stream.get_32()
+		TAG_LONG:
+			return stream.get_64()
+		TAG_FLOAT:
+			return stream.get_float()
+		TAG_DOUBLE:
+			return stream.get_double()
+		TAG_BYTE_ARRAY:
+			var count := stream.get_32()
+			return stream.get_data(count)[1]
+		TAG_STRING:
+			return _read_string(stream)
+		TAG_LIST:
+			var child_type := stream.get_u8()
+			var count := stream.get_32()
+			var list := []
+			for i in count:
+				list.append(_read_payload(stream, child_type))
+			return list
+		TAG_COMPOUND:
+			return _read_compound(stream)
+		TAG_INT_ARRAY:
+			var count := stream.get_32()
+			var ints := PackedInt32Array()
+			ints.resize(count)
+			for i in count:
+				ints[i] = stream.get_32()
+			return ints
+		TAG_LONG_ARRAY:
+			var count := stream.get_32()
+			var longs := PackedInt64Array()
+			longs.resize(count)
+			for i in count:
+				longs[i] = stream.get_64()
+			return longs
+	return null
+
+# ------------------------------------------------------------------
+# Block mapping
+# ------------------------------------------------------------------
+
+const NAME_MAP := {
+	"air": Blocks.AIR, "cave_air": Blocks.AIR, "void_air": Blocks.AIR,
+	"grass_block": Blocks.GRASS, "mycelium": Blocks.GRASS, "podzol": Blocks.DIRT,
+	"dirt": Blocks.DIRT, "coarse_dirt": Blocks.DIRT, "rooted_dirt": Blocks.DIRT,
+	"farmland": Blocks.DIRT, "mud": Blocks.DIRT, "clay": Blocks.DIRT,
+	"dirt_path": Blocks.PATH, "grass_path": Blocks.PATH,
+	"sand": Blocks.SAND, "red_sand": Blocks.SAND, "gravel": Blocks.PATH,
+	"sandstone": Blocks.SAND, "smooth_sandstone": Blocks.SAND,
+	"water": Blocks.WATER, "seagrass": Blocks.WATER, "tall_seagrass": Blocks.WATER,
+	"kelp": Blocks.WATER, "kelp_plant": Blocks.WATER, "bubble_column": Blocks.WATER,
+	"lava": Blocks.CAMPFIRE,
+	"stone": Blocks.STONE, "deepslate": Blocks.STONE, "andesite": Blocks.STONE,
+	"diorite": Blocks.STONE, "granite": Blocks.STONE, "tuff": Blocks.STONE,
+	"calcite": Blocks.STONE, "smooth_stone": Blocks.STONE, "obsidian": Blocks.WOOL_BLACK,
+	"cobblestone": Blocks.COBBLE, "mossy_cobblestone": Blocks.COBBLE,
+	"stone_bricks": Blocks.COBBLE, "mossy_stone_bricks": Blocks.COBBLE,
+	"snow": Blocks.AIR, "snow_block": Blocks.SNOW, "powder_snow": Blocks.SNOW,
+	"ice": Blocks.ICE, "packed_ice": Blocks.ICE, "blue_ice": Blocks.ICE, "frosted_ice": Blocks.ICE,
+	"glass": Blocks.GLASS, "tinted_glass": Blocks.GLASS,
+	"bricks": Blocks.BRICK,
+	"pumpkin": Blocks.PUMPKIN, "carved_pumpkin": Blocks.PUMPKIN, "jack_o_lantern": Blocks.LANTERN,
+	"melon": Blocks.PUMPKIN,
+	"torch": Blocks.LANTERN, "wall_torch": Blocks.LANTERN, "lantern": Blocks.LANTERN,
+	"soul_lantern": Blocks.LANTERN, "sea_lantern": Blocks.LANTERN, "glowstone": Blocks.LANTERN,
+	"shroomlight": Blocks.LANTERN, "ochre_froglight": Blocks.LANTERN,
+	"verdant_froglight": Blocks.LANTERN, "pearlescent_froglight": Blocks.LANTERN,
+	"end_rod": Blocks.LANTERN, "redstone_lamp": Blocks.LANTERN,
+	"campfire": Blocks.CAMPFIRE, "soul_campfire": Blocks.CAMPFIRE,
+	"fire": Blocks.CAMPFIRE, "soul_fire": Blocks.CAMPFIRE, "magma_block": Blocks.CAMPFIRE,
+	"poppy": Blocks.FLOWER_RED, "red_tulip": Blocks.FLOWER_RED, "rose_bush": Blocks.FLOWER_RED,
+	"dandelion": Blocks.FLOWER_YELLOW, "sunflower": Blocks.FLOWER_YELLOW,
+	"orange_tulip": Blocks.FLOWER_YELLOW, "torchflower": Blocks.FLOWER_YELLOW,
+	"pink_tulip": Blocks.FLOWER_PINK, "peony": Blocks.FLOWER_PINK, "allium": Blocks.FLOWER_PINK,
+	"lilac": Blocks.FLOWER_PINK, "pink_petals": Blocks.FLOWER_PINK,
+	"cherry_leaves": Blocks.FLOWER_PINK,
+	"blue_orchid": Blocks.FLOWER_PINK, "azure_bluet": Blocks.FLOWER_PINK,
+	"oxeye_daisy": Blocks.FLOWER_YELLOW, "cornflower": Blocks.FLOWER_PINK,
+	"lily_of_the_valley": Blocks.FLOWER_PINK, "wither_rose": Blocks.MUSHROOM,
+	"grass": Blocks.TALL_GRASS, "short_grass": Blocks.TALL_GRASS, "tall_grass": Blocks.TALL_GRASS,
+	"fern": Blocks.TALL_GRASS, "large_fern": Blocks.TALL_GRASS, "dead_bush": Blocks.TALL_GRASS,
+	"sweet_berry_bush": Blocks.BERRY_BUSH,
+	"brown_mushroom": Blocks.MUSHROOM, "red_mushroom": Blocks.MUSHROOM,
+	"bedrock": Blocks.BEDROCK,
+	"terracotta": Blocks.BRICK,
+	"bookshelf": Blocks.PLANKS, "crafting_table": Blocks.PLANKS, "chest": Blocks.PLANKS,
+	"barrel": Blocks.PLANKS, "furnace": Blocks.COBBLE, "cactus": Blocks.WOOL_GREEN,
+	"pumpkin_stem": Blocks.SAPLING, "melon_stem": Blocks.SAPLING, "bamboo": Blocks.SAPLING,
+	"lily_pad": Blocks.WOOL_GREEN, "moss_block": Blocks.GRASS, "moss_carpet": Blocks.AIR,
+	"hay_block": Blocks.WOOL_YELLOW, "honeycomb_block": Blocks.WOOL_ORANGE,
+}
+
+const WOOL_COLOR_MAP := {
+	"red": Blocks.WOOL_RED, "orange": Blocks.WOOL_ORANGE, "yellow": Blocks.WOOL_YELLOW,
+	"lime": Blocks.WOOL_GREEN, "green": Blocks.WOOL_GREEN, "cyan": Blocks.WOOL_BLUE,
+	"light_blue": Blocks.WOOL_BLUE, "blue": Blocks.WOOL_BLUE, "purple": Blocks.WOOL_PURPLE,
+	"magenta": Blocks.WOOL_PURPLE, "pink": Blocks.WOOL_PURPLE, "white": Blocks.WOOL_WHITE,
+	"light_gray": Blocks.WOOL_WHITE, "gray": Blocks.WOOL_BLACK, "black": Blocks.WOOL_BLACK,
+	"brown": Blocks.WOOL_ORANGE,
+}
+
+## Parts of a block name that mean "thin decoration we can't represent" —
+## these become air rather than a misleading full cube.
+const SKIP_PARTS := [
+	"rail", "button", "lever", "sign", "banner", "pressure_plate", "carpet",
+	"tripwire", "redstone_wire", "repeater", "comparator", "candle", "pot",
+	"flower_pot", "scaffolding", "ladder", "vine", "vines", "cobweb", "chain",
+	"iron_bars", "sculk_vein", "frogspawn", "sniffer_egg", "turtle_egg",
+	"structure_void", "light", "barrier", "player_head", "skull", "spore_blossom",
+	"hanging_roots", "glow_lichen", "sea_pickle", "amethyst_cluster", "coral_fan",
+]
+
+static var _map_cache: Dictionary = {}
+
+static func map_block(mc_name: String) -> int:
+	if _map_cache.has(mc_name):
+		return _map_cache[mc_name]
+	var mapped := _map_block_uncached(mc_name.trim_prefix("minecraft:"))
+	_map_cache[mc_name] = mapped
+	return mapped
+
+static func _map_block_uncached(short_name: String) -> int:
+	if NAME_MAP.has(short_name):
+		return NAME_MAP[short_name]
+	# Wool / concrete / terracotta / stained glass by their color token.
+	for color: String in WOOL_COLOR_MAP.keys():
+		if short_name.begins_with(color + "_"):
+			var rest := short_name.trim_prefix(color + "_")
+			if rest.contains("glass"):
+				return Blocks.GLASS
+			if rest == "wool" or rest.contains("concrete") or rest.contains("terracotta") \
+					or rest == "bed" or rest.contains("shulker"):
+				return WOOL_COLOR_MAP[color]
+	for part: String in SKIP_PARTS:
+		if short_name == part or short_name.ends_with("_" + part) or short_name.begins_with(part + "_"):
+			return Blocks.AIR
+	if short_name.ends_with("_log") or short_name.ends_with("_wood") \
+			or short_name.ends_with("_stem") or short_name.ends_with("_hyphae"):
+		return Blocks.LOG
+	if short_name.ends_with("_leaves"):
+		return Blocks.LEAVES
+	if short_name.ends_with("_planks"):
+		return Blocks.PLANKS
+	if short_name.ends_with("_sapling") or short_name.ends_with("_propagule") \
+			or short_name.ends_with("_fungus") or short_name.ends_with("_roots"):
+		return Blocks.SAPLING
+	if short_name.ends_with("_ore") or short_name.contains("deepslate") \
+			or short_name.contains("basalt") or short_name.contains("blackstone"):
+		return Blocks.STONE
+	if short_name.contains("brick"):
+		return Blocks.BRICK
+	if short_name.contains("glass"):
+		return Blocks.GLASS
+	if short_name.contains("coral"):
+		return Blocks.FLOWER_PINK if not short_name.contains("block") else Blocks.WOOL_PURPLE
+	# Partial wooden shapes read best as their material.
+	for wood in ["oak", "spruce", "birch", "jungle", "acacia", "dark_oak",
+			"mangrove", "cherry", "bamboo", "crimson", "warped", "pale_oak"]:
+		if short_name.begins_with(wood + "_"):
+			return Blocks.PLANKS
+	if short_name.ends_with("_slab") or short_name.ends_with("_stairs") \
+			or short_name.ends_with("_wall") or short_name.ends_with("_fence") \
+			or short_name.ends_with("_fence_gate") or short_name.ends_with("_door") \
+			or short_name.ends_with("_trapdoor"):
+		return Blocks.COBBLE
+	if short_name.contains("wheat") or short_name.contains("carrot") \
+			or short_name.contains("potato") or short_name.contains("beetroot") \
+			or short_name.contains("flower") or short_name.contains("bush") \
+			or short_name.contains("azalea"):
+		return Blocks.TALL_GRASS
+	# Unknown: assume a full solid block reads best as stone.
+	return Blocks.STONE

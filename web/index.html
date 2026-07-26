@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Belcher World</title>
+<style>
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(#22304a, #10141f); color: #fff;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 620px; padding: 40px 24px; }
+  h1 { color: #ffd166; font-size: 44px; margin: 0 0 4px; }
+  p { color: rgba(255,255,255,0.75); line-height: 1.5; }
+  .card {
+    background: rgba(0,0,0,0.3); border-radius: 14px; padding: 18px 22px; margin: 14px 0;
+  }
+  a.button {
+    display: inline-block; background: #ffd166; color: #10141f; font-weight: 700;
+    padding: 10px 18px; border-radius: 10px; text-decoration: none; margin: 4px 8px 4px 0;
+  }
+  code { background: rgba(255,255,255,0.12); padding: 2px 7px; border-radius: 6px; }
+  .small { font-size: 13px; color: rgba(255,255,255,0.5); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Belcher World</h1>
+  <p>One cozy world, always on. Grab the game for your computer, open it, and
+  press <b>Connect</b> — the address is already filled in. Up to four players
+  per computer: press <b>Space</b>, <b>Enter</b>, or a gamepad's <b>A</b>
+  button to hop in.</p>
+
+  <div class="card">
+    <a class="button" href="downloads/belcher-world-macos.zip">macOS</a>
+    <a class="button" href="downloads/belcher-world-windows.exe">Windows</a>
+    <a class="button" href="downloads/belcher-world-linux.x86_64">Linux</a>
+    <p class="small">macOS: unzip, then right-click the app &rarr; Open the
+    first time (it isn't signed). Linux: <code>chmod +x</code> it first.</p>
+  </div>
+
+  <div class="card">
+    <p style="margin:0"><b>Controls</b> &mdash; keyboard 1: WASD + Space,
+    E dig, F place, Tab cycle blocks. Keyboard 2: arrows + Enter,
+    <code>.</code> dig, <code>,</code> place. Gamepad: stick + A jump,
+    B dig, X place, bumpers cycle. Hold Q / Backspace / Back to leave.</p>
+  </div>
+
+  <p class="small">Server: <code>ws://10.0.0.200:30810</code> &middot; runs on
+  the cluster &middot; the world is saved, so whatever you build is still
+  there tomorrow.</p>
+</main>
+</body>
+</html>

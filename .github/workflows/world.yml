@@ -1,0 +1,23 @@
+name: world
+on:
+  push:
+    paths:
+      - "deployments/world/**"
+jobs:
+  buildAndDeploy:
+    name: Build and deploy
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@main
+      - name: Build and push to registry
+        uses: ianbelcher/monorepo-container-build-action@master
+        id: build
+        with:
+          container_name: world
+          command_to_run: "(cd deployments/world && .bin/build.sh)"
+          docker_registry: ${{ secrets.KLUSTA_DOCKER_REGISTRY }}
+      - name: Update deployment
+        uses: steebchen/kubectl@v2.0.0
+        with:
+          config: ${{ secrets.KLUSTA_KUBE_CONFIG_DATA }}
+          command: set image --namespace world --record deployment/world server=${{ steps.build.outputs.IMAGE_URL }} web=${{ steps.build.outputs.IMAGE_URL }}

@@ -1,0 +1,33 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+
+config_version=5
+
+[application]
+
+config/name="Belcher World"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7")
+config/icon="res://icon.svg"
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0.05, 0.07, 0.1, 1)
+
+[autoload]
+
+Net="*res://src/net.gd"
+Game="*res://src/game.gd"
+Sfx="*res://src/sfx.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="disabled"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+anti_aliasing/quality/msaa_3d=2
+lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
