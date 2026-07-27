@@ -258,6 +258,19 @@ func _scatter_grass_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz:
 			elif interior and tree_roll < 0.004:
 				_plant_tree(data, lx, ground + 1, lz, hash01(wx, wz, 8), 0)
 		_:
+			# Shooter cover: rare ruined wall stubs and stone crags.
+			if interior and hash01(wx, wz, 50) < 0.0012:
+				var h := 2 + int(hash01(wx, wz, 51) * 3.0)
+				for dy in h:
+					if hash01(wx, dy, wz) < 0.8:
+						data[idx(lx, ground + 1 + dy, lz)] = Blocks.COBBLE
+				if lx < 13:
+					data[idx(lx + 1, ground + 1, lz)] = Blocks.COBBLE
+				return
+			if interior and hash01(wx, wz, 52) < 0.0012:
+				for dy in 3 + int(hash01(wx, wz, 53) * 4.0):
+					data[idx(lx, ground + 1 + dy, lz)] = Blocks.STONE
+				return
 			if interior and tree_roll < 0.006:
 				_plant_tree(data, lx, ground + 1, lz, hash01(wx, wz, 8), 0)
 			elif hash01(wx, wz, 9) < 0.05:

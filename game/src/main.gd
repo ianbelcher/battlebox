@@ -21,6 +21,8 @@ var _players_label: Label
 var _survival_button: Button
 var _wave_label: Label
 var _banner: Label
+var _vote_panel: PanelContainer
+var _minimap: TextureRect
 var _loading_label: Label
 
 var _prev_pressed: Dictionary = {}
@@ -181,6 +183,55 @@ func _build_game_screen() -> void:
 	row.add_child(_survival_button)
 	_wave_label = _make_label("", 17, Color("ff6b6b"))
 	row.add_child(_wave_label)
+	var reset_button := Button.new()
+	reset_button.text = "↺ New map"
+	reset_button.add_theme_font_size_override("font_size", 14)
+	reset_button.tooltip_text = "Ask everyone to regenerate the world with a new seed"
+	reset_button.pressed.connect(func() -> void:
+		if Game.world != null:
+			Game.world.sv_reset_request.rpc_id(1, 0))
+	row.add_child(reset_button)
+	# Reset vote panel.
+	_vote_panel = PanelContainer.new()
+	_vote_panel.add_theme_stylebox_override("panel", style.duplicate())
+	_vote_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_vote_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_vote_panel.offset_top = 46
+	_vote_panel.visible = false
+	_game_screen.add_child(_vote_panel)
+	var vote_row := HBoxContainer.new()
+	vote_row.add_theme_constant_override("separation", 10)
+	_vote_panel.add_child(vote_row)
+	vote_row.add_child(_make_label("Reset the world with a NEW map?", 16, GOLD))
+	var yes := Button.new()
+	yes.text = "Yes!"
+	yes.pressed.connect(func() -> void:
+		Game.world.sv_reset_answer.rpc_id(1, true)
+		_vote_panel.visible = false)
+	vote_row.add_child(yes)
+	var no := Button.new()
+	no.text = "No"
+	no.pressed.connect(func() -> void:
+		Game.world.sv_reset_answer.rpc_id(1, false)
+		_vote_panel.visible = false)
+	vote_row.add_child(no)
+	# Minimap, top right.
+	_minimap = TextureRect.new()
+	_minimap.custom_minimum_size = Vector2(170, 170)
+	_minimap.stretch_mode = TextureRect.STRETCH_SCALE
+	_minimap.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_minimap.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_minimap.offset_left = -180
+	_minimap.offset_top = 10
+	_minimap.offset_right = -10
+	_minimap.offset_bottom = 180
+	_minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_game_screen.add_child(_minimap)
+	var map_timer := Timer.new()
+	map_timer.wait_time = 1.5
+	map_timer.timeout.connect(_update_minimap)
+	add_child(map_timer)
+	map_timer.start()
 	# Center banner for survival results.
 	_banner = _make_label("", 40, GOLD, 8)
 	_banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -210,6 +261,10 @@ func _on_connected() -> void:
 	world.world_ready.connect(func() -> void:
 		_loading_label.visible = false)
 	world.survival_changed.connect(_refresh_survival)
+	world.reset_vote_started.connect(func() -> void: _vote_panel.visible = true)
+	world.reset_result.connect(func(happened: bool) -> void:
+		_vote_panel.visible = false
+		_show_banner("A brand new world!" if happened else "Map reset was voted down"))
 	world.survival_ended.connect(func(seconds: float, bonked: int) -> void:
 		_show_banner("You survived %d:%02d and bonked %d Grumps!" % [
 			int(seconds / 60.0), int(seconds) % 60, bonked])
@@ -263,6 +318,43 @@ func _on_server_lost() -> void:
 func _set_status(text: String) -> void:
 	if _status_label != null:
 		_status_label.text = text
+
+## Top-right minimap: top-block colors around the local players plus dots
+## (gold = you, red = everyone else).
+func _update_minimap() -> void:
+	if not _in_world or Game.world == null or Game.world.chunks == null \
+			or Game.world.players == null:
+		return
+	var center := Vector3(Game.world.spawn_pos)
+	var locals: Array = []
+	for child in Game.world.players.get_children():
+		if child is Player and child.is_local:
+			locals.append(child.position)
+	if not locals.is_empty():
+		center = Vector3.ZERO
+		for pos: Vector3 in locals:
+			center += pos
+		center /= locals.size()
+	var image := Image.create(96, 96, false, Image.FORMAT_RGB8)
+	for py in 96:
+		for px in 96:
+			var wx := int(center.x) + (px - 48) * 2
+			var wz := int(center.z) + (py - 48) * 2
+			var block: int = Game.world.chunks.top_block(wx, wz)
+			var color := Color(0.06, 0.07, 0.1)
+			if block > 0:
+				color = Blocks.top_color_of(block)
+			image.set_pixel(px, py, color)
+	for child in Game.world.players.get_children():
+		if child is Player:
+			var px := 48 + int((child.position.x - center.x) / 2.0)
+			var py := 48 + int((child.position.z - center.z) / 2.0)
+			if px >= 1 and px < 95 and py >= 1 and py < 95:
+				var dot := Color("ffd166") if child.is_local else Color("ff4426")
+				for dy in range(-1, 2):
+					for dx in range(-1, 2):
+						image.set_pixel(px + dx, py + dy, dot)
+	_minimap.texture = ImageTexture.create_from_image(image)
 
 func _refresh_survival() -> void:
 	if _survival_button == null or Game.world == null:

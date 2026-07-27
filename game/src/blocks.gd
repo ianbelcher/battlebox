@@ -64,7 +64,10 @@ enum {
 	SPONGE = 57,
 	TELEPORT = 58,
 	CONFETTI = 59,
-	MAX_BLOCK = 60,
+	STEEL = 60,
+	FIRE = 61,
+	CHARRED = 62,
+	MAX_BLOCK = 63,
 }
 
 ## Per-block info, indexed by block id:
@@ -143,7 +146,37 @@ const INFO := {
 	SPONGE: {"name": "Sponge", "color": Color("d8c94a"), "solid": true, "opaque": true},
 	TELEPORT: {"name": "Warp Stone", "color": Color("4de0d4"), "top": Color("aef7f0"), "solid": true, "opaque": true, "emit": 0.9, "light": 1.6},
 	CONFETTI: {"name": "Party Popper", "color": Color("f2e8f7"), "top": Color("ef9fc8"), "solid": true, "opaque": true, "emit": 0.3},
+	STEEL: {"name": "Steel", "color": Color("aab4c2"), "top": Color("c4cdd8"), "solid": true, "opaque": true},
+	FIRE: {"name": "Fire", "color": Color(1.0, 0.55, 0.15), "solid": false, "opaque": false, "cross": true, "sway": 1.4, "emit": 2.6, "light": 3.2},
+	CHARRED: {"name": "Charred", "color": Color("2e2a26"), "solid": true, "opaque": true},
 }
+
+## Weapon interaction tiers:
+##   0 fragile (grass, dirt, sand, wool, glass...): pellets break, blasts vaporize
+##   1 wood: pellets break, blasts destroy
+##   2 stone family: pellet-proof, blasts only bite at close range
+##   3 steel: only a DIRECT bazooka hit removes one block
+##   4 diamond: weapons can't touch it at all (hands still can)
+const WOOD := [LOG, PLANKS, BIRCH_PLANKS, DARK_PLANKS, CHERRY_PLANKS]
+const STONY := [STONE, COBBLE, MOSSY_COBBLE, BRICK, MARBLE, SLATE, SANDSTONE, GOLD, PATH, CHARRED]
+static func hardness(id: int) -> int:
+	if id == DIAMOND:
+		return 4
+	if id == STEEL:
+		return 3
+	if id in STONY:
+		return 2
+	if id in WOOD:
+		return 1
+	return 0
+
+## What fire eats. Everything else just lets it gutter out.
+static func is_flammable(id: int) -> bool:
+	return id in [LOG, LEAVES, PLANKS, BIRCH_PLANKS, DARK_PLANKS, CHERRY_PLANKS,
+		TALL_GRASS, FLOWER_RED, FLOWER_YELLOW, FLOWER_PINK, SAPLING, BERRY_BUSH,
+		MUSHROOM, SHELL, WOOL_RED, WOOL_ORANGE, WOOL_YELLOW, WOOL_GREEN,
+		WOOL_TEAL, WOOL_BLUE, WOOL_PURPLE, WOOL_PINK, WOOL_BROWN, WOOL_WHITE,
+		WOOL_BLACK, PUMPKIN]
 
 ## What the place-hotbar offers, in order: build stuff first, glow stuff,
 ## then the fun machines. Everything is infinite (creative style) — the cozy
@@ -155,7 +188,7 @@ const HOTBAR: Array[int] = [
 	WOOL_RED, WOOL_ORANGE, WOOL_YELLOW, WOOL_GREEN, WOOL_TEAL, WOOL_BLUE,
 	WOOL_PURPLE, WOOL_PINK, WOOL_BROWN, WOOL_WHITE, WOOL_BLACK,
 	LANTERN, CAMPFIRE, GLOWSTONE, CRYSTAL_PINK, CRYSTAL_BLUE, CRYSTAL_GREEN, LAVA,
-	BOOM, FIREWORK, BOUNCY, LAUNCHER, NOTE, SPONGE, TELEPORT, CONFETTI,
+	STEEL, CHARRED, BOOM, FIREWORK, BOUNCY, LAUNCHER, NOTE, SPONGE, TELEPORT, CONFETTI,
 	FLOWER_RED, FLOWER_YELLOW, SAPLING, PUMPKIN,
 ]
 

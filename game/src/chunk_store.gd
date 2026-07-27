@@ -125,6 +125,31 @@ func find_spawn() -> Vector3i:
 		return mca.find_spawn()
 	return gen.find_spawn()
 
+## Wipe every edit and regenerate from a brand-new seed (map reset vote).
+func reset_world(new_seed: int) -> void:
+	_cache.clear()
+	_dirty.clear()
+	var dir := DirAccess.open(data_dir.path_join("chunks"))
+	if dir != null:
+		for file in dir.get_files():
+			dir.remove(file)
+	_edited.clear()
+	gen = WorldGen.new(new_seed)
+	mca = null
+	source = "procedural"
+	var config := ConfigFile.new()
+	config.load(data_dir.path_join("world.cfg"))
+	config.set_value("world", "seed", new_seed)
+	config.set_value("world", "source", source)
+	config.save(data_dir.path_join("world.cfg"))
+	# Forget saved positions (treasures survive).
+	var players := ConfigFile.new()
+	players.load(data_dir.path_join("players.cfg"))
+	for section in players.get_sections():
+		if players.has_section_key(section, "pos"):
+			players.erase_section_key(section, "pos")
+	players.save(data_dir.path_join("players.cfg"))
+
 func save_dirty() -> int:
 	var saved := 0
 	for cpos: Vector2i in _dirty.keys():

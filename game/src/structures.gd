@@ -16,6 +16,10 @@ const STRUCTURES := [
 	{"id": "wall", "name": "Fort Wall", "color": Color("8d9296")},
 	{"id": "pool", "name": "Pool", "color": Color("4a9df8")},
 	{"id": "garden", "name": "Flower Garden", "color": Color("ef8fc0")},
+	{"id": "fort", "name": "Fort", "color": Color("7a7d80")},
+	{"id": "bunker", "name": "Steel Bunker", "color": Color("aab4c2")},
+	{"id": "sniper", "name": "Sniper Tower", "color": Color("5d4430")},
+	{"id": "barricade", "name": "Barricade", "color": Color("e6d29a")},
 ]
 
 static func count() -> int:
@@ -43,7 +47,78 @@ static func cells(index: int, roll: int) -> Array:
 			return _pool()
 		"garden":
 			return _garden(roll)
+		"fort":
+			return _fort()
+		"bunker":
+			return _bunker()
+		"sniper":
+			return _sniper()
+		"barricade":
+			return _barricade()
 	return []
+
+## 9x9 crenellated cobble fort with corner posts and a gate.
+static func _fort() -> Array:
+	var list: Array = []
+	for x in range(-4, 5):
+		for z in range(-4, 5):
+			var edge: bool = absi(x) == 4 or absi(z) == 4
+			if not edge:
+				continue
+			for y in range(0, 3):
+				if z == -4 and absi(x) <= 1 and y < 2:
+					continue  # gate
+				_put(list, x, y, z, Blocks.COBBLE)
+			if (absi(x) == 4 and absi(z) == 4):
+				_put(list, x, 3, z, Blocks.COBBLE)
+				_put(list, x, 4, z, Blocks.LANTERN)
+			elif posmod(x + z, 2) == 0:
+				_put(list, x, 3, z, Blocks.COBBLE)
+	return list
+
+## Small steel pillbox: pellet-proof, bazooka chips it one block at a time.
+static func _bunker() -> Array:
+	var list: Array = []
+	for x in range(-2, 3):
+		for z in range(-2, 3):
+			for y in range(0, 3):
+				var edge: bool = absi(x) == 2 or absi(z) == 2
+				if y == 2:
+					_put(list, x, y, z, Blocks.STEEL)
+				elif edge:
+					if z == -2 and x == 0 and y == 0:
+						continue  # door
+					if y == 1 and (absi(x) == 2 or z == 2) and posmod(x + z, 2) == 0:
+						continue  # firing slits
+					_put(list, x, y, z, Blocks.STEEL)
+	return list
+
+## Tall lookout with a ladder-ish block stack and rails.
+static func _sniper() -> Array:
+	var list: Array = []
+	for y in range(0, 9):
+		for corner in [Vector3i(-1, 0, -1), Vector3i(1, 0, -1), Vector3i(-1, 0, 1), Vector3i(1, 0, 1)]:
+			list.append([Vector3i(corner.x, y, corner.z), Blocks.DARK_PLANKS])
+	var steps := [Vector3i(0, 0, 2), Vector3i(0, 2, 2), Vector3i(0, 4, 2), Vector3i(0, 6, 2), Vector3i(0, 8, 2)]
+	for step in steps:
+		list.append([step, Blocks.PLANKS])
+	for x in range(-1, 2):
+		for z in range(-1, 2):
+			_put(list, x, 9, z, Blocks.PLANKS)
+	for x in [-1, 1]:
+		for z in [-1, 1]:
+			_put(list, x, 10, z, Blocks.PLANKS)
+	_put(list, 0, 10, 0, Blocks.LANTERN)
+	return list
+
+## Quick cover: a low sandbag wall.
+static func _barricade() -> Array:
+	var list: Array = []
+	for x in range(-3, 4):
+		_put(list, x, 0, 0, Blocks.SAND)
+		if absi(x) < 3:
+			_put(list, x, 1, 0, Blocks.SAND)
+	return list
 
 static func _put(list: Array, x: int, y: int, z: int, block: int) -> void:
 	list.append([Vector3i(x, y, z), block])

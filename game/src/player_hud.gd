@@ -29,9 +29,11 @@ const GUIDE_TEXT := """Move: WASD / left stick        Jump: Space / A
 Double-tap jump = FLY (hold jump to rise, Shift / LT to sink, land to stop)
 
 Break block: LEFT CLICK / B         Place block: RIGHT CLICK / F / X
-Shoot: R / middle click / RT. TAP = fast pellet (pops one block,
-lights Boom Blocks from afar). HOLD then release = bazooka shell
-that explodes where it lands. Both bonk friends and Grumps!
+Shoot: R / middle click / RT. Pick weapons with 1/2/3 (D-pad < >):
+1 BLASTER: hold to spray fast pellets - break soft stuff, light TNT
+2 BAZOOKA: big explosions. 3 FIRE: sets things burning!
+Materials matter: wood burns and breaks easy, stone laughs at
+pellets, STEEL only chips on a direct bazooka hit, DIAMOND never.
 Blocks & building kits: E / D-pad up      Quick cycle: Tab / bumpers
 
 T / Y: switch between first person and overview
@@ -53,6 +55,9 @@ var _chips: Array = []
 var _last_index := -1
 var _last_style := -1
 var _last_width := -1.0
+var _weapon_chips: Array = []
+var _last_weapon := -1
+var _crosshair: Label
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -167,6 +172,35 @@ func _ready() -> void:
 	guide.add_theme_font_size_override("font_size", 15)
 	guide.text = GUIDE_TEXT
 	_tabs.add_child(guide)
+	# Weapon row (1/2/3, D-pad left/right on pads), above the hotbar.
+	var weapon_holder := CenterContainer.new()
+	weapon_holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	weapon_holder.offset_top = -104
+	weapon_holder.offset_bottom = -80
+	weapon_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(weapon_holder)
+	var weapon_row := HBoxContainer.new()
+	weapon_row.add_theme_constant_override("separation", 8)
+	weapon_holder.add_child(weapon_row)
+	for label_text in ["1 Blaster", "2 Bazooka", "3 Fire"]:
+		var chip_label := Label.new()
+		chip_label.text = label_text
+		chip_label.add_theme_font_size_override("font_size", 14)
+		weapon_row.add_child(chip_label)
+		_weapon_chips.append(chip_label)
+	# First-person crosshair.
+	_crosshair = Label.new()
+	_crosshair.text = "+"
+	_crosshair.add_theme_font_size_override("font_size", 30)
+	_crosshair.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
+	_crosshair.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	_crosshair.add_theme_constant_override("outline_size", 4)
+	_crosshair.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_crosshair.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_crosshair.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_crosshair)
+
 	_picker = BlockPicker.new()
 	_picker.name = "Blocks & Kits"
 	_picker.picked.connect(_on_picked)
@@ -292,6 +326,13 @@ func _process(_delta: float) -> void:
 		if player.selected_structure >= 0:
 			_selected_label.text = str(Structures.spec(player.selected_structure).name)
 			_last_index = -1
+	_crosshair.visible = player.fp_mode and not _menu.visible
+	if player.weapon != _last_weapon:
+		_last_weapon = player.weapon
+		for i in _weapon_chips.size():
+			var chip: Label = _weapon_chips[i]
+			chip.add_theme_color_override("font_color",
+				Color("ffd166") if i == _last_weapon else Color(1, 1, 1, 0.45))
 	if size.x != _last_width:
 		_last_width = size.x
 		var chip_w := clampf(size.x / 58.0, 9.0, 26.0)

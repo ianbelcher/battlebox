@@ -333,7 +333,7 @@ const NAME_MAP := {
 	"birch_planks": Blocks.BIRCH_PLANKS, "dark_oak_planks": Blocks.DARK_PLANKS,
 	"cherry_planks": Blocks.CHERRY_PLANKS, "crimson_planks": Blocks.CHERRY_PLANKS,
 	"quartz_block": Blocks.MARBLE, "smooth_quartz": Blocks.MARBLE,
-	"iron_block": Blocks.MARBLE, "cake": Blocks.CONFETTI,
+	"iron_block": Blocks.STEEL, "netherite_block": Blocks.STEEL, "anvil": Blocks.STEEL, "cake": Blocks.CONFETTI,
 	"terracotta": Blocks.BRICK,
 	"bookshelf": Blocks.PLANKS, "crafting_table": Blocks.PLANKS, "chest": Blocks.PLANKS,
 	"barrel": Blocks.PLANKS, "furnace": Blocks.COBBLE, "cactus": Blocks.WOOL_GREEN,

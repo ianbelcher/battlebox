@@ -53,6 +53,9 @@ var _prev_jump := false
 var _last_jump_ms := -10000
 var _launch_latched := false
 var _shoot_hold := 0.0
+## 0 blaster (rapid), 1 bazooka, 2 incendiary.
+var weapon := 0
+var _prev_weapon_pick := -1
 var _last_note_cell := Vector3i(0, -99, 0)
 var _warp_cooldown := 0.0
 
@@ -396,18 +399,19 @@ func _local_actions(delta: float) -> void:
 		else:
 			_highlight.visible = false
 
-	# Shooting: TAP = fast pellet that pops the one block it hits (and can
-	# light Boom Blocks from a distance). HOLD half a second and release =
-	# slow bazooka shell that explodes like a lit Boom Block where it lands.
+	# Weapon select: 1 blaster (hold to spray), 2 bazooka, 3 incendiary.
+	var pick := input.weapon_pick()
+	if pick != _prev_weapon_pick and pick >= 0:
+		if pick < 3:
+			weapon = pick
+		else:
+			weapon = posmod(weapon + (1 if pick == 11 else -1), 3)
+		Sfx.play("tick", -10.0)
+	_prev_weapon_pick = pick
 	if input.is_shoot_pressed():
-		_shoot_hold += delta
-		return
-	if _shoot_hold > 0.0:
-		var boom := _shoot_hold >= 0.5
 		if _edit_cooldown <= 0.0:
-			world.orbs.shoot_local(self, boom)
-			_edit_cooldown = 1.2 if boom else 0.28
-		_shoot_hold = 0.0
+			world.orbs.shoot_local(self, weapon)
+			_edit_cooldown = [0.13, 1.1, 0.8][weapon]
 		return
 	if _edit_cooldown > 0.0:
 		return

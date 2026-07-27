@@ -188,6 +188,17 @@ func _mesh_chunk(cpos: Vector2i) -> void:
 			neighbors[off] = n
 	var mesher := Mesher.new()
 	var surfaces := mesher.build(_data[cpos], neighbors, cpos.x, cpos.y)
+	var chunk_data: PackedByteArray = _data[cpos]
+	var topmap := PackedByteArray()
+	topmap.resize(256)
+	for lz in 16:
+		for lx in 16:
+			for y in range(WorldGen.CHUNK_H - 1, -1, -1):
+				var block := chunk_data[WorldGen.idx(lx, y, lz)]
+				if block != Blocks.AIR:
+					topmap[lz * 16 + lx] = block
+					break
+	_topmaps[cpos] = topmap
 	var warps: Array = []
 	for local: Vector3i in surfaces.get("teleporters", []):
 		warps.append(Vector3(cpos.x * 16 + local.x, local.y, cpos.y * 16 + local.z))
@@ -284,7 +295,25 @@ func nearest_teleporter(from: Vector3) -> Vector3:
 				best = pos
 	return best
 
+## Drop everything (map reset) so the interest loop re-streams the world.
+func reset() -> void:
+	for cpos: Vector2i in _data.keys().duplicate():
+		_drop_chunk(cpos)
+	_pending.clear()
+	_mesh_queue.clear()
+	_queued.clear()
+
+## Top visible block for the minimap (uses cached per-chunk top maps).
+var _topmaps: Dictionary = {}
+func top_block(wx: int, wz: int) -> int:
+	var cpos := Vector2i(floori(wx / 16.0), floori(wz / 16.0))
+	var topmap: PackedByteArray = _topmaps.get(cpos, PackedByteArray())
+	if topmap.is_empty():
+		return -1
+	return topmap[posmod(wz, 16) * 16 + posmod(wx, 16)]
+
 func _drop_chunk(cpos: Vector2i) -> void:
+	_topmaps.erase(cpos)
 	_data.erase(cpos)
 	_pending.erase(cpos)
 	_teleporters.erase(cpos)

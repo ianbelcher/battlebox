@@ -25,6 +25,8 @@ signal edit_applied(pos: Vector3i, block: int, by_id: String)
 signal survival_changed
 signal hearts_changed
 signal survival_ended(seconds: float, bonked: int)
+signal reset_vote_started
+signal reset_result(happened: bool)
 
 ## WORLD_FAST=1 shrinks the day and sapling growth for quick testing.
 static func fast_mode() -> bool:
@@ -125,6 +127,7 @@ func _process(delta: float) -> void:
 		if _water_accum > 0.3:
 			_water_accum = 0.0
 			_server_tick_water()
+			_server_tick_fire()
 
 ## Flush everything on clean shutdown (docker stop / pod reschedule); the
 ## 25s autosave bounds losses if the process is killed hard.
@@ -234,10 +237,38 @@ func sv_where(slot: int) -> void:
 		pos = saved.pos
 		count = saved.treasures
 	else:
-		pos = Vector3(spawn_pos) + Vector3(randf_range(-2, 2), 2.0, randf_range(-2, 2))
+		pos = _far_spawn()
 	_player_state[id] = {"pos": pos, "treasures": count, "name": str(entry.name)}
 	cl_treasures.rpc(id, count)
 	cl_where.rpc_id(peer, slot, pos, count)
+
+## Fresh characters spawn ~100 blocks from everyone already playing.
+func _far_spawn() -> Vector3:
+	var others: Array = []
+	for state: Dictionary in _player_state.values():
+		others.append(state.pos)
+	if others.is_empty():
+		return Vector3(spawn_pos) + Vector3(randf_range(-2, 2), 2.0, randf_range(-2, 2))
+	var best := Vector3(spawn_pos) + Vector3(0, 2, 0)
+	var best_score := -1e9
+	for i in 24:
+		var anchor: Vector3 = others[randi() % others.size()]
+		var angle := randf() * TAU
+		var dist := randf_range(85.0, 125.0)
+		var wx := int(anchor.x + cos(angle) * dist)
+		var wz := int(anchor.z + sin(angle) * dist)
+		if Vector2(wx, wz).length() > WorldGen.ISLAND_RADIUS - 20.0:
+			continue
+		var y := store.surface_y(wx, wz)
+		if y <= WorldGen.SEA_LEVEL or y >= WorldGen.CHUNK_H - 8:
+			continue
+		var nearest := 1e9
+		for other: Vector3 in others:
+			nearest = minf(nearest, Vector2(wx - other.x, wz - other.z).length())
+		if nearest > best_score:
+			best_score = nearest
+			best = Vector3(wx + 0.5, y + 2.0, wz + 0.5)
+	return best
 
 @rpc("any_peer", "unreliable_ordered")
 func sv_pos(slot: int, pos: Vector3, yaw: float, anim: int) -> void:
@@ -328,30 +359,33 @@ func sv_structure(slot: int, base: Vector3i, index: int, roll: int) -> void:
 ## renders it. Hits on players knock them about (no harm); hits on Grumps
 ## use the survival damage path.
 @rpc("any_peer", "unreliable")
-func sv_shoot(slot: int, origin: Vector3, dir: Vector3, boom: bool) -> void:
+func sv_shoot(slot: int, origin: Vector3, dir: Vector3, kind: int) -> void:
 	if not multiplayer.is_server():
 		return
 	var id := Game.player_id(multiplayer.get_remote_sender_id(), slot)
 	if Game.roster.has(id):
-		cl_orb.rpc(id, origin, dir, boom)
+		cl_orb.rpc(id, origin, dir, kind)
 
 @rpc("authority", "unreliable")
-func cl_orb(shooter_id: String, origin: Vector3, dir: Vector3, boom: bool) -> void:
+func cl_orb(shooter_id: String, origin: Vector3, dir: Vector3, kind: int) -> void:
 	if orbs != null:
-		orbs.spawn(shooter_id, origin, dir, boom)
+		orbs.spawn(shooter_id, origin, dir, kind)
 
 ## Projectile impact. Pellets pop the single block they hit (or light a Boom
 ## Block from afar); shells detonate like a lit charge, splashing Grumps too.
 @rpc("any_peer", "reliable")
-func sv_shot(slot: int, cell: Vector3i, boom: bool) -> void:
+func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 	if not multiplayer.is_server():
 		return
 	var id := Game.player_id(multiplayer.get_remote_sender_id(), slot)
 	var state: Dictionary = _player_state.get(id, {})
-	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 34.0:
+	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 44.0:
 		return
-	if boom:
-		_blast(cell, 3.4, [])
+	if kind == 2:
+		_ignite_at(cell)
+		return
+	if kind == 1:
+		_blast(cell, 3.4, [], cell)
 		for monster_id: int in _monsters.keys().duplicate():
 			if Vector3(cell).distance_to(_monsters[monster_id].pos) < 4.5:
 				_monsters[monster_id].hp = int(_monsters[monster_id].hp) - 2
@@ -363,6 +397,9 @@ func sv_shot(slot: int, cell: Vector3i, boom: bool) -> void:
 		return
 	var current := store.get_block(cell)
 	if current == Blocks.AIR or Blocks.is_liquid(current) or not Blocks.is_breakable(current):
+		return
+	# Pellets only chew through soft materials and wood — stone+ shrugs.
+	if Blocks.hardness(current) > 1 and current != Blocks.BOOM:
 		return
 	if current == Blocks.BOOM:
 		for entry: Dictionary in _bombs:
@@ -446,7 +483,7 @@ func _server_explode(origin: Vector3i) -> void:
 	var radius := BOOM_RADIUS * pow(connected.size(), 0.34)
 	_blast(Vector3i(center.round()), radius, connected.keys())
 
-func _blast(origin: Vector3i, radius: float, pre_cleared: Array) -> void:
+func _blast(origin: Vector3i, radius: float, pre_cleared: Array, impact := Vector3i(0, -999, 0)) -> void:
 	var cleared: Array = pre_cleared.duplicate()
 	var reach := int(ceil(radius))
 	for dy in range(-reach, reach + 1):
@@ -457,6 +494,15 @@ func _blast(origin: Vector3i, radius: float, pre_cleared: Array) -> void:
 				var pos := origin + Vector3i(dx, dy, dz)
 				var block := store.get_block(pos)
 				if block == Blocks.AIR or Blocks.is_liquid(block) or not Blocks.is_breakable(block):
+					continue
+				# Material tiers: stone only breaks near the heart of the
+				# blast, steel only on a direct hit, diamond never.
+				var tier := Blocks.hardness(block)
+				if tier >= 4:
+					continue
+				if tier == 3 and pos != impact:
+					continue
+				if tier == 2 and Vector3(dx, dy, dz).length() > radius * 0.65 and pos != impact:
 					continue
 				# Chain reaction: other boom blocks in the blast go off too.
 				if block == Blocks.BOOM and pos != origin:
@@ -470,8 +516,91 @@ func _blast(origin: Vector3i, radius: float, pre_cleared: Array) -> void:
 				store.set_block(pos, Blocks.AIR)
 				cleared.append(pos)
 	cl_batch.rpc(cleared, Blocks.AIR)
+	# Scorch the crater floor.
+	var charred: Array = []
+	for pos: Vector3i in cleared:
+		var below: Vector3i = pos + Vector3i(0, -1, 0)
+		var floor_block := store.get_block(below)
+		if floor_block != Blocks.AIR and not Blocks.is_liquid(floor_block) \
+				and Blocks.hardness(floor_block) < 2 and Blocks.is_breakable(floor_block) \
+				and WorldGen.hash01(below.x, below.z, below.y) < 0.6:
+			store.set_block(below, Blocks.CHARRED)
+			charred.append(below)
+	if not charred.is_empty():
+		cl_batch.rpc(charred, Blocks.CHARRED)
 	cl_boom_fx.rpc(origin)
 	_disturb_water(cleared)
+
+## Fire: burning cells spread through flammable blocks, gutter out on
+## steel/stone, and singe players and Grumps standing in them.
+var _fires: Dictionary = {}   # Vector3i -> expiry msec
+var _burn_hurt_ms: Dictionary = {}  # player id -> next hurt msec
+
+func _ignite_at(cell: Vector3i) -> void:
+	var placed: Array = []
+	for off in [Vector3i(0, 0, 0), Vector3i(0, 1, 0), Vector3i(1, 0, 0),
+			Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		var pos: Vector3i = cell + off
+		var block := store.get_block(pos)
+		if (block == Blocks.AIR or Blocks.is_flammable(block)) and _fires.size() < 220:
+			store.set_block(pos, Blocks.FIRE)
+			_fires[pos] = Time.get_ticks_msec() + randi_range(2500, 5500)
+			placed.append(pos)
+	if not placed.is_empty():
+		cl_batch.rpc(placed, Blocks.FIRE)
+
+func _server_tick_fire() -> void:
+	if _fires.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	var out: Array = []
+	var lit: Array = []
+	for pos: Vector3i in _fires.keys():
+		if now > int(_fires[pos]):
+			_fires.erase(pos)
+			if store.get_block(pos) == Blocks.FIRE:
+				store.set_block(pos, Blocks.AIR)
+				out.append(pos)
+			continue
+		# Spread into flammable neighbors (steel and stone never catch).
+		if randf() < 0.45 and _fires.size() < 220:
+			var offs := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0),
+				Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+			var off: Vector3i = offs[randi() % offs.size()]
+			var next: Vector3i = pos + off
+			if Blocks.is_flammable(store.get_block(next)) and not _fires.has(next):
+				store.set_block(next, Blocks.FIRE)
+				_fires[next] = now + randi_range(2500, 6000)
+				lit.append(next)
+	if not out.is_empty():
+		cl_batch.rpc(out, Blocks.AIR)
+	if not lit.is_empty():
+		cl_batch.rpc(lit, Blocks.FIRE)
+	# Ouch: players and Grumps in the flames.
+	for id: String in _player_state.keys():
+		if now < int(_burn_hurt_ms.get(id, 0)):
+			continue
+		var ppos: Vector3 = _player_state[id].pos
+		var cell := Vector3i(floori(ppos.x), floori(ppos.y + 0.3), floori(ppos.z))
+		if _fires.has(cell) or _fires.has(cell + Vector3i(0, -1, 0)):
+			_burn_hurt_ms[id] = now + 1500
+			cl_bonk.rpc(id, ppos + Vector3(0.4, -0.5, 0.4))
+			if survival_active and not _downed.has(id):
+				var state: Dictionary = _player_state[id]
+				state.hp = int(state.get("hp", 5)) - 1
+				cl_hearts.rpc(id, state.hp)
+				if state.hp <= 0:
+					_downed[id] = true
+					cl_downed.rpc(id)
+	for monster_id: int in _monsters.keys().duplicate():
+		var mcell := Vector3i(_monsters[monster_id].pos.floor())
+		if _fires.has(mcell):
+			_monsters[monster_id].hp = int(_monsters[monster_id].hp) - 1
+			var dead: bool = _monsters[monster_id].hp <= 0
+			if dead:
+				_monsters.erase(monster_id)
+				_bonked_count += 1
+			cl_zap_hit.rpc(monster_id, dead)
 
 ## Water flow: when blocks vanish next to water (dig, blast), the hole
 ## fills and the fill spreads — ponds pour into TNT craters properly.
@@ -480,7 +609,7 @@ var _holes: Array = []
 func _disturb_water(removed_cells: Array) -> void:
 	for cell in removed_cells:
 		if cell is Vector3i and _holes.size() < 400:
-			_holes.append(cell)
+			_holes.append({"pos": cell, "range": 10})
 
 func _server_tick_water() -> void:
 	if _holes.is_empty():
@@ -489,7 +618,9 @@ func _server_tick_water() -> void:
 	var next_holes: Array = []
 	var budget := 48
 	while not _holes.is_empty() and budget > 0:
-		var hole = _holes.pop_front()
+		var entry = _holes.pop_front()
+		var hole: Vector3i = entry.pos
+		var hole_range: int = entry.range
 		if store.get_block(hole) != Blocks.AIR:
 			continue
 		var wet := false
@@ -504,12 +635,15 @@ func _server_tick_water() -> void:
 		budget -= 1
 		store.set_block(hole, Blocks.WATER)
 		filled.append(hole)
-		# The new water keeps flowing down and outward.
+		# The new water keeps flowing: down freely, sideways only ~10 blocks
+		# from where the leak started (like Minecraft, but wider).
 		for off in [Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
 				Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
 			var next: Vector3i = hole + off
-			if store.get_block(next) == Blocks.AIR and next_holes.size() < 200:
-				next_holes.append(next)
+			var next_range := 10 if off.y < 0 else hole_range - 1
+			if next_range >= 0 and store.get_block(next) == Blocks.AIR \
+					and next_holes.size() < 200:
+				next_holes.append({"pos": next, "range": next_range})
 	_holes.append_array(next_holes)
 	if not filled.is_empty():
 		cl_batch.rpc(filled, Blocks.WATER)
@@ -580,6 +714,63 @@ func _server_dawn_check() -> void:
 	_was_night = night
 
 # --- Server critters ---
+
+## Map reset: any player proposes, EVERY connected machine must agree, then
+## the world regenerates with a brand-new random seed.
+var _reset_votes: Dictionary = {}
+var _reset_deadline_ms := 0
+
+@rpc("any_peer", "reliable")
+func sv_reset_request(_slot: int) -> void:
+	if not multiplayer.is_server() or not _reset_votes.is_empty():
+		return
+	var peer := multiplayer.get_remote_sender_id()
+	_reset_votes = {peer: true}
+	_reset_deadline_ms = Time.get_ticks_msec() + 30_000
+	cl_reset_vote.rpc()
+	_check_reset_votes()
+
+@rpc("any_peer", "reliable")
+func sv_reset_answer(agree: bool) -> void:
+	if not multiplayer.is_server() or _reset_votes.is_empty():
+		return
+	if not agree:
+		_reset_votes.clear()
+		cl_reset_result.rpc(false)
+		return
+	_reset_votes[multiplayer.get_remote_sender_id()] = true
+	_check_reset_votes()
+
+func _check_reset_votes() -> void:
+	if Time.get_ticks_msec() > _reset_deadline_ms:
+		_reset_votes.clear()
+		cl_reset_result.rpc(false)
+		return
+	for peer: int in multiplayer.get_peers():
+		if not _reset_votes.has(peer):
+			return
+	_reset_votes.clear()
+	_do_world_reset()
+
+func _do_world_reset() -> void:
+	var new_seed := randi() % 1000000000
+	print("WORLD RESET: new seed %d" % new_seed)
+	store.reset_world(new_seed)
+	spawn_pos = store.find_spawn()
+	clock = 0.35
+	survival_active = false
+	_monsters.clear()
+	_fires.clear()
+	_holes.clear()
+	_bombs.clear()
+	_saplings.clear()
+	_critters.clear()
+	for state: Dictionary in _player_state.values():
+		state.pos = Vector3.ZERO  # everyone gets a fresh far spawn
+	_player_state.clear()
+	cl_reset_result.rpc(true)
+	cl_world_info.rpc(spawn_pos, clock, source)
+	cl_world_reset.rpc()
 
 @rpc("any_peer", "reliable")
 func sv_survival_start(_slot: int) -> void:
@@ -1013,6 +1204,24 @@ func cl_monsters(payload: Array) -> void:
 func cl_zap_hit(monster_id: int, dead: bool) -> void:
 	if monster_view != null:
 		monster_view.hit(monster_id, dead)
+
+@rpc("authority", "reliable")
+func cl_reset_vote() -> void:
+	reset_vote_started.emit()
+
+@rpc("authority", "reliable")
+func cl_reset_result(happened: bool) -> void:
+	reset_result.emit(happened)
+	if happened:
+		Sfx.play("cheer")
+
+@rpc("authority", "reliable")
+func cl_world_reset() -> void:
+	if chunks != null:
+		chunks.reset()
+	# Everyone re-asks where to stand in the new world.
+	for slot: int in Game.local_inputs.keys():
+		sv_where.rpc_id(1, slot)
 
 @rpc("authority", "reliable")
 func cl_hearts(id: String, hp: int) -> void:
