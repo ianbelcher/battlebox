@@ -1,0 +1,33 @@
+class_name Weapons
+## The weapon registry. Each entry is self-contained: to add or remove a
+## weapon, edit this table and (if it changes terrain) its case in
+## WorldNode.sv_shot / OrbView impact handling. Ids are wire format.
+
+const WEAPONS := [
+	{"id": 0, "name": "Blaster", "color": Color("ffe08a"), "cooldown": 0.13, "speed": 44.0,
+		"blurb": "Rapid pellets: break soft blocks, light TNT from afar"},
+	{"id": 1, "name": "Bazooka", "color": Color("ff7a3d"), "cooldown": 1.1, "speed": 34.0,
+		"blurb": "Big explosions. Steel only chips on a direct hit"},
+	{"id": 2, "name": "Grapple", "color": Color("c9b3ff"), "cooldown": 0.9, "speed": 50.0,
+		"blurb": "Hit a wall, get zipped to it. Great escapes"},
+	{"id": 3, "name": "Freeze Ray", "color": Color("aef7f0"), "cooldown": 0.8, "speed": 44.0,
+		"blurb": "Turns water to ice and freezes Grumps solid"},
+	{"id": 4, "name": "Block Sucker", "color": Color("62a851"), "cooldown": 0.5, "speed": 44.0,
+		"blurb": "Vacuums the hit block into your next slot"},
+	{"id": 5, "name": "Bridge Gun", "color": Color("d6c396"), "cooldown": 0.8, "speed": 40.0,
+		"blurb": "Shoots a plank walkway toward where it lands"},
+	{"id": 6, "name": "Party Popper", "color": Color("ef9fc8"), "cooldown": 1.0, "speed": 36.0,
+		"blurb": "Confetti blast: harmlessly flings everyone nearby"},
+	{"id": 7, "name": "Whirl Wand", "color": Color("3ad4c2"), "cooldown": 1.2, "speed": 36.0,
+		"blurb": "A gust that hurls friends skyward and scatters Grumps"},
+	{"id": 8, "name": "Paint Bomb", "color": Color("b07df0"), "cooldown": 0.9, "speed": 36.0,
+		"blurb": "Splats the landscape into random wool colors"},
+	{"id": 9, "name": "Firework Gun", "color": Color("f2e04a"), "cooldown": 0.9, "speed": 40.0,
+		"blurb": "Launches a firework wherever it lands"},
+]
+
+static func count() -> int:
+	return WEAPONS.size()
+
+static func spec(id: int) -> Dictionary:
+	return WEAPONS[clampi(id, 0, WEAPONS.size() - 1)]

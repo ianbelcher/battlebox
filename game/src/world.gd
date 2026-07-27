@@ -385,17 +385,103 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 	var state: Dictionary = _player_state.get(id, {})
 	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 34.0:
 		return
-	if kind >= 1:
-		_blast(cell, 3.4, [], cell)
-		for monster_id: int in _monsters.keys().duplicate():
-			if Vector3(cell).distance_to(_monsters[monster_id].pos) < 4.5:
-				_monsters[monster_id].hp = int(_monsters[monster_id].hp) - 2
-				var dead: bool = _monsters[monster_id].hp <= 0
-				if dead:
-					_monsters.erase(monster_id)
-					_bonked_count += 1
-				cl_zap_hit.rpc(monster_id, dead)
-		return
+	match kind:
+		1:  # Bazooka
+			_blast(cell, 3.4, [], cell)
+			for monster_id: int in _monsters.keys().duplicate():
+				if Vector3(cell).distance_to(_monsters[monster_id].pos) < 4.5:
+					_monsters[monster_id].hp = int(_monsters[monster_id].hp) - 2
+					var dead: bool = _monsters[monster_id].hp <= 0
+					if dead:
+						_monsters.erase(monster_id)
+						_bonked_count += 1
+					cl_zap_hit.rpc(monster_id, dead)
+			return
+		2:  # Grapple: client-side pull only.
+			return
+		3:  # Freeze Ray: water -> ice, Grumps frozen solid for a bit.
+			var iced: Array = []
+			for dy in range(-3, 4):
+				for dz in range(-3, 4):
+					for dx in range(-3, 4):
+						var pos: Vector3i = cell + Vector3i(dx, dy, dz)
+						if store.get_block(pos) == Blocks.WATER:
+							store.set_block(pos, Blocks.ICE)
+							iced.append(pos)
+			if not iced.is_empty():
+				cl_batch.rpc(iced, Blocks.ICE)
+			var now := Time.get_ticks_msec()
+			for monster_id: int in _monsters.keys():
+				if Vector3(cell).distance_to(_monsters[monster_id].pos) < 4.5:
+					_monsters[monster_id].frozen_until = now + 4000
+			return
+		4:  # Block Sucker: the hit block flies into the shooter's hotbar.
+			var block := store.get_block(cell)
+			if block != Blocks.AIR and Blocks.is_breakable(block) \
+					and Blocks.hardness(block) <= 2 and not Blocks.is_liquid(block):
+				store.set_block(cell, Blocks.AIR)
+				cl_edit.rpc(cell, Blocks.AIR, id)
+				_disturb_water([cell])
+				cl_suck.rpc(id, block)
+			return
+		5:  # Bridge Gun: a plank walkway growing back toward the shooter.
+			var dir := Vector3(state.pos) - Vector3(cell)
+			dir.y = 0
+			if dir.length() < 0.5:
+				return
+			dir = dir.normalized()
+			var planks: Array = []
+			for i in range(0, 5):
+				var pos := Vector3i((Vector3(cell) + dir * i).round())
+				pos.y = cell.y
+				if store.get_block(pos) == Blocks.AIR:
+					store.set_block(pos, Blocks.PLANKS)
+					planks.append(pos)
+			if not planks.is_empty():
+				cl_batch.rpc(planks, Blocks.PLANKS)
+			return
+		6:  # Party Popper: confetti and a harmless mass fling.
+			cl_party_fx.rpc(cell)
+			for pid: String in _player_state.keys():
+				if Vector3(cell).distance_to(_player_state[pid].pos) < 7.0:
+					cl_bonk.rpc(pid, Vector3(cell))
+			for monster_id: int in _monsters.keys():
+				var m: Dictionary = _monsters[monster_id]
+				if Vector3(cell).distance_to(m.pos) < 7.0:
+					m.pos += (m.pos - Vector3(cell)).normalized() * 4.0
+			return
+		7:  # Whirl Wand: skyward gust, Grumps scattered.
+			for pid: String in _player_state.keys():
+				if Vector3(cell).distance_to(_player_state[pid].pos) < 6.0:
+					cl_fling.rpc(pid)
+			for monster_id: int in _monsters.keys():
+				var m: Dictionary = _monsters[monster_id]
+				if Vector3(cell).distance_to(m.pos) < 6.0:
+					m.pos += Vector3(randf_range(-6, 6), 0, randf_range(-6, 6))
+			return
+		8:  # Paint Bomb: soft terrain becomes random wool.
+			var wools := [Blocks.WOOL_RED, Blocks.WOOL_YELLOW, Blocks.WOOL_BLUE,
+				Blocks.WOOL_GREEN, Blocks.WOOL_PINK, Blocks.WOOL_PURPLE, Blocks.WOOL_TEAL]
+			var pairs: Array = []
+			for dy in range(-3, 4):
+				for dz in range(-3, 4):
+					for dx in range(-3, 4):
+						if Vector3(dx, dy, dz).length() > 3.2:
+							continue
+						var pos: Vector3i = cell + Vector3i(dx, dy, dz)
+						var block := store.get_block(pos)
+						if block != Blocks.AIR and Blocks.is_breakable(block) \
+								and Blocks.hardness(block) == 0 and not Blocks.is_liquid(block) \
+								and not Blocks.is_cross(block):
+							var wool: int = wools[randi() % wools.size()]
+							store.set_block(pos, wool)
+							pairs.append([pos, wool])
+			if not pairs.is_empty():
+				cl_edits.rpc(pairs)
+			return
+		9:  # Firework Gun.
+			cl_firework_fx.rpc(cell)
+			return
 	var current := store.get_block(cell)
 	if current == Blocks.AIR or Blocks.is_liquid(current) or not Blocks.is_breakable(current):
 		return
@@ -855,8 +941,11 @@ func _server_tick_survival() -> void:
 		_spawn_monster(alive)
 	# March.
 	var speed := minf(1.5 + survival_wave * 0.06, 2.8) * 0.33
+	var frozen_check := Time.get_ticks_msec()
 	for monster_id: int in _monsters.keys():
 		var monster: Dictionary = _monsters[monster_id]
+		if frozen_check < int(monster.get("frozen_until", 0)):
+			continue
 		var target := _nearest_alive(monster.pos, alive)
 		if target.is_empty():
 			continue
@@ -1237,6 +1326,29 @@ func cl_world_reset() -> void:
 	# Everyone re-asks where to stand in the new world.
 	for slot: int in Game.local_inputs.keys():
 		sv_where.rpc_id(1, slot)
+
+@rpc("authority", "reliable")
+func cl_suck(id: String, block: int) -> void:
+	Sfx.play("collect", -6.0)
+	for child in players.get_children():
+		if child is Player and child.player_id == id and child.is_local:
+			var slot_index: int = (child.selected_slot + 1) % 8
+			child.slots[slot_index] = {"kind": "block", "id": block}
+
+@rpc("authority", "reliable")
+func cl_fling(id: String) -> void:
+	for child in players.get_children():
+		if child is Player and child.player_id == id and child.is_local:
+			child.velocity.y += 22.0
+			child.on_floor = false
+			Sfx.play("whoosh")
+
+@rpc("authority", "reliable")
+func cl_party_fx(pos: Vector3i) -> void:
+	Sfx.play("cheer")
+	for color in [Color("ff6b6b"), Color("ffd166"), Color("4a9df8"), Color("ef9fc8")]:
+		_burst_particles(pos, color)
+	_flash_light(Vector3(pos), Color("ffd166"), 4.0)
 
 @rpc("authority", "reliable")
 func cl_hearts(id: String, hp: int) -> void:

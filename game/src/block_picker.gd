@@ -28,8 +28,8 @@ func _init() -> void:
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
 
-	entries.append({"kind": "weapon", "id": 0, "name": "Blaster", "color": Color("ffe08a")})
-	entries.append({"kind": "weapon", "id": 1, "name": "Bazooka", "color": Color("ff7a3d")})
+	for w in Weapons.WEAPONS:
+		entries.append({"kind": "weapon", "id": w.id, "name": w.name, "color": w.color})
 	for block: int in Blocks.HOTBAR:
 		entries.append({"kind": "block", "id": block,
 			"name": Blocks.display_name(block), "color": Blocks.color_of(block)})

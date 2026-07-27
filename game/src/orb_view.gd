@@ -7,9 +7,7 @@ extends Node3D
 
 var _orbs: Array = []   # {node, vel, shooter_id, age, mine, slot, boom}
 
-## Kind: 0 blaster pellet, 1 bazooka shell, 2 incendiary. All share the same
-## fast, flat arc — gravity nudges them but long shots stay honest.
-const KIND_COLORS := [Color("ffe08a"), Color("ff7a3d"), Color("ff4426")]
+## Kind = weapon id from the Weapons registry.
 
 func spawn(shooter_id: String, origin: Vector3, dir: Vector3, kind: int) -> void:
 	var me := multiplayer.get_unique_id()
@@ -40,7 +38,7 @@ func _add_orb(shooter_id: String, origin: Vector3, dir: Vector3, mine: bool, slo
 	mesh.height = mesh.radius * 2.0
 	node.mesh = mesh
 	var mat := StandardMaterial3D.new()
-	var color: Color = KIND_COLORS[clampi(kind, 0, 2)]
+	var color: Color = Weapons.spec(kind).color
 	mat.albedo_color = color
 	mat.emission_enabled = true
 	mat.emission = color
@@ -48,7 +46,7 @@ func _add_orb(shooter_id: String, origin: Vector3, dir: Vector3, mine: bool, slo
 	node.material_override = mat
 	node.position = origin
 	add_child(node)
-	var speed := 44.0 if kind == 0 else 34.0
+	var speed: float = Weapons.spec(kind).speed
 	_orbs.append({"node": node, "vel": dir.normalized() * speed,
 		"shooter_id": shooter_id, "age": 0.0, "mine": mine, "slot": slot,
 		"kind": kind})
@@ -72,12 +70,20 @@ func _physics_process(delta: float) -> void:
 			died = true
 			if orb.mine:
 				world.sv_shot.rpc_id(1, orb.slot, cell, orb.kind)
+				if orb.kind == 2:
+					# Grapple: zip the shooter to the hook point.
+					for child in world.players.get_children():
+						if child is Player and child.player_id == orb.shooter_id:
+							var pull: Vector3 = (node.position - child.position)
+							child.velocity = pull.normalized() * 24.0 + Vector3.UP * 6.0
+							child.on_floor = false
+							Sfx.play("warp", -4.0)
 		if not died and orb.mine:
 			# Player hits (anyone but the shooter): pellets bonk, shells boom.
 			for child in world.players.get_children():
 				if child is Player and child.player_id != orb.shooter_id \
 						and child.position.distance_to(node.position - Vector3(0, 0.8, 0)) < 1.1:
-					if orb.kind > 0:
+					if orb.kind == 1 or orb.kind >= 5:
 						world.sv_shot.rpc_id(1, orb.slot, cell, orb.kind)
 					else:
 						world.sv_orb_hit.rpc_id(1, orb.slot, child.player_id, node.position)

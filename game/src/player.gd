@@ -443,7 +443,7 @@ func _local_actions(delta: float) -> void:
 		var item := held()
 		if item.kind == "weapon":
 			world.orbs.shoot_local(self, int(item.id))
-			_edit_cooldown = 0.13 if int(item.id) == 0 else 1.1
+			_edit_cooldown = float(Weapons.spec(int(item.id)).cooldown)
 		elif place_target != Vector3i(0, -99, 0):
 			if item.kind == "structure":
 				world.sv_structure.rpc_id(1, slot, place_target, int(item.id),
