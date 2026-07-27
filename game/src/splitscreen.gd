@@ -13,8 +13,9 @@ extends Control
 const CAM_DISTANCE := 42.4
 const CAM_HEIGHT := 37.0
 ## From nearly-on-your-shoulder to a big map-like overview.
-const ZOOM_SIZES: Array[float] = [7.0, 10.0, 15.0, 22.0, 32.0, 48.0]
-const DEFAULT_ZOOM := 2
+const ZOOM_SIZES: Array[float] = [5.0, 7.0, 10.0, 15.0, 22.0, 32.0, 48.0, 70.0, 100.0]
+const FP_FOVS: Array[float] = [78.0, 45.0, 20.0, 8.0]
+const DEFAULT_ZOOM := 3
 
 var world: Node = null
 var _cells: Array = []   # [{slot:int(-1=spectator), container, viewport, rig, cam, hud,
@@ -97,7 +98,7 @@ func _add_cell(slot: int, frac: Rect2) -> void:
 		"rig": rig, "cam": cam, "hud": hud,
 		"yaw_index": 0, "yaw": Player.ISO_ROT, "zoom_index": DEFAULT_ZOOM,
 		"size": ZOOM_SIZES[DEFAULT_ZOOM], "prev_rot": 0, "prev_zoom": 0,
-		"fp": true, "prev_view": false})
+		"fp": true, "prev_view": false, "fp_zoom": 0})
 
 func _spectator_prompt() -> Control:
 	var center := CenterContainer.new()
@@ -177,9 +178,18 @@ func _process(delta: float) -> void:
 			cell.prev_view = view
 		player.set_fp(cell.fp)
 		if cell.fp:
+			# Sniper zoom: the zoom controls step the FOV down; the mouse
+			# slows to match and the crosshair grows (see PlayerHud).
+			if input != null:
+				var fp_zoom := input.zoom_direction()
+				if fp_zoom != 0 and cell.prev_zoom == 0:
+					cell.fp_zoom = clampi(int(cell.fp_zoom) + fp_zoom, 0, FP_FOVS.size() - 1)
+					Sfx.play("tick", -14.0)
+				cell.prev_zoom = fp_zoom
+			player.fp_zoom = cell.fp_zoom
 			# Through the character's eyes: perspective, own body culled.
 			cam.projection = Camera3D.PROJECTION_PERSPECTIVE
-			cam.fov = 78.0
+			cam.fov = lerpf(cam.fov, FP_FOVS[cell.fp_zoom], 0.25)
 			cam.near = 0.05
 			cam.cull_mask = ((1 << 20) - 1) & ~player.render_layer_bit()
 			var eye: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT, 0)
@@ -208,6 +218,12 @@ func _process(delta: float) -> void:
 		player.camera_yaw = cell.yaw
 		# Smooth-follow the player from the current orbit direction.
 		rig.position = rig.position.lerp(player.position, minf(1.0, delta * 6.0))
+		if cell.yaw_index == 4:
+			# Top-down map view, north up.
+			player.camera_yaw = 0.0
+			cam.look_at_from_position(rig.position + Vector3(0.01, CAM_HEIGHT + 20.0, 0.01),
+				rig.position, Vector3(0, 0, -1))
+			continue
 		var yaw: float = cell.yaw
 		var offset := Vector3(sin(yaw) * CAM_DISTANCE, CAM_HEIGHT, cos(yaw) * CAM_DISTANCE)
 		cam.look_at_from_position(rig.position + offset, rig.position + Vector3(0, 1.0, 0), Vector3.UP)
@@ -217,7 +233,7 @@ func _process(delta: float) -> void:
 		for cell: Dictionary in _cells:
 			if cell.cam != null and not cell.get("fp", false):
 				max_size = maxf(max_size, float(cell.size))
-		world.chunks.view_radius = clampi(4 + int(max_size / 7.0), 5, 9)
+		world.chunks.view_radius = clampi(4 + int(max_size / 7.0), 5, 10)
 	# The mouse belongs to the keyboard player while they're in first person.
 	var want_capture := false
 	for cell: Dictionary in _cells:

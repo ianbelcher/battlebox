@@ -47,6 +47,7 @@ var leave_hold := 0.0
 
 ## First-person state (driven by the split-screen cell).
 var fp_mode := false
+var fp_zoom := 0
 var look_yaw := 0.0
 var look_pitch := 0.0
 
@@ -157,8 +158,9 @@ func _input(event: InputEvent) -> void:
 			and input.kind == InputSlot.Kind.KEYBOARD_WASD):
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		look_yaw -= event.relative.x * 0.0032
-		look_pitch = clampf(look_pitch - event.relative.y * 0.0032, -1.45, 1.45)
+		var zoom_slow := 1.0 / (1.0 + fp_zoom * 1.5)
+		look_yaw -= event.relative.x * 0.0032 * zoom_slow
+		look_pitch = clampf(look_pitch - event.relative.y * 0.0032 * zoom_slow, -1.45, 1.45)
 
 func teleport(pos: Vector3) -> void:
 	position = pos
@@ -219,8 +221,9 @@ func _local_move(delta: float) -> void:
 	# relative to wherever you're facing (camera_yaw tracks look_yaw).
 	if fp_mode:
 		var look := input.get_look_vector()
-		look_yaw -= look.x * 2.8 * delta
-		look_pitch = clampf(look_pitch - look.y * 2.2 * delta, -1.45, 1.45)
+		var zoom_slow := 1.0 / (1.0 + fp_zoom * 1.5)
+		look_yaw -= look.x * 2.8 * delta * zoom_slow
+		look_pitch = clampf(look_pitch - look.y * 2.2 * delta * zoom_slow, -1.45, 1.45)
 		camera_yaw = look_yaw
 	var move := input.get_move_vector()
 	var dir := Vector3(move.x, 0, move.y).rotated(Vector3.UP, camera_yaw)

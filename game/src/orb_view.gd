@@ -25,7 +25,7 @@ func shoot_local(player: Player, kind: int) -> void:
 	if player.fp_mode:
 		dir = player.look_dir()
 	else:
-		dir = (player.heading + Vector3(0, 0.12, 0)).normalized()
+		dir = player.heading.normalized()
 	_add_orb(player.player_id, origin, dir, true, player.slot, kind)
 	world.sv_shoot.rpc_id(1, player.slot, origin, dir, kind)
 	if kind == 0:
@@ -60,7 +60,6 @@ func _physics_process(delta: float) -> void:
 	for i in range(_orbs.size() - 1, -1, -1):
 		var orb: Dictionary = _orbs[i]
 		orb.age += delta
-		orb.vel.y -= 2.2 * delta
 		var node: Node3D = orb.node
 		node.position += orb.vel * delta
 		var cell := Vector3i(floori(node.position.x), floori(node.position.y), floori(node.position.z))

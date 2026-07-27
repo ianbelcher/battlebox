@@ -316,6 +316,7 @@ func _process(_delta: float) -> void:
 		player.ui_locked = false
 
 	_crosshair.visible = player.fp_mode and not _menu.visible
+	_crosshair.add_theme_font_size_override("font_size", _us(int(30 * (1.0 + player.fp_zoom * 0.8))))
 	if size.x != _last_width:
 		_last_width = size.x
 		_selected_label.add_theme_font_size_override("font_size",
