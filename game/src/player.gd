@@ -33,7 +33,15 @@ var camera_yaw := ISO_ROT
 var on_floor := false
 var in_water := false
 var heading := Vector3(0, 0, -1)
-var hotbar_index := 0
+## Minecraft-style loadout: 8 slots holding blocks, structure kits or
+## weapons; the held item decides what right-click does.
+var slots: Array = [
+	{"kind": "weapon", "id": 0}, {"kind": "weapon", "id": 1},
+	{"kind": "block", "id": Blocks.PLANKS}, {"kind": "block", "id": Blocks.COBBLE},
+	{"kind": "block", "id": Blocks.GLASS}, {"kind": "block", "id": Blocks.LANTERN},
+	{"kind": "block", "id": Blocks.BOOM}, {"kind": "block", "id": Blocks.TELEPORT},
+]
+var selected_slot := 0
 var anim: int = Anim.IDLE
 var leave_hold := 0.0
 
@@ -44,8 +52,9 @@ var look_pitch := 0.0
 
 ## Set while this player's picker is open: input drives the UI, not the body.
 var ui_locked := false
-## Picked prefab from the picker (-1 = placing single blocks).
-var selected_structure := -1
+
+func held() -> Dictionary:
+	return slots[selected_slot]
 
 ## Flight (double-tap jump toggles; landing exits).
 var fly_mode := false
@@ -53,9 +62,7 @@ var _prev_jump := false
 var _last_jump_ms := -10000
 var _launch_latched := false
 var _shoot_hold := 0.0
-## 0 blaster (rapid), 1 bazooka.
-var weapon := 0
-var _prev_weapon_pick := -1
+var _prev_slot_pick := -1
 var _last_note_cell := Vector3i(0, -99, 0)
 var _warp_cooldown := 0.0
 
@@ -168,7 +175,7 @@ func remote_update(pos: Vector3, yaw: float, p_anim: int) -> void:
 		_spawned = true
 
 func selected_block() -> int:
-	return Blocks.HOTBAR[hotbar_index]
+	return int(held().id) if held().kind == "block" else -1
 
 func _physics_process(delta: float) -> void:
 	if is_local:
@@ -234,7 +241,7 @@ func _local_move(delta: float) -> void:
 	var jump_now := input.is_jump_pressed()
 	if jump_now and not _prev_jump:
 		var now := Time.get_ticks_msec()
-		if now - _last_jump_ms < 320:
+		if now - _last_jump_ms < 320 and not world.survival_active:
 			fly_mode = not fly_mode
 			if fly_mode:
 				velocity.y = 3.0
@@ -250,6 +257,8 @@ func _local_move(delta: float) -> void:
 	if dir.length_squared() > 0.01:
 		heading = dir.normalized()
 
+	if fly_mode and world.survival_active:
+		fly_mode = false  # no flying away from a Grump raid!
 	if fly_mode:
 		var vert := 0.0
 		if jump_now:
@@ -376,7 +385,7 @@ func _local_actions(delta: float) -> void:
 	_edit_cooldown = maxf(0.0, _edit_cooldown - delta)
 	var cycle := input.cycle_direction()
 	if cycle != 0 and not _cycle_latch:
-		hotbar_index = posmod(hotbar_index + cycle, Blocks.HOTBAR.size())
+		selected_slot = posmod(selected_slot + cycle, 8)
 		Sfx.play("tick", -10.0)
 	_cycle_latch = cycle != 0
 
@@ -399,20 +408,14 @@ func _local_actions(delta: float) -> void:
 		else:
 			_highlight.visible = false
 
-	# Weapon select: 1 blaster (hold to spray), 2 bazooka, 3 incendiary.
-	var pick := input.weapon_pick()
-	if pick != _prev_weapon_pick and pick >= 0:
-		if pick < 2:
-			weapon = pick
-		elif pick >= 10:
-			weapon = posmod(weapon + (1 if pick == 11 else -1), 2)
+	var pick := input.slot_pick()
+	if pick != _prev_slot_pick and pick >= 0:
+		if pick < 8:
+			selected_slot = pick
+		else:
+			selected_slot = posmod(selected_slot + (1 if pick == 11 else -1), 8)
 		Sfx.play("tick", -10.0)
-	_prev_weapon_pick = pick
-	if input.is_shoot_pressed():
-		if _edit_cooldown <= 0.0:
-			world.orbs.shoot_local(self, weapon)
-			_edit_cooldown = [0.13, 1.1][weapon]
-		return
+	_prev_slot_pick = pick
 	if _edit_cooldown > 0.0:
 		return
 	# In first person the keyboard player can also mouse-click: left digs,
@@ -434,9 +437,13 @@ func _local_actions(delta: float) -> void:
 			world.send_edit(slot, dig_target, Blocks.AIR)
 			_edit_cooldown = EDIT_REPEAT
 	elif wants_place:
-		if place_target != Vector3i(0, -99, 0):
-			if selected_structure >= 0:
-				world.sv_structure.rpc_id(1, slot, place_target, selected_structure,
+		var item := held()
+		if item.kind == "weapon":
+			world.orbs.shoot_local(self, int(item.id))
+			_edit_cooldown = 0.13 if int(item.id) == 0 else 1.1
+		elif place_target != Vector3i(0, -99, 0):
+			if item.kind == "structure":
+				world.sv_structure.rpc_id(1, slot, place_target, int(item.id),
 					randi() % 1000)
 				_edit_cooldown = 1.0
 			else:

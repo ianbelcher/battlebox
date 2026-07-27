@@ -867,14 +867,16 @@ func _server_tick_survival() -> void:
 			step = step.normalized() * speed
 			# Grumps can't jump: they step up at most one block, so walls
 			# and forts genuinely keep them out. They wade water fine.
-			var tries := [0.0, 0.9, -0.9, 1.8, -1.8]
-			for angle: float in tries:
-				var attempt: Vector3 = monster.pos + step.rotated(Vector3.UP, angle)
-				var floor_y := store.surface_y(int(attempt.x), int(attempt.z))
-				if float(floor_y) + 1.0 - monster.pos.y <= 1.3:
-					attempt.y = float(floor_y) + 1.0
-					monster.pos = attempt
-					break
+			# Grumps scale walls and scuttle over roofs — height is no refuge.
+			var attempt: Vector3 = monster.pos + step
+			var floor_y := store.surface_y(int(attempt.x), int(attempt.z))
+			var rise: float = float(floor_y) + 1.0 - monster.pos.y
+			if rise > 0.9:
+				attempt = monster.pos
+				attempt.y += minf(rise, speed * 1.4)  # climbing
+			else:
+				attempt.y = float(floor_y) + 1.0
+			monster.pos = attempt
 		# Bonk!
 		if now >= int(monster.next_bonk_ms) 				and Vector3(_player_state[target].pos).distance_to(monster.pos) < 1.5:
 			monster.next_bonk_ms = now + 1200

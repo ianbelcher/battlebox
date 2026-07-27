@@ -145,8 +145,13 @@ func _process(delta: float) -> void:
 				atan2(-to_target.x, -to_target.z), minf(1.0, delta * 5.0))
 		var visual: Node3D = node.get_child(0)
 		var phase: float = entry.phase
-		visual.position.y = absf(sin(t * 5.0 + phase)) * 0.12
-		visual.scale = visual.scale.lerp(Vector3.ONE, minf(1.0, delta * 6.0))
+		# Bouncy little menaces: springy hops with squash and stretch.
+		var hop := absf(sin(t * 6.5 + phase))
+		visual.position.y = hop * 0.3
+		var squash := 1.0 + (hop - 0.5) * 0.25
+		visual.scale = visual.scale.lerp(Vector3(2.0 - squash, squash, 2.0 - squash), minf(1.0, delta * 8.0))
+		if randf() < delta * 0.06:
+			Sfx.play("ribbit", -10.0, 0.45)
 
 func _mat(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -165,7 +170,11 @@ func _build() -> Node3D:
 	body_mesh.height = 0.8
 	body.mesh = body_mesh
 	body.position = Vector3(0, 0.42, 0)
-	body.material_override = _mat(Color("6b4a9e"))
+	var body_mat := _mat(Color("6b4a9e"))
+	body_mat.emission_enabled = true
+	body_mat.emission = Color("8a5fd0")
+	body_mat.emission_energy_multiplier = 0.7
+	body.material_override = body_mat
 	visual.add_child(body)
 	for side in [-1.0, 1.0]:
 		var eye := MeshInstance3D.new()
@@ -174,7 +183,11 @@ func _build() -> Node3D:
 		eye_mesh.height = 0.18
 		eye.mesh = eye_mesh
 		eye.position = Vector3(side * 0.17, 0.55, -0.36)
-		eye.material_override = _mat(Color("ffd166"))
+		var eye_mat := _mat(Color("ffd166"))
+		eye_mat.emission_enabled = true
+		eye_mat.emission = Color("ffd166")
+		eye_mat.emission_energy_multiplier = 2.6
+		eye.material_override = eye_mat
 		visual.add_child(eye)
 		var brow := MeshInstance3D.new()
 		var brow_mesh := BoxMesh.new()

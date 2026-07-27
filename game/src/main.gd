@@ -300,16 +300,15 @@ func _maybe_start_autotest() -> void:
 				Game.world.sv_survival_start.rpc_id(1, 0))
 	var forced := OS.get_environment("WORLD_AUTOTEST_BLOCK")
 	if forced.is_valid_int():
-		var index := Blocks.HOTBAR.find(forced.to_int())
-		if index >= 0:
-			var pin := Timer.new()
-			pin.wait_time = 2.0
-			pin.timeout.connect(func() -> void:
-				for child in Game.world.players.get_children():
-					if child is Player and child.is_local:
-						child.hotbar_index = index)
-			add_child(pin)
-			pin.start()
+		var pin := Timer.new()
+		pin.wait_time = 2.0
+		pin.timeout.connect(func() -> void:
+			for child in Game.world.players.get_children():
+				if child is Player and child.is_local:
+					child.slots[2] = {"kind": "block", "id": forced.to_int()}
+					child.selected_slot = 2)
+		add_child(pin)
+		pin.start()
 
 func _on_server_lost() -> void:
 	Net.go_offline()

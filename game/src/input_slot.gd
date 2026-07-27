@@ -113,17 +113,14 @@ func is_shoot_pressed() -> bool:
 			return Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.5
 	return false
 
-## Weapon select: 1/2/3 direct on keyboard; D-pad left/right cycles on pads.
-## Returns 0-2 for direct pick, -1 for none, 10/11 for pad cycle prev/next.
-func weapon_pick() -> int:
+## Hotbar slot select: number keys 1-8; D-pad left/right cycles on pads.
+## Returns 0-7 direct, -1 none, 10/11 cycle prev/next.
+func slot_pick() -> int:
 	match kind:
 		Kind.KEYBOARD_WASD:
-			if Input.is_physical_key_pressed(KEY_1):
-				return 0
-			if Input.is_physical_key_pressed(KEY_2):
-				return 1
-			if Input.is_physical_key_pressed(KEY_3):
-				return 2
+			for i in 8:
+				if Input.is_physical_key_pressed(KEY_1 + i):
+					return i
 		Kind.GAMEPAD:
 			if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_LEFT):
 				return 10

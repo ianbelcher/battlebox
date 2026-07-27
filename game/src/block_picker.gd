@@ -28,6 +28,8 @@ func _init() -> void:
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
 
+	entries.append({"kind": "weapon", "id": 0, "name": "Blaster", "color": Color("ffe08a")})
+	entries.append({"kind": "weapon", "id": 1, "name": "Bazooka", "color": Color("ff7a3d")})
 	for block: int in Blocks.HOTBAR:
 		entries.append({"kind": "block", "id": block,
 			"name": Blocks.display_name(block), "color": Blocks.color_of(block)})
@@ -54,8 +56,8 @@ func _init() -> void:
 		var chip := Panel.new()
 		chip.custom_minimum_size = Vector2(40, 40)
 		chip.mouse_filter = Control.MOUSE_FILTER_STOP
-		if entry.kind == "block":
-			var icon := BlockIcon.new(int(entry.id))
+		if entry.kind != "structure":
+			var icon := BlockIcon.new(int(entry.id), entry.kind)
 			icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 			icon.offset_left = 4
 			icon.offset_top = 4
@@ -85,8 +87,8 @@ func _init() -> void:
 		grid.add_child(chip)
 		_chips.append(chip)
 	var hint := Label.new()
-	hint.text = "move: WASD / stick   choose: Space / A / click   close: E"
-	hint.add_theme_font_size_override("font_size", 16)
+	hint.text = "Choose with Space / A / click — it goes into your current slot (1-8)"
+	hint.add_theme_font_size_override("font_size", 18)
 	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(hint)
@@ -102,11 +104,9 @@ func fit(avail: Vector2) -> void:
 		for child in panel.get_children():
 			if child is Label:
 				child.add_theme_font_size_override("font_size", int(chip * 0.55))
-	_title.add_theme_font_size_override("font_size", int(clampf(chip * 0.75, 20.0, 46.0)))
+	_title.add_theme_font_size_override("font_size", int(clampf(chip * 0.75, 22.0, 48.0)))
 
-func open(current_block_index: int, current_structure: int) -> void:
-	focus_index = current_block_index if current_structure < 0 \
-		else Blocks.HOTBAR.size() + current_structure
+func open(_a := 0, _b := 0) -> void:
 	visible = true
 	_refresh()
 

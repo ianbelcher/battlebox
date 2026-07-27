@@ -29,8 +29,10 @@ const GUIDE_TEXT := """Move: WASD / left stick        Jump: Space / A
 Double-tap jump = FLY (hold jump to rise, Shift / LT to sink, land to stop)
 
 Break block: LEFT CLICK / B         Place block: RIGHT CLICK / F / X
-Shoot: R / middle click / RT. Weapons: 1 BLASTER (hold to spray;
-breaks soft stuff, lights TNT from afar), 2 BAZOOKA (big booms).
+Your 8 hotbar slots hold blocks, kits AND weapons - press E to
+fill the current slot, switch with 1-8 (bumpers / D-pad on pads).
+Hold a weapon and RIGHT-CLICK (X / F) to fire: BLASTER sprays,
+BAZOOKA booms. During a raid: NO FLYING, and Grumps climb walls!
 Explosions set grass and wood ON FIRE - it spreads like Minecraft
 and gutters out on stone. Materials matter: wood burns and breaks,
 stone shrugs off pellets, STEEL only chips on a direct bazooka
@@ -49,15 +51,14 @@ The [sword] Attack! button starts a Grump raid: they climb ONE block at
 most, so walls keep them out. Orbs bonk them. Last as long as you can!
 
 Hold Q / Back to leave. Everything is always saved."""
-var _last_structure := -2
+
 var _swatches: Dictionary = {}   # attr -> ColorRect
 var _hotbar: HBoxContainer
 var _chips: Array = []
 var _last_index := -1
 var _last_style := -1
 var _last_width := -1.0
-var _weapon_chips: Array = []
-var _last_weapon := -1
+var _slots_dirty := true
 var _crosshair: Label
 
 func _us(n: int) -> int:
@@ -129,14 +130,24 @@ func _ready() -> void:
 	_hotbar = HBoxContainer.new()
 	_hotbar.add_theme_constant_override("separation", 2)
 	bar_panel.add_child(_hotbar)
-	# ~48 chips have to fit half a screen, so they're small; the selected one
-	# grows and its name shows above the bar.
-	for block: int in Blocks.HOTBAR:
-		var chip_rect := BlockIcon.new(block)
-		chip_rect.custom_minimum_size = Vector2(14, 20)
-		chip_rect.tooltip_text = Blocks.display_name(block)
-		_hotbar.add_child(chip_rect)
-		_chips.append(chip_rect)
+	# Eight big Minecraft-style slots; 1-8 keys (or bumpers/D-pad) select.
+	for i in 8:
+		var frame := Panel.new()
+		frame.custom_minimum_size = Vector2(52, 52)
+		var icon := BlockIcon.new(0)
+		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		icon.offset_left = 7
+		icon.offset_top = 7
+		icon.offset_right = -7
+		icon.offset_bottom = -7
+		frame.add_child(icon)
+		var num := Label.new()
+		num.text = str(i + 1)
+		num.add_theme_font_size_override("font_size", _us(12))
+		num.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
+		frame.add_child(num)
+		_hotbar.add_child(frame)
+		_chips.append(frame)
 	_selected_label = Label.new()
 	_selected_label.add_theme_font_size_override("font_size", _us(15))
 	_selected_label.add_theme_color_override("font_color", Color("ffd166"))
@@ -174,24 +185,6 @@ func _ready() -> void:
 	guide.add_theme_font_size_override("font_size", _us(19))
 	guide.text = GUIDE_TEXT
 	_tabs.add_child(guide)
-	# Weapon row (1/2/3, D-pad left/right on pads), above the hotbar.
-	var weapon_holder := CenterContainer.new()
-	weapon_holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	weapon_holder.offset_top = -104
-	weapon_holder.offset_bottom = -80
-	weapon_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(weapon_holder)
-	var weapon_row := HBoxContainer.new()
-	weapon_row.add_theme_constant_override("separation", 8)
-	weapon_holder.add_child(weapon_row)
-	for label_text in ["[1] BLASTER", "[2] BAZOOKA"]:
-		var chip_label := Label.new()
-		chip_label.text = label_text
-		chip_label.add_theme_font_size_override("font_size", _us(17))
-		chip_label.add_theme_constant_override("outline_size", 5)
-		chip_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
-		weapon_row.add_child(chip_label)
-		_weapon_chips.append(chip_label)
 	# First-person crosshair.
 	_crosshair = Label.new()
 	_crosshair.text = "+"
@@ -233,7 +226,7 @@ func _toggle_menu(player: Player, tab: int) -> void:
 	_tabs.current_tab = tab
 	player.ui_locked = true
 	_picker.fit(size)
-	_picker.open(player.hotbar_index, player.selected_structure)
+	_picker.open()
 	var id := Game.player_id(multiplayer.get_unique_id(), slot)
 	_info.text = "%d playing right now\nYour treasures: %d\nWorld source: %s\n\nThe world is saved all the time - whatever\nyou build is still here tomorrow.\nFly up high... some islands float.\nDig deep... some caves glow." % [
 		Game.roster.size(), int(world.treasures.get(id, 0)), str(world.source)]
@@ -243,11 +236,8 @@ func _on_picked(entry: Dictionary) -> void:
 	var player := _player()
 	if player == null:
 		return
-	if entry.kind == "block":
-		player.hotbar_index = Blocks.HOTBAR.find(int(entry.id))
-		player.selected_structure = -1
-	else:
-		player.selected_structure = int(entry.id)
+	player.slots[player.selected_slot] = {"kind": entry.kind, "id": entry.id}
+	_slots_dirty = true
 	_menu.visible = false
 	player.ui_locked = false
 
@@ -324,35 +314,37 @@ func _process(_delta: float) -> void:
 			_picker.poll(input, _delta)
 	if not _menu.visible and player.ui_locked:
 		player.ui_locked = false
-	# Selected-structure label beats the block label.
-	if player.selected_structure != _last_structure:
-		_last_structure = player.selected_structure
-		if player.selected_structure >= 0:
-			_selected_label.text = str(Structures.spec(player.selected_structure).name)
-			_last_index = -1
+
 	_crosshair.visible = player.fp_mode and not _menu.visible
-	if player.weapon != _last_weapon:
-		_last_weapon = player.weapon
-		for i in _weapon_chips.size():
-			var chip: Label = _weapon_chips[i]
-			chip.add_theme_color_override("font_color",
-				Color("ffd166") if i == _last_weapon else Color(1, 1, 1, 0.45))
 	if size.x != _last_width:
 		_last_width = size.x
-		var chip_w := clampf(size.x / 58.0, 11.0, 30.0)
-		for chip: BlockIcon in _chips:
-			chip.custom_minimum_size = Vector2(chip_w, chip_w * 1.6)
 		_selected_label.add_theme_font_size_override("font_size",
-			int(clampf(size.x / 55.0, 14.0, 30.0)))
+			int(clampf(size.x / 45.0, 16.0, 34.0)))
 		_last_index = -1
-	if player.hotbar_index != _last_index and player.selected_structure < 0:
-		_last_index = player.hotbar_index
-		_selected_label.text = Blocks.display_name(Blocks.HOTBAR[_last_index])
+	if player.selected_slot != _last_index or _slots_dirty:
+		_last_index = player.selected_slot
+		_slots_dirty = false
+		var item: Dictionary = player.held()
+		if item.kind == "weapon":
+			_selected_label.text = "Blaster" if int(item.id) == 0 else "Bazooka"
+		elif item.kind == "structure":
+			_selected_label.text = str(Structures.spec(int(item.id)).name)
+		else:
+			_selected_label.text = Blocks.display_name(int(item.id))
+		var slot_px := clampf(size.x / 14.0, 40.0, 78.0)
 		for i in _chips.size():
-			var chip: BlockIcon = _chips[i]
+			var frame: Panel = _chips[i]
+			var entry: Dictionary = player.slots[i]
 			var selected := i == _last_index
-			var chip_w := clampf(size.x / 58.0, 11.0, 30.0)
-			chip.custom_minimum_size = Vector2(chip_w * 1.5, chip_w * 2.2) if selected \
-				else Vector2(chip_w, chip_w * 1.6)
-			chip.dimmed = not selected
-			chip.queue_redraw()
+			frame.custom_minimum_size = Vector2(slot_px, slot_px)
+			var style := StyleBoxFlat.new()
+			style.bg_color = Color(0.08, 0.09, 0.14, 0.85)
+			style.set_corner_radius_all(8)
+			style.border_color = Color("ffd166") if selected else Color(1, 1, 1, 0.25)
+			style.set_border_width_all(4 if selected else 2)
+			frame.add_theme_stylebox_override("panel", style)
+			var icon: BlockIcon = frame.get_child(0)
+			icon.block_id = int(entry.id)
+			icon.kind = str(entry.kind)
+			icon.dimmed = not selected
+			icon.queue_redraw()
