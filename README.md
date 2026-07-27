@@ -23,20 +23,26 @@ the Minecraft save is never modified.
    machine, the screen splits automatically. Characters (name, look,
    position, treasures) persist per device and per name.
 
-| Player     | Move       | Jump  | Dig / collect / pet | Place | Cycle block | Spin view  | Zoom (out/in) | 1st person | Leave (hold) |
-| ---------- | ---------- | ----- | ------------------- | ----- | ----------- | ---------- | ------------- | ---------- | ------------ |
-| Keyboard   | WASD       | Space | E                   | F     | Tab / R     | Z / C      | X / V         | T          | Q            |
-| Gamepads   | Left stick | A     | B                   | X     | Bumpers     | R stick ←→ | R stick ↓ / ↑ | Y          | Back/Select  |
+Controls are Minecraft-shaped. **First person is the default view**; T / Y
+switches to the isometric overview and back.
+
+| Player   | Move       | Jump  | Break        | Place         | Throw orb    | Picker/Menu     | Cycle | Spin/Zoom (overview) | Leave (hold) |
+| -------- | ---------- | ----- | ------------ | ------------- | ------------ | --------------- | ----- | -------------------- | ------------ |
+| Keyboard | WASD       | Space | Left click/G | Right click/F | R / M-click  | E / Esc         | Tab   | Z C / X V            | Q            |
+| Gamepads | Left stick | A     | B            | X             | Right trigger| D-pad up / Start| Bumpers | Right stick        | Back         |
+
+**E** opens the Minecraft-style picker (all blocks + building kits, with
+names); **Esc / Start** opens the same tabbed menu on a how-to-play guide.
+**Orbs** can be thrown any time — they harmlessly bonk friends and they're
+your weapon during Grump attacks.
 
 One keyboard player per machine (normal WASD controls) plus any number of
 gamepads. Each player spins their own isometric camera in quarter turns (to
 peek behind hills and houses) and steps through six zoom levels, from
 over-the-shoulder to a map-like overview (chunk streaming widens
 automatically when zoomed out); movement stays camera-relative.
-**First person** (T / gamepad Y) puts you behind your character's eyes —
-mouse look with left-click dig / right-click place on keyboard, right-stick
-look on gamepads, Esc or T to come back out. It's the view for digging
-yourself out of a hole. **Double-tap jump to fly** — hold jump to rise,
+First person means mouse look on keyboard and right-stick look on
+gamepads. **Double-tap jump to fly** — hold jump to rise,
 Shift / left trigger to sink, land (or double-tap again) to stop; flyers
 strike a superhero pose. Characters are chunky mini-figures — click your
 name chip
@@ -45,7 +51,21 @@ to type a name, and click the three swatches to cycle **skin tone**,
 infinite (creative-style); digging flowers, shells,
 mushrooms and berries counts treasures (✦). Saplings grow into trees after a
 couple of minutes, fresh flowers bloom at dawn, fireflies come out at night,
-and walking up to a critter and pressing dig pets it.
+and walking up to a critter and pressing dig pets it. Ten animal kinds
+(sheep, bunnies, butterflies, fireflies, ducks, chickens, crabs, frogs,
+deer, penguins) wander their own terrain with distance-faded, pitch-varied
+voices. Biomes are small and dramatic — dense jungles, pine groves, flower
+fields, swamps — with **glowing caverns** underground and **floating sky
+islands** to find by flying. Water flows: blow up a pond wall and it pours
+into the crater. The picker's **building kits** stamp whole prefabs (house,
+watchtower, giant tree, bridge, camp, fort wall, pool, garden) that never
+overwrite existing builds.
+
+**⚔ Attack!** (top bar) starts a survival raid: waves of Grumps rise from
+low ground and water and march on the players. They can only step up one
+block — real forts really work. Orbs bonk them; getting caught costs a
+heart; when everyone has been knocked down the raid ends with your
+survival time and everyone respawns. Nothing is ever lost.
 
 The hotbar is ~48 blocks: wood/stone/wool building families, gold and
 diamond, a glow set (glowstone, three crystal colors, harmless swimmable
@@ -53,7 +73,7 @@ diamond, a glow set (glowstone, three crystal colors, harmless swimmable
 
 | Block | What it does |
 | ----- | ------------ |
-| Boom Block | 3-second sparking fuse, then a real crater. Blast launches nearby players (harmlessly) and sets off other boom blocks — chain reactions welcome |
+| Boom Block | Safe until **clicked** — then a sparking fuse and a real crater. Every charge *touching* it detonates together in one scaled-up mega-blast; nearby loose ones chain. Click a lit one to defuse |
 | Firework | Launches after a moment and bursts in colour over the world |
 | Bouncy Block | Trampoline — returns most of your fall, higher each drop |
 | Launch Pad | Step on, get flung skyward |
