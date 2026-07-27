@@ -32,7 +32,6 @@ func update_critters(payload: Array) -> void:
 			_nodes[id].target = pos
 		else:
 			var node := _build(kind)
-			node.scale = Vector3(1.6, 1.6, 1.6)
 			node.position = pos
 			add_child(node)
 			_nodes[id] = {"node": node, "target": pos, "kind": kind,

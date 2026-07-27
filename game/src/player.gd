@@ -5,17 +5,17 @@ extends Node3D
 ## cheap, and 16 players cost nothing); remote players glide toward their
 ## replicated positions. The avatar visual is the shared blob model.
 
-const GRAVITY := 44.0
-const JUMP_VELOCITY := 12.4
-const WALK_SPEED := 9.0
-const SWIM_SPEED := 6.0
-const HALF_WIDTH := 0.6
-const HEIGHT := 2.6
+const GRAVITY := 22.0
+const JUMP_VELOCITY := 8.6
+const WALK_SPEED := 4.6
+const SWIM_SPEED := 3.0
+const HALF_WIDTH := 0.32
+const HEIGHT := 1.25
 const SEND_HZ := 12.0
 const EDIT_REPEAT := 0.24
 ## Eye level for first person — near the top of the head, so blocks read
 ## about waist height like they should.
-const EYE_HEIGHT := 3.0
+const EYE_HEIGHT := 1.5
 ## Default camera yaw; the split-screen rig updates camera_yaw as the view
 ## spins so "stick up" always moves away from the camera.
 const ISO_ROT := PI / 4.0
@@ -78,7 +78,6 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	input = p_input
 	world = p_world
 	_avatar = AvatarFactory.build_character(entry.get("style", {}))
-	_avatar.scale = Vector3(2, 2, 2)
 	add_child(_avatar)
 	_tag = Label3D.new()
 	_tag.text = str(entry.name)
@@ -89,7 +88,7 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	_tag.modulate = Color.WHITE
 	_tag.outline_modulate = Color(0.05, 0.05, 0.1, 0.9)
 	_tag.outline_size = 16
-	_tag.position = Vector3(0, 3.4, 0)
+	_tag.position = Vector3(0, 1.85, 0)
 	add_child(_tag)
 	if is_local:
 		_highlight = MeshInstance3D.new()
@@ -113,7 +112,6 @@ func refresh_from_roster(entry: Dictionary) -> void:
 	if str(_avatar.get_meta("style", "")) != str(style):
 		var old := _avatar
 		_avatar = AvatarFactory.build_character(style)
-		_avatar.scale = Vector3(2, 2, 2)
 		_avatar.rotation = old.rotation
 		add_child(_avatar)
 		old.queue_free()
@@ -219,7 +217,7 @@ func _local_move(delta: float) -> void:
 		camera_yaw = look_yaw
 	var move := input.get_move_vector()
 	var dir := Vector3(move.x, 0, move.y).rotated(Vector3.UP, camera_yaw)
-	var feet := Vector3i(floori(position.x), floori(position.y + 0.6), floori(position.z))
+	var feet := Vector3i(floori(position.x), floori(position.y + 0.3), floori(position.z))
 	in_water = Blocks.is_liquid(_chunks().get_block(feet))
 
 	# If a block appears where we're standing (a place raced our movement, or
@@ -246,7 +244,7 @@ func _local_move(delta: float) -> void:
 
 	var speed := SWIM_SPEED if in_water else WALK_SPEED
 	if fly_mode:
-		speed = 15.0
+		speed = 7.5
 	velocity.x = dir.x * speed
 	velocity.z = dir.z * speed
 	if dir.length_squared() > 0.01:
@@ -255,17 +253,17 @@ func _local_move(delta: float) -> void:
 	if fly_mode:
 		var vert := 0.0
 		if jump_now:
-			vert = 11.0
+			vert = 5.5
 		elif input.is_descend_pressed():
-			vert = -11.0
+			vert = -5.5
 		velocity.y = lerpf(velocity.y, vert, minf(1.0, delta * 8.0))
 	elif in_water:
 		velocity.y -= GRAVITY * 0.25 * delta
-		velocity.y = maxf(velocity.y, -4.0)
+		velocity.y = maxf(velocity.y, -2.0)
 		if jump_now:
-			velocity.y = minf(velocity.y + 60.0 * delta, 8.0)
+			velocity.y = minf(velocity.y + 30.0 * delta, 4.0)
 		# Buoyancy beats gravity so kids bob back up to the surface.
-		velocity.y = minf(velocity.y + 16.0 * delta, 5.0)
+		velocity.y = minf(velocity.y + 8.0 * delta, 2.5)
 	else:
 		velocity.y -= GRAVITY * delta
 		if jump_now and on_floor:
@@ -289,13 +287,13 @@ func _local_move(delta: float) -> void:
 	if blocked_h and (on_floor or in_water) and dir.length_squared() > 0.01:
 		var up_attempt := next + Vector3(velocity.x * delta, 1.05, velocity.z * delta)
 		if not _collides(up_attempt) and not _collides(next + Vector3(0, 1.05, 0)):
-			velocity.y = 10.0
+			velocity.y = 7.2
 	var vertical := velocity.y * delta
 	var v_attempt := next + Vector3(0, vertical, 0)
 	if _collides(v_attempt):
 		var impact := velocity.y
 		if velocity.y < 0.0:
-			if not on_floor and velocity.y < -16.0:
+			if not on_floor and velocity.y < -8.0:
 				Sfx.play("land", -8.0)
 			on_floor = true
 			fly_mode = false  # touching down ends flight, like Minecraft
@@ -307,10 +305,10 @@ func _local_move(delta: float) -> void:
 				next = landed
 		velocity.y = 0.0
 		# Bouncy blocks throw you back up with most of your fall.
-		if impact < -6.0:
+		if impact < -3.0:
 			var under := Vector3i(floori(next.x), floori(next.y) - 1, floori(next.z))
 			if _chunks().get_block(under) == Blocks.BOUNCY:
-				velocity.y = clampf(-impact * 0.85, 10.0, 30.0)
+				velocity.y = clampf(-impact * 0.85, 6.0, 16.0)
 				on_floor = false
 				Sfx.play("boing")
 	else:
@@ -351,7 +349,7 @@ func _check_floor_machines(delta: float) -> void:
 		Blocks.LAUNCHER:
 			if not _launch_latched:
 				_launch_latched = true
-				velocity.y = 30.0
+				velocity.y = 17.0
 				on_floor = false
 				Sfx.play("whoosh")
 		Blocks.NOTE:
@@ -446,7 +444,7 @@ func _local_actions(delta: float) -> void:
 				_edit_cooldown = EDIT_REPEAT
 
 func _front_cell(dy: int) -> Vector3i:
-	var front := position + heading * 1.6
+	var front := position + heading * 0.95
 	return Vector3i(floori(front.x), floori(position.y + 0.3) + dy, floori(front.z))
 
 const NO_TARGET := Vector3i(0, -99, 0)
@@ -461,8 +459,8 @@ func _find_fp_targets() -> Array:
 	var dir := look_dir()
 	var last_open := NO_TARGET
 	var last_cell := Vector3i(floori(eye.x), floori(eye.y), floori(eye.z))
-	var t := 0.5
-	while t < 8.5:
+	var t := 0.3
+	while t < 4.4:
 		var sample := eye + dir * t
 		var cell := Vector3i(floori(sample.x), floori(sample.y), floori(sample.z))
 		if cell != last_cell:
@@ -491,7 +489,7 @@ func _find_dig_target() -> Vector3i:
 	var own := Vector3i(floori(position.x), floori(position.y + 0.3), floori(position.z))
 	if Blocks.is_cross(chunks.get_block(own)):
 		return own
-	for dy in [1, 0, 2, -1]:
+	for dy in [0, 1, -1]:
 		var cell := _front_cell(dy)
 		var block := chunks.get_block(cell)
 		if block != Blocks.AIR and not Blocks.is_liquid(block) and Blocks.is_breakable(block):
@@ -505,7 +503,7 @@ func _find_dig_target() -> Vector3i:
 
 func _find_place_target() -> Vector3i:
 	var chunks := _chunks()
-	var candidates := [_front_cell(0), _front_cell(1), _front_cell(2), _front_cell(-1)]
+	var candidates := [_front_cell(0), _front_cell(1), _front_cell(-1)]
 	for cell: Vector3i in candidates:
 		var block := chunks.get_block(cell)
 		if block == Blocks.AIR or block == Blocks.TALL_GRASS or Blocks.is_liquid(block):

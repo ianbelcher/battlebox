@@ -14,7 +14,7 @@ extends Node
 ##   sv_pet(slot, critter_id)      -> cl_pet(critter_id)
 ##   (server timers)               -> cl_clock(frac), cl_critters(payload)
 
-const EDIT_RANGE := 16.0
+const EDIT_RANGE := 10.0
 const AUTOSAVE_SECONDS := 25.0
 const MAX_CRITTERS := 56
 const CRITTERS_PER_PLAYER := 9
@@ -258,10 +258,10 @@ func _far_spawn() -> Vector3:
 	for i in 24:
 		var anchor: Vector3 = others[randi() % others.size()]
 		var angle := randf() * TAU
-		var dist := randf_range(170.0, 240.0)
+		var dist := randf_range(85.0, 125.0)
 		var wx := int(anchor.x + cos(angle) * dist)
 		var wz := int(anchor.z + sin(angle) * dist)
-		if Vector2(wx, wz).length() > WorldGen.ISLAND_RADIUS - 40.0:
+		if Vector2(wx, wz).length() > WorldGen.ISLAND_RADIUS - 20.0:
 			continue
 		var y := store.surface_y(wx, wz)
 		if y <= WorldGen.SEA_LEVEL or y >= WorldGen.CHUNK_H - 8:
@@ -345,7 +345,7 @@ func sv_structure(slot: int, base: Vector3i, index: int, roll: int) -> void:
 		return
 	var id := Game.player_id(multiplayer.get_remote_sender_id(), slot)
 	var state: Dictionary = _player_state.get(id, {})
-	if state.is_empty() or Vector3(base).distance_to(state.pos) > 20.0:
+	if state.is_empty() or Vector3(base).distance_to(state.pos) > 12.0:
 		return
 	var pairs: Array = []
 	for entry: Array in Structures.cells(index, roll):
@@ -383,12 +383,12 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 		return
 	var id := Game.player_id(multiplayer.get_remote_sender_id(), slot)
 	var state: Dictionary = _player_state.get(id, {})
-	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 70.0:
+	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 34.0:
 		return
 	if kind >= 1:
-		_blast(cell, 5.5, [], cell)
+		_blast(cell, 3.4, [], cell)
 		for monster_id: int in _monsters.keys().duplicate():
-			if Vector3(cell).distance_to(_monsters[monster_id].pos) < 7.5:
+			if Vector3(cell).distance_to(_monsters[monster_id].pos) < 4.5:
 				_monsters[monster_id].hp = int(_monsters[monster_id].hp) - 2
 				var dead: bool = _monsters[monster_id].hp <= 0
 				if dead:
@@ -424,7 +424,7 @@ func sv_orb_hit(slot: int, target_id: String, hit_pos: Vector3) -> void:
 	if not Game.roster.has(shooter) or not Game.roster.has(target_id):
 		return
 	var target_state: Dictionary = _player_state.get(target_id, {})
-	if target_state.is_empty() or Vector3(target_state.pos).distance_to(hit_pos) > 7.0:
+	if target_state.is_empty() or Vector3(target_state.pos).distance_to(hit_pos) > 4.0:
 		return
 	cl_bonk.rpc(target_id, hit_pos)
 
@@ -456,7 +456,7 @@ func _server_tick_bombs() -> void:
 			cl_firework_fx.rpc(entry.pos)
 	_rockets = pending
 
-const BOOM_RADIUS := 5.2
+const BOOM_RADIUS := 3.2
 
 func _server_explode(origin: Vector3i) -> void:
 	# Every Boom Block CONNECTED to this one goes up together: n charges make
@@ -622,7 +622,7 @@ var _holes: Array = []
 func _disturb_water(removed_cells: Array) -> void:
 	for cell in removed_cells:
 		if cell is Vector3i and _holes.size() < 400:
-			_holes.append({"pos": cell, "range": 16})
+			_holes.append({"pos": cell, "range": 10})
 
 func _server_tick_water() -> void:
 	if _holes.is_empty():
@@ -653,7 +653,7 @@ func _server_tick_water() -> void:
 		for off in [Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
 				Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
 			var next: Vector3i = hole + off
-			var next_range := 16 if off.y < 0 else hole_range - 1
+			var next_range := 10 if off.y < 0 else hole_range - 1
 			if next_range >= 0 and store.get_block(next) == Blocks.AIR \
 					and next_holes.size() < 200:
 				next_holes.append({"pos": next, "range": next_range})
@@ -664,10 +664,10 @@ func _server_tick_water() -> void:
 ## Sponges drink every liquid within reach the moment they're placed.
 func _server_drain(origin: Vector3i) -> void:
 	var cleared: Array = []
-	for dy in range(-6, 7):
-		for dz in range(-6, 7):
-			for dx in range(-6, 7):
-				if Vector3(dx, dy, dz).length() > 6.0:
+	for dy in range(-4, 5):
+		for dz in range(-4, 5):
+			for dx in range(-4, 5):
+				if Vector3(dx, dy, dz).length() > 3.8:
 					continue
 				var pos := origin + Vector3i(dx, dy, dz)
 				if Blocks.is_liquid(store.get_block(pos)):
@@ -691,14 +691,14 @@ func _server_tick_growth() -> void:
 	_saplings = remaining
 
 func _grow_tree(base: Vector3i) -> void:
-	var trunk := 6 + int(WorldGen.hash01(base.x, base.z, 77) * 6.0)
+	var trunk := 3 + int(WorldGen.hash01(base.x, base.z, 77) * 3.0)
 	for i in trunk:
 		_server_place(base + Vector3i(0, i, 0), Blocks.LOG)
 	var top := base + Vector3i(0, trunk, 0)
-	for dy in range(-3, 4):
-		for dz in range(-3, 4):
-			for dx in range(-3, 4):
-				if Vector3(dx, dy * 1.4, dz).length() > 3.4:
+	for dy in range(-2, 3):
+		for dz in range(-2, 3):
+			for dx in range(-2, 3):
+				if Vector3(dx, dy * 1.4, dz).length() > 2.45:
 					continue
 				var pos := top + Vector3i(dx, dy, dz)
 				if store.get_block(pos) == Blocks.AIR:
@@ -715,8 +715,8 @@ func _server_dawn_check() -> void:
 		for state: Dictionary in _player_state.values():
 			for attempt in 8:
 				var pos: Vector3 = state.pos
-				var wx := int(pos.x) + int(WorldGen.hash01(attempt, int(pos.x), 91) * 80.0) - 40
-				var wz := int(pos.z) + int(WorldGen.hash01(attempt, int(pos.z), 92) * 80.0) - 40
+				var wx := int(pos.x) + int(WorldGen.hash01(attempt, int(pos.x), 91) * 40.0) - 20
+				var wz := int(pos.z) + int(WorldGen.hash01(attempt, int(pos.z), 92) * 40.0) - 20
 				var y := store.surface_y(wx, wz)
 				var ground := store.get_block(Vector3i(wx, y, wz))
 				var above := store.get_block(Vector3i(wx, y + 1, wz))
@@ -823,7 +823,7 @@ func sv_zap(slot: int, monster_id: int) -> void:
 	if state.is_empty() or not _monsters.has(monster_id):
 		return
 	var monster: Dictionary = _monsters[monster_id]
-	if Vector3(state.pos).distance_to(monster.pos) > 26.0:
+	if Vector3(state.pos).distance_to(monster.pos) > 16.0:
 		return
 	monster.hp = int(monster.hp) - 1
 	var dead: bool = monster.hp <= 0
@@ -854,7 +854,7 @@ func _server_tick_survival() -> void:
 	if _monsters.size() < cap:
 		_spawn_monster(alive)
 	# March.
-	var speed := minf(3.0 + survival_wave * 0.12, 5.6) * 0.33
+	var speed := minf(1.5 + survival_wave * 0.06, 2.8) * 0.33
 	for monster_id: int in _monsters.keys():
 		var monster: Dictionary = _monsters[monster_id]
 		var target := _nearest_alive(monster.pos, alive)
@@ -871,12 +871,12 @@ func _server_tick_survival() -> void:
 			for angle: float in tries:
 				var attempt: Vector3 = monster.pos + step.rotated(Vector3.UP, angle)
 				var floor_y := store.surface_y(int(attempt.x), int(attempt.z))
-				if float(floor_y) + 1.0 - monster.pos.y <= 2.3:
+				if float(floor_y) + 1.0 - monster.pos.y <= 1.3:
 					attempt.y = float(floor_y) + 1.0
 					monster.pos = attempt
 					break
 		# Bonk!
-		if now >= int(monster.next_bonk_ms) 				and Vector3(_player_state[target].pos).distance_to(monster.pos) < 2.6:
+		if now >= int(monster.next_bonk_ms) 				and Vector3(_player_state[target].pos).distance_to(monster.pos) < 1.5:
 			monster.next_bonk_ms = now + 1200
 			var state: Dictionary = _player_state[target]
 			state.hp = int(state.get("hp", 5)) - 1
@@ -909,7 +909,7 @@ func _spawn_monster(alive: Array) -> void:
 	var best_score := -1e9
 	for i in 14:
 		var angle := randf() * TAU
-		var dist := randf_range(30.0, 52.0)
+		var dist := randf_range(16.0, 28.0)
 		var wx := int(anchor.x + cos(angle) * dist)
 		var wz := int(anchor.z + sin(angle) * dist)
 		var y := store.surface_y(wx, wz)
@@ -942,7 +942,7 @@ func _server_tick_critters() -> void:
 		var critter: Dictionary = _critters[id]
 		var near := false
 		for pos: Vector3 in player_positions:
-			if pos.distance_to(critter.pos) < 100.0:
+			if pos.distance_to(critter.pos) < 60.0:
 				near = true
 				break
 		if not near or (critter.kind == CritterView.FIREFLY and not night):
@@ -963,7 +963,7 @@ func _server_tick_critters() -> void:
 
 func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 	var angle := randf() * TAU
-	var dist := randf_range(18.0, 46.0)
+	var dist := randf_range(10.0, 26.0)
 	var wx := int(anchor.x + cos(angle) * dist)
 	var wz := int(anchor.z + sin(angle) * dist)
 	var y := store.surface_y(wx, wz)
@@ -1009,7 +1009,7 @@ func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 	# Flee players who get too close (except butterflies, who don't care).
 	if critter.kind != CritterView.BUTTERFLY:
 		for pos: Vector3 in player_positions:
-			if pos.distance_to(critter.pos) < 4.5:
+			if pos.distance_to(critter.pos) < 2.6:
 				var away: Vector3 = (critter.pos - pos)
 				away.y = 0
 				critter.target = critter.pos + away.normalized() * 7.0
@@ -1247,7 +1247,7 @@ func cl_bonk(id: String, monster_pos: Vector3) -> void:
 		if child is Player and child.player_id == id and child.is_local:
 			var away: Vector3 = child.position - monster_pos
 			away.y = 0
-			child.velocity += away.normalized() * 14.0 + Vector3.UP * 12.0
+			child.velocity += away.normalized() * 8.0 + Vector3.UP * 7.0
 			child.on_floor = false
 			Sfx.play("bonk")
 
@@ -1312,10 +1312,10 @@ func cl_boom_fx(pos: Vector3i) -> void:
 		if child is Player and child.is_local:
 			var away: Vector3 = child.position - center
 			var dist := away.length()
-			if dist < 12.0:
+			if dist < 7.0:
 				away.y = 0
-				var push := (12.0 - dist) / 12.0
-				child.velocity += away.normalized() * 18.0 * push + Vector3.UP * 16.0 * push
+				var push := (7.0 - dist) / 7.0
+				child.velocity += away.normalized() * 10.0 * push + Vector3.UP * 9.0 * push
 				child.on_floor = false
 
 @rpc("authority", "reliable")

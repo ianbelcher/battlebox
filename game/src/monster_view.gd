@@ -96,14 +96,14 @@ func pick_target(player: Player) -> int:
 		var to_monster: Vector3 = node.position - player.position
 		var dist := to_monster.length()
 		if player.fp_mode:
-			if dist > 26.0 or dist < 0.5:
+			if dist > 14.0 or dist < 0.5:
 				continue
 			var angle := player.look_dir().angle_to(to_monster.normalized())
 			if angle < 0.35 and dist < best_score:
 				best_score = dist
 				best = id
 		else:
-			if dist < 14.0 and dist < best_score:
+			if dist < 8.0 and dist < best_score:
 				best_score = dist
 				best = id
 	return best
@@ -157,7 +157,6 @@ func _mat(color: Color) -> StandardMaterial3D:
 ## A grumpy purple blob: hunched body, angry brows, stub feet, little fangs.
 func _build() -> Node3D:
 	var root := Node3D.new()
-	root.scale = Vector3(2, 2, 2)
 	var visual := Node3D.new()
 	root.add_child(visual)
 	var body := MeshInstance3D.new()

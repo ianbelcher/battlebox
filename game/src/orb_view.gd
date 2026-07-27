@@ -20,7 +20,7 @@ func spawn(shooter_id: String, origin: Vector3, dir: Vector3, kind: int) -> void
 
 func shoot_local(player: Player, kind: int) -> void:
 	var world: Node = get_parent()
-	var origin: Vector3 = player.position + Vector3(0, 2.6, 0)
+	var origin: Vector3 = player.position + Vector3(0, 1.2, 0)
 	var dir: Vector3
 	if player.fp_mode:
 		dir = player.look_dir()
@@ -48,7 +48,7 @@ func _add_orb(shooter_id: String, origin: Vector3, dir: Vector3, mine: bool, slo
 	node.material_override = mat
 	node.position = origin
 	add_child(node)
-	var speed := 70.0 if kind == 0 else 54.0
+	var speed := 44.0 if kind == 0 else 34.0
 	_orbs.append({"node": node, "vel": dir.normalized() * speed,
 		"shooter_id": shooter_id, "age": 0.0, "mine": mine, "slot": slot,
 		"kind": kind})
@@ -60,7 +60,7 @@ func _physics_process(delta: float) -> void:
 	for i in range(_orbs.size() - 1, -1, -1):
 		var orb: Dictionary = _orbs[i]
 		orb.age += delta
-		orb.vel.y -= 4.4 * delta
+		orb.vel.y -= 2.2 * delta
 		var node: Node3D = orb.node
 		node.position += orb.vel * delta
 		var cell := Vector3i(floori(node.position.x), floori(node.position.y), floori(node.position.z))
@@ -77,7 +77,7 @@ func _physics_process(delta: float) -> void:
 			# Player hits (anyone but the shooter): pellets bonk, shells boom.
 			for child in world.players.get_children():
 				if child is Player and child.player_id != orb.shooter_id \
-						and child.position.distance_to(node.position - Vector3(0, 1.6, 0)) < 2.0:
+						and child.position.distance_to(node.position - Vector3(0, 0.8, 0)) < 1.1:
 					if orb.kind > 0:
 						world.sv_shot.rpc_id(1, orb.slot, cell, orb.kind)
 					else:
@@ -86,7 +86,7 @@ func _physics_process(delta: float) -> void:
 					break
 			# Direct Grump hits (shell splash is handled server-side).
 			if not died and world.survival_active and orb.kind == 0:
-				var monster: int = world.monster_view.nearest_to(node.position, 2.0)
+				var monster: int = world.monster_view.nearest_to(node.position, 1.1)
 				if monster >= 0:
 					world.sv_zap.rpc_id(1, orb.slot, monster)
 					world.monster_view.hit(monster, false)

@@ -31,14 +31,7 @@ static func spec(index: int) -> Dictionary:
 ## The block list for a structure, expanded 2x (blocks are half a meter, so
 ## every prefab cell becomes a 2x2x2 cube to keep real-world proportions).
 static func cells(index: int, roll: int) -> Array:
-	var out: Array = []
-	for entry: Array in _cells_raw(index, roll):
-		var base: Vector3i = (entry[0] as Vector3i) * 2
-		for dx in 2:
-			for dy in 2:
-				for dz in 2:
-					out.append([base + Vector3i(dx, dy, dz), entry[1]])
-	return out
+	return _cells_raw(index, roll)
 
 static func _cells_raw(index: int, roll: int) -> Array:
 	match spec(index).id:
