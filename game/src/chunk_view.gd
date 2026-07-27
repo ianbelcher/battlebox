@@ -5,8 +5,9 @@ extends Node3D
 ## real OmniLights for lanterns/campfires, and answers collision queries for
 ## the hand-rolled player physics.
 
-const VIEW_RADIUS := 5          # chunks kept meshed around each local player
-const UNLOAD_RADIUS := 7
+## Chunks kept meshed around each local player; the split screen raises this
+## when someone zooms far out so the horizon fills in.
+var view_radius := 5
 const MESH_BUDGET_PER_FRAME := 3
 const MAX_LIGHTS_PER_CHUNK := 10
 const REQUEST_BATCH := 40
@@ -22,6 +23,7 @@ var _queued: Dictionary = {}
 var _flickers: Array = []        # [{light, base}]
 var _materials: Dictionary = {}
 var _focus_chunks: Array[Vector2i] = []
+var _teleporters: Dictionary = {}   # Vector2i chunk -> Array[Vector3] world positions
 
 signal first_chunks_ready
 
@@ -54,9 +56,9 @@ func _refresh_interest() -> void:
 	# Wanted set: circle around each focus.
 	var wanted: Dictionary = {}
 	for focus in _focus_chunks:
-		for dz in range(-VIEW_RADIUS, VIEW_RADIUS + 1):
-			for dx in range(-VIEW_RADIUS, VIEW_RADIUS + 1):
-				if dx * dx + dz * dz <= VIEW_RADIUS * VIEW_RADIUS + 2:
+		for dz in range(-view_radius, view_radius + 1):
+			for dx in range(-view_radius, view_radius + 1):
+				if dx * dx + dz * dz <= view_radius * view_radius + 2:
 					wanted[focus + Vector2i(dx, dz)] = true
 	# Request whatever is missing, nearest first.
 	var missing: Array[Vector2i] = []
@@ -78,11 +80,12 @@ func _refresh_interest() -> void:
 				break
 		world.request_chunks(batch)
 	# Drop chunks far outside every focus.
+	var unload := view_radius + 2
 	for cpos: Vector2i in _data.keys().duplicate():
 		var keep := false
 		for focus in _focus_chunks:
 			var d := cpos - focus
-			if d.x * d.x + d.y * d.y <= UNLOAD_RADIUS * UNLOAD_RADIUS:
+			if d.x * d.x + d.y * d.y <= unload * unload:
 				keep = true
 				break
 		if not keep:
@@ -185,6 +188,13 @@ func _mesh_chunk(cpos: Vector2i) -> void:
 			neighbors[off] = n
 	var mesher := Mesher.new()
 	var surfaces := mesher.build(_data[cpos], neighbors, cpos.x, cpos.y)
+	var warps: Array = []
+	for local: Vector3i in surfaces.get("teleporters", []):
+		warps.append(Vector3(cpos.x * 16 + local.x, local.y, cpos.y * 16 + local.z))
+	if warps.is_empty():
+		_teleporters.erase(cpos)
+	else:
+		_teleporters[cpos] = warps
 
 	var holder: Node3D = _holders.get(cpos)
 	if holder != null:
@@ -262,9 +272,22 @@ func _forget_flickers(holder: Node3D) -> void:
 		var light: OmniLight3D = entry.light
 		return is_instance_valid(light) and not holder.is_ancestor_of(light))
 
+## Nearest OTHER warp stone (block position) to stand-on position `from`.
+func nearest_teleporter(from: Vector3) -> Vector3:
+	var best := Vector3.INF
+	var best_dist := 1e9
+	for warps: Array in _teleporters.values():
+		for pos: Vector3 in warps:
+			var dist := from.distance_to(pos)
+			if dist > 1.5 and dist < best_dist:
+				best_dist = dist
+				best = pos
+	return best
+
 func _drop_chunk(cpos: Vector2i) -> void:
 	_data.erase(cpos)
 	_pending.erase(cpos)
+	_teleporters.erase(cpos)
 	var holder: Node3D = _holders.get(cpos)
 	if holder != null:
 		_forget_flickers(holder)

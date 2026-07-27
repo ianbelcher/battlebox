@@ -39,7 +39,32 @@ enum {
 	BERRY_BUSH = 32,
 	PATH = 33,
 	BEDROCK = 34,
-	MAX_BLOCK = 35,
+	MARBLE = 35,
+	SLATE = 36,
+	SANDSTONE = 37,
+	BIRCH_PLANKS = 38,
+	DARK_PLANKS = 39,
+	CHERRY_PLANKS = 40,
+	MOSSY_COBBLE = 41,
+	GOLD = 42,
+	DIAMOND = 43,
+	GLOWSTONE = 44,
+	CRYSTAL_PINK = 45,
+	CRYSTAL_BLUE = 46,
+	CRYSTAL_GREEN = 47,
+	LAVA = 48,
+	WOOL_PINK = 49,
+	WOOL_TEAL = 50,
+	WOOL_BROWN = 51,
+	BOOM = 52,
+	FIREWORK = 53,
+	BOUNCY = 54,
+	LAUNCHER = 55,
+	NOTE = 56,
+	SPONGE = 57,
+	TELEPORT = 58,
+	CONFETTI = 59,
+	MAX_BLOCK = 60,
 }
 
 ## Per-block info, indexed by block id:
@@ -90,14 +115,48 @@ const INFO := {
 	BERRY_BUSH: {"name": "Berry Bush", "color": Color("3f7a38"), "solid": false, "opaque": false, "cross": true, "sway": 0.5, "emit": 0.35, "collect": true},
 	PATH: {"name": "Path", "color": Color("9c7f52"), "top": Color("b5975f"), "solid": true, "opaque": true},
 	BEDROCK: {"name": "Bedrock", "color": Color("4c4c52"), "solid": true, "opaque": true, "unbreakable": true},
+	# --- Building families ---
+	MARBLE: {"name": "Marble", "color": Color("e8e6e0"), "solid": true, "opaque": true},
+	SLATE: {"name": "Slate", "color": Color("4a5568"), "solid": true, "opaque": true},
+	SANDSTONE: {"name": "Sandstone", "color": Color("d9c78f"), "top": Color("e3d4a3"), "solid": true, "opaque": true},
+	BIRCH_PLANKS: {"name": "Birch Planks", "color": Color("d6c396"), "solid": true, "opaque": true},
+	DARK_PLANKS: {"name": "Dark Planks", "color": Color("5d4430"), "solid": true, "opaque": true},
+	CHERRY_PLANKS: {"name": "Cherry Planks", "color": Color("d4a0a8"), "solid": true, "opaque": true},
+	MOSSY_COBBLE: {"name": "Mossy Cobble", "color": Color("6d7d68"), "solid": true, "opaque": true},
+	GOLD: {"name": "Gold", "color": Color("f2c744"), "solid": true, "opaque": true, "emit": 0.25},
+	DIAMOND: {"name": "Diamond", "color": Color("7de8e0"), "solid": true, "opaque": true, "emit": 0.25},
+	WOOL_PINK: {"name": "Pink Wool", "color": Color("ef9fc8"), "solid": true, "opaque": true},
+	WOOL_TEAL: {"name": "Teal Wool", "color": Color("3aa8a0"), "solid": true, "opaque": true},
+	WOOL_BROWN: {"name": "Brown Wool", "color": Color("7a5b40"), "solid": true, "opaque": true},
+	# --- Glow set ---
+	GLOWSTONE: {"name": "Glowstone", "color": Color("ffe08a"), "solid": true, "opaque": false, "emit": 2.4, "light": 3.6},
+	CRYSTAL_PINK: {"name": "Pink Crystal", "color": Color(0.95, 0.55, 0.8, 0.65), "solid": true, "opaque": false, "translucent": true, "emit": 1.5, "light": 2.0},
+	CRYSTAL_BLUE: {"name": "Blue Crystal", "color": Color(0.45, 0.7, 0.98, 0.65), "solid": true, "opaque": false, "translucent": true, "emit": 1.5, "light": 2.0},
+	CRYSTAL_GREEN: {"name": "Green Crystal", "color": Color(0.5, 0.95, 0.6, 0.65), "solid": true, "opaque": false, "translucent": true, "emit": 1.5, "light": 2.0},
+	LAVA: {"name": "Glow Goo", "color": Color(1.0, 0.48, 0.14, 0.85), "solid": false, "opaque": false, "translucent": true, "emit": 1.7, "light": 3.0},
+	# --- Fun machines ---
+	BOOM: {"name": "Boom Block", "color": Color("d63d2e"), "top": Color("8f2318"), "solid": true, "opaque": true, "emit": 0.35},
+	FIREWORK: {"name": "Firework", "color": Color("c94fd4"), "top": Color("f2e04a"), "solid": true, "opaque": true, "emit": 0.3},
+	BOUNCY: {"name": "Bouncy Block", "color": Color(0.5, 0.88, 0.45, 0.7), "solid": true, "opaque": false, "translucent": true, "emit": 0.2},
+	LAUNCHER: {"name": "Launch Pad", "color": Color("8a5fe8"), "top": Color("c9b3ff"), "solid": true, "opaque": true, "emit": 0.4},
+	NOTE: {"name": "Music Block", "color": Color("e0a63d"), "top": Color("6d4a26"), "solid": true, "opaque": true},
+	SPONGE: {"name": "Sponge", "color": Color("d8c94a"), "solid": true, "opaque": true},
+	TELEPORT: {"name": "Warp Stone", "color": Color("4de0d4"), "top": Color("aef7f0"), "solid": true, "opaque": true, "emit": 0.9, "light": 1.6},
+	CONFETTI: {"name": "Party Popper", "color": Color("f2e8f7"), "top": Color("ef9fc8"), "solid": true, "opaque": true, "emit": 0.3},
 }
 
-## What the place-hotbar offers, in order. Everything is infinite (creative
-## style) — the cozy loop is building, not resource grinding.
+## What the place-hotbar offers, in order: build stuff first, glow stuff,
+## then the fun machines. Everything is infinite (creative style) — the cozy
+## loop is building, not resource grinding.
 const HOTBAR: Array[int] = [
-	PLANKS, LOG, COBBLE, STONE, BRICK, SAND, GLASS,
-	WOOL_RED, WOOL_YELLOW, WOOL_BLUE, WOOL_GREEN, WOOL_WHITE,
-	LANTERN, CAMPFIRE, FLOWER_RED, FLOWER_YELLOW, SAPLING, PUMPKIN,
+	PLANKS, BIRCH_PLANKS, DARK_PLANKS, CHERRY_PLANKS, LOG,
+	COBBLE, MOSSY_COBBLE, STONE, MARBLE, SLATE, BRICK, SANDSTONE, SAND,
+	GLASS, ICE, SNOW, GOLD, DIAMOND,
+	WOOL_RED, WOOL_ORANGE, WOOL_YELLOW, WOOL_GREEN, WOOL_TEAL, WOOL_BLUE,
+	WOOL_PURPLE, WOOL_PINK, WOOL_BROWN, WOOL_WHITE, WOOL_BLACK,
+	LANTERN, CAMPFIRE, GLOWSTONE, CRYSTAL_PINK, CRYSTAL_BLUE, CRYSTAL_GREEN, LAVA,
+	BOOM, FIREWORK, BOUNCY, LAUNCHER, NOTE, SPONGE, TELEPORT, CONFETTI,
+	FLOWER_RED, FLOWER_YELLOW, SAPLING, PUMPKIN,
 ]
 
 static func info(id: int) -> Dictionary:
@@ -123,6 +182,10 @@ static func is_cross(id: int) -> bool:
 
 static func is_translucent(id: int) -> bool:
 	return bool(info(id).get("translucent", false))
+
+## Swimmable stuff (water and glow goo).
+static func is_liquid(id: int) -> bool:
+	return id == WATER or id == LAVA
 
 static func is_collectible(id: int) -> bool:
 	return bool(info(id).get("collect", false))

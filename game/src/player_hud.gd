@@ -16,6 +16,7 @@ const HAT_CHIP_COLORS: Array[Color] = [
 
 var _name_label: Label
 var _treasure_label: Label
+var _selected_label: Label
 var _swatches: Dictionary = {}   # attr -> ColorRect
 var _hotbar: HBoxContainer
 var _chips: Array = []
@@ -82,15 +83,29 @@ func _ready() -> void:
 	bar_panel.add_theme_stylebox_override("panel", bar_style)
 	bar_holder.add_child(bar_panel)
 	_hotbar = HBoxContainer.new()
-	_hotbar.add_theme_constant_override("separation", 4)
+	_hotbar.add_theme_constant_override("separation", 2)
 	bar_panel.add_child(_hotbar)
+	# ~48 chips have to fit half a screen, so they're small; the selected one
+	# grows and its name shows above the bar.
 	for block: int in Blocks.HOTBAR:
 		var chip_rect := ColorRect.new()
 		var color := Blocks.color_of(block)
 		chip_rect.color = Color(color.r, color.g, color.b, 1.0)
-		chip_rect.custom_minimum_size = Vector2(22, 22)
+		chip_rect.custom_minimum_size = Vector2(11, 18)
+		chip_rect.tooltip_text = Blocks.display_name(block)
 		_hotbar.add_child(chip_rect)
 		_chips.append(chip_rect)
+	_selected_label = Label.new()
+	_selected_label.add_theme_font_size_override("font_size", 15)
+	_selected_label.add_theme_color_override("font_color", Color("ffd166"))
+	_selected_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
+	_selected_label.add_theme_constant_override("outline_size", 5)
+	_selected_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_selected_label.offset_top = -76
+	_selected_label.offset_bottom = -58
+	_selected_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_selected_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(_selected_label)
 
 	if world != null:
 		world.treasures_changed.connect(_refresh_identity)
@@ -150,10 +165,11 @@ func _process(_delta: float) -> void:
 		return
 	if player.hotbar_index != _last_index:
 		_last_index = player.hotbar_index
+		_selected_label.text = Blocks.display_name(Blocks.HOTBAR[_last_index])
 		for i in _chips.size():
 			var chip: ColorRect = _chips[i]
 			var selected := i == _last_index
-			chip.custom_minimum_size = Vector2(30, 30) if selected else Vector2(22, 22)
+			chip.custom_minimum_size = Vector2(18, 26) if selected else Vector2(11, 18)
 			var color := Blocks.color_of(Blocks.HOTBAR[i])
 			chip.color = Color(color.r, color.g, color.b, 1.0) if selected \
 				else Color(color.r * 0.75, color.g * 0.75, color.b * 0.75, 0.85)

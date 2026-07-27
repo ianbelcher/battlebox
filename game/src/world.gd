@@ -51,6 +51,8 @@ var store: ChunkStore = null
 var _player_state: Dictionary = {}   # id -> {pos: Vector3, treasures: int, name: String}
 var _chunk_send_queues: Dictionary = {}  # peer -> Array[Vector2i]
 var _saplings: Array = []            # [{pos: Vector3i, at_msec: int}]
+var _bombs: Array = []               # [{pos: Vector3i, at_msec: int}]
+var _rockets: Array = []             # [{pos: Vector3i, at_msec: int}]
 var _critters: Dictionary = {}       # id -> {kind, pos, target, speed, think}
 var _next_critter_id := 1
 var _known_roster_ids: Dictionary = {}
@@ -102,6 +104,7 @@ func _process(delta: float) -> void:
 	if multiplayer.is_server():
 		_drain_chunk_queues()
 		_server_dawn_check()
+		_server_tick_bombs()
 
 ## Flush everything on clean shutdown (docker stop / pod reschedule); the
 ## 25s autosave bounds losses if the process is killed hard.
@@ -252,10 +255,19 @@ func sv_edit(slot: int, pos: Vector3i, block: int) -> void:
 	else:
 		if not (block in Blocks.HOTBAR):
 			return
-		if current != Blocks.AIR and current != Blocks.TALL_GRASS:
+		if current != Blocks.AIR and current != Blocks.TALL_GRASS \
+				and not Blocks.is_liquid(current):
 			return
-		if block == Blocks.SAPLING:
-			_saplings.append({"pos": pos, "at_msec": Time.get_ticks_msec()})
+		match block:
+			Blocks.SAPLING:
+				_saplings.append({"pos": pos, "at_msec": Time.get_ticks_msec()})
+			Blocks.BOOM:
+				_bombs.append({"pos": pos, "at_msec": Time.get_ticks_msec() + 3000})
+				cl_fuse_fx.rpc(pos)
+			Blocks.FIREWORK:
+				_rockets.append({"pos": pos, "at_msec": Time.get_ticks_msec() + 1200})
+			Blocks.SPONGE:
+				_server_drain(pos)
 	store.set_block(pos, block)
 	cl_edit.rpc(pos, block, id)
 
@@ -265,6 +277,70 @@ func sv_pet(slot: int, critter_id: int) -> void:
 		return
 	if _critters.has(critter_id):
 		cl_pet.rpc(critter_id)
+
+## Boom blocks explode after their fuse; fireworks launch. Both checked
+## every frame (the lists are tiny).
+func _server_tick_bombs() -> void:
+	var now := Time.get_ticks_msec()
+	var pending: Array = []
+	for entry: Dictionary in _bombs:
+		if now < entry.at_msec:
+			pending.append(entry)
+		elif store.get_block(entry.pos) == Blocks.BOOM:  # not defused by digging
+			_server_explode(entry.pos)
+	_bombs = pending
+	pending = []
+	for entry: Dictionary in _rockets:
+		if now < entry.at_msec:
+			pending.append(entry)
+		elif store.get_block(entry.pos) == Blocks.FIREWORK:
+			store.set_block(entry.pos, Blocks.AIR)
+			cl_batch.rpc([entry.pos], Blocks.AIR)
+			cl_firework_fx.rpc(entry.pos)
+	_rockets = pending
+
+const BOOM_RADIUS := 3.2
+
+func _server_explode(origin: Vector3i) -> void:
+	var cleared: Array = []
+	var reach := int(ceil(BOOM_RADIUS))
+	for dy in range(-reach, reach + 1):
+		for dz in range(-reach, reach + 1):
+			for dx in range(-reach, reach + 1):
+				if Vector3(dx, dy, dz).length() > BOOM_RADIUS:
+					continue
+				var pos := origin + Vector3i(dx, dy, dz)
+				var block := store.get_block(pos)
+				if block == Blocks.AIR or Blocks.is_liquid(block) or not Blocks.is_breakable(block):
+					continue
+				# Chain reaction: other boom blocks in the blast go off too.
+				if block == Blocks.BOOM and pos != origin:
+					var already := false
+					for entry: Dictionary in _bombs:
+						if entry.pos == pos:
+							already = true
+					if not already:
+						_bombs.append({"pos": pos, "at_msec": Time.get_ticks_msec() + 350})
+					continue
+				store.set_block(pos, Blocks.AIR)
+				cleared.append(pos)
+	cl_batch.rpc(cleared, Blocks.AIR)
+	cl_boom_fx.rpc(origin)
+
+## Sponges drink every liquid within reach the moment they're placed.
+func _server_drain(origin: Vector3i) -> void:
+	var cleared: Array = []
+	for dy in range(-4, 5):
+		for dz in range(-4, 5):
+			for dx in range(-4, 5):
+				if Vector3(dx, dy, dz).length() > 3.8:
+					continue
+				var pos := origin + Vector3i(dx, dy, dz)
+				if Blocks.is_liquid(store.get_block(pos)):
+					store.set_block(pos, Blocks.AIR)
+					cleared.append(pos)
+	if not cleared.is_empty():
+		cl_batch.rpc(cleared, Blocks.AIR)
 
 ## Saplings grow into little trees after a couple of minutes.
 func _server_tick_growth() -> void:
@@ -537,14 +613,157 @@ func cl_edit(pos: Vector3i, block: int, by_id: String) -> void:
 	if by_id.is_empty():
 		return  # world magic (tree growth, dawn flowers) is quiet
 	if block == Blocks.AIR:
-		if old > 0 and Blocks.is_collectible(old):
+		if old == Blocks.CONFETTI:
+			# Party popper! Confetti everywhere and a little cheer.
+			Sfx.play("cheer")
+			for color in [Color("ff6b6b"), Color("ffd166"), Color("4a9df8"), Color("ef8fc0")]:
+				_burst_particles(pos, color)
+			_flash_light(Vector3(pos) + Vector3(0.5, 0.5, 0.5), Color("ffd166"), 3.0)
+		elif old > 0 and Blocks.is_collectible(old):
 			Sfx.play("collect")
 		else:
 			Sfx.play("dig")
-		if old > 0:
+		if old > 0 and old != Blocks.CONFETTI:
 			_burst_particles(pos, Blocks.color_of(old))
 	else:
 		Sfx.play("place")
+
+## Bulk terrain change (explosions, sponge drains) — one message, not one
+## per block.
+@rpc("authority", "reliable")
+func cl_batch(cells: Array, block: int) -> void:
+	if chunks == null:
+		return
+	for cell in cells:
+		if cell is Vector3i:
+			chunks.apply_edit(cell, block)
+
+@rpc("authority", "reliable")
+func cl_fuse_fx(pos: Vector3i) -> void:
+	if chunks == null:
+		return
+	var sparks := CPUParticles3D.new()
+	sparks.position = Vector3(pos) + Vector3(0.5, 1.05, 0.5)
+	sparks.amount = 10
+	sparks.lifetime = 0.4
+	sparks.direction = Vector3.UP
+	sparks.spread = 25.0
+	sparks.initial_velocity_min = 1.0
+	sparks.initial_velocity_max = 2.2
+	sparks.gravity = Vector3(0, -4, 0)
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.04
+	mesh.height = 0.08
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.85, 0.3)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.7, 0.2)
+	mat.emission_energy_multiplier = 3.0
+	mesh.material = mat
+	sparks.mesh = mesh
+	add_child(sparks)
+	sparks.emitting = true
+	get_tree().create_timer(3.4).timeout.connect(func() -> void:
+		if is_instance_valid(sparks):
+			sparks.queue_free())
+
+@rpc("authority", "reliable")
+func cl_boom_fx(pos: Vector3i) -> void:
+	if chunks == null:
+		return
+	var center := Vector3(pos) + Vector3(0.5, 0.5, 0.5)
+	Sfx.play("boom")
+	_explosion_particles(center)
+	_flash_light(center, Color(1.0, 0.7, 0.35), 6.0)
+	# Harmless, hilarious: anyone close gets launched.
+	for child in players.get_children():
+		if child is Player and child.is_local:
+			var away: Vector3 = child.position - center
+			var dist := away.length()
+			if dist < 7.0:
+				away.y = 0
+				var push := (7.0 - dist) / 7.0
+				child.velocity += away.normalized() * 10.0 * push + Vector3.UP * 9.0 * push
+				child.on_floor = false
+
+@rpc("authority", "reliable")
+func cl_firework_fx(pos: Vector3i) -> void:
+	if chunks == null:
+		return
+	Sfx.play("whoosh")
+	var burst_at := Vector3(pos) + Vector3(0.5, 11.0, 0.5)
+	get_tree().create_timer(0.7).timeout.connect(func() -> void:
+		var colors := [Color("ff6b6b"), Color("ffd166"), Color("4a9df8"),
+			Color("51c979"), Color("ef8fc0")]
+		Sfx.play("pop")
+		Sfx.play("collect", -4.0)
+		_flash_light(burst_at, colors[randi() % colors.size()], 4.0)
+		for ring in 2:
+			var burst := CPUParticles3D.new()
+			burst.position = burst_at
+			burst.amount = 40
+			burst.lifetime = 1.2
+			burst.one_shot = true
+			burst.explosiveness = 1.0
+			burst.spread = 180.0
+			burst.initial_velocity_min = 5.0 + ring * 3.0
+			burst.initial_velocity_max = 7.0 + ring * 3.0
+			burst.gravity = Vector3(0, -3, 0)
+			var mesh := SphereMesh.new()
+			mesh.radius = 0.06
+			mesh.height = 0.12
+			var mat := StandardMaterial3D.new()
+			var color: Color = colors[(randi() + ring) % colors.size()]
+			mat.albedo_color = color
+			mat.emission_enabled = true
+			mat.emission = color
+			mat.emission_energy_multiplier = 2.5
+			mesh.material = mat
+			burst.mesh = mesh
+			add_child(burst)
+			burst.emitting = true
+			get_tree().create_timer(2.0).timeout.connect(func() -> void:
+				if is_instance_valid(burst):
+					burst.queue_free()))
+
+func _explosion_particles(center: Vector3) -> void:
+	var burst := CPUParticles3D.new()
+	burst.position = center
+	burst.amount = 40
+	burst.lifetime = 0.8
+	burst.one_shot = true
+	burst.explosiveness = 1.0
+	burst.spread = 180.0
+	burst.initial_velocity_min = 6.0
+	burst.initial_velocity_max = 11.0
+	burst.gravity = Vector3(0, -8, 0)
+	burst.mesh = BoxMesh.new()
+	(burst.mesh as BoxMesh).size = Vector3(0.22, 0.22, 0.22)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.55, 0.2)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.45, 0.1)
+	mat.emission_energy_multiplier = 2.0
+	burst.mesh.material = mat
+	add_child(burst)
+	burst.emitting = true
+	get_tree().create_timer(1.5).timeout.connect(func() -> void:
+		if is_instance_valid(burst):
+			burst.queue_free())
+
+func _flash_light(center: Vector3, color: Color, energy: float) -> void:
+	var flash := OmniLight3D.new()
+	flash.position = center
+	flash.light_color = color
+	flash.light_energy = energy
+	flash.omni_range = 14.0
+	flash.shadow_enabled = false
+	add_child(flash)
+	var tween := create_tween()
+	tween.tween_property(flash, "light_energy", 0.0, 0.5)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(flash):
+			flash.queue_free())
 
 @rpc("authority", "reliable")
 func cl_treasures(id: String, count: int) -> void:

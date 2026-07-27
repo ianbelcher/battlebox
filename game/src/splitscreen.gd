@@ -12,8 +12,9 @@ extends Control
 ## things), and stepped zoom. Both tween smoothly toward their snap targets.
 const CAM_DISTANCE := 42.4
 const CAM_HEIGHT := 37.0
-const ZOOM_SIZES: Array[float] = [10.0, 15.0, 21.0, 28.0]
-const DEFAULT_ZOOM := 1
+## From nearly-on-your-shoulder to a big map-like overview.
+const ZOOM_SIZES: Array[float] = [7.0, 10.0, 15.0, 22.0, 32.0, 48.0]
+const DEFAULT_ZOOM := 2
 
 var world: Node = null
 var _cells: Array = []   # [{slot:int(-1=spectator), container, viewport, rig, cam, hud,
@@ -213,6 +214,13 @@ func _process(delta: float) -> void:
 		var yaw: float = cell.yaw
 		var offset := Vector3(sin(yaw) * CAM_DISTANCE, CAM_HEIGHT, cos(yaw) * CAM_DISTANCE)
 		cam.look_at_from_position(rig.position + offset, rig.position + Vector3(0, 1.0, 0), Vector3.UP)
+	# Stream more chunks when someone is zoomed way out.
+	if world != null and world.chunks != null:
+		var max_size := 0.0
+		for cell: Dictionary in _cells:
+			if cell.cam != null and not cell.get("fp", false):
+				max_size = maxf(max_size, float(cell.size))
+		world.chunks.view_radius = clampi(4 + int(max_size / 7.0), 5, 9)
 	# The mouse belongs to the keyboard player while they're in first person.
 	var want_capture := false
 	for cell: Dictionary in _cells:

@@ -19,4 +19,5 @@ void fragment() {
 	ALPHA = clamp(COLOR.a + fres * 0.3, 0.0, 0.95);
 	ROUGHNESS = 0.07;
 	SPECULAR = 0.7;
+	EMISSION = pow(COLOR.rgb, vec3(2.2)) * UV2.y;
 }

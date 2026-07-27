@@ -208,6 +208,20 @@ func _maybe_start_autotest() -> void:
 	get_tree().create_timer(3.0).timeout.connect(func() -> void:
 		for slot: int in Game.local_inputs.keys():
 			Game.cycle_local_style(slot, ["body", "shirt", "hat"][slot % 3], 1))
+	# WORLD_AUTOTEST_BLOCK=<id>: pin every bot's hotbar to one block so a
+	# smoke test can hammer a specific mechanic (booms, warp stones...).
+	var forced := OS.get_environment("WORLD_AUTOTEST_BLOCK")
+	if forced.is_valid_int():
+		var index := Blocks.HOTBAR.find(forced.to_int())
+		if index >= 0:
+			var pin := Timer.new()
+			pin.wait_time = 2.0
+			pin.timeout.connect(func() -> void:
+				for child in Game.world.players.get_children():
+					if child is Player and child.is_local:
+						child.hotbar_index = index)
+			add_child(pin)
+			pin.start()
 
 func _on_server_lost() -> void:
 	Net.go_offline()

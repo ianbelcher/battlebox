@@ -35,6 +35,12 @@ func _ready() -> void:
 		"pet": _notes([[988, 0.07], [1319, 0.09], [1760, 0.14]], 0.45, "soft"),
 		"pop": _notes([[988, 0.06]], 0.45, "soft"),
 		"splash": _notes([[740, 0.04], [520, 0.05], [620, 0.06]], 0.4, "soft"),
+		"boing": _notes([[240, 0.05], [420, 0.06], [660, 0.09]], 0.55, "soft"),
+		"whoosh": _notes([[320, 0.05], [480, 0.05], [720, 0.06], [1080, 0.1]], 0.4, "soft"),
+		"boom": _boom(),
+		"note": _notes([[523, 0.12]], 0.55),
+		"warp": _notes([[880, 0.06], [660, 0.06], [440, 0.07], [880, 0.0], [1320, 0.12]], 0.5, "soft"),
+		"cheer": _cheer(),
 	}
 	_ambient_player = AudioStreamPlayer.new()
 	_ambient_player.volume_db = -16.0
@@ -44,7 +50,53 @@ func _ready() -> void:
 		"birds": _birds(),
 	}
 
-const STABLE_PITCH := ["join", "collect", "pet"]
+const STABLE_PITCH := ["join", "collect", "pet", "cheer", "warp"]
+
+## Deep rumble + noise burst for the boom blocks.
+func _boom() -> AudioStreamWAV:
+	var seconds := 0.9
+	var count := int(seconds * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(count)
+	var smooth := 0.0
+	for i in count:
+		var t := float(i) / RATE
+		var env := exp(-t * 4.5) * minf(1.0, i / (0.002 * RATE))
+		smooth = smooth * 0.72 + (randf() * 2.0 - 1.0) * 0.28
+		var rumble := sin(TAU * 60.0 * t * (1.0 + 0.8 * exp(-t * 8.0)))
+		buf[i] = (rumble * 0.8 + smooth * 0.5) * env
+	return _to_wav(buf, 0.75)
+
+## Crowd cheer: a noise swell plus a few descending whoops and claps.
+func _cheer() -> AudioStreamWAV:
+	var seconds := 1.9
+	var count := int(seconds * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(count)
+	var smooth := 0.0
+	for i in count:
+		var t := float(i) / RATE
+		smooth = smooth * 0.8 + (randf() * 2.0 - 1.0) * 0.2
+		var env := minf(t / 0.3, 1.0) * exp(-maxf(0.0, t - 0.7) * 2.2)
+		buf[i] += smooth * env * 0.8
+	for whoop in 3:
+		var start := 0.08 + whoop * 0.17
+		var whoop_len := int(0.34 * RATE)
+		var start_i := int(start * RATE)
+		var phase := 0.0
+		for i in whoop_len:
+			var frac := float(i) / whoop_len
+			phase += TAU * lerpf(880.0 - whoop * 90.0, 470.0, frac) / RATE
+			var env := sin(PI * frac)
+			if start_i + i < count:
+				buf[start_i + i] += sin(phase) * env * 0.5
+	for clap in 14:
+		var start_i := int((0.15 + randf() * 1.3) * RATE)
+		var clap_len := int(0.009 * RATE)
+		for i in clap_len:
+			if start_i + i < count:
+				buf[start_i + i] += (randf() * 2.0 - 1.0) * (1.0 - float(i) / clap_len) * 0.6
+	return _to_wav(buf, 0.6)
 
 func play(clip: String, volume_db := 0.0, pitch := 0.0) -> void:
 	if _players.is_empty() or not _streams.has(clip):

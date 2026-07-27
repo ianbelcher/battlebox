@@ -55,6 +55,7 @@ var _colors := {}
 var _uv2s := {}
 var _indices := {}
 var lights: Array = []
+var teleporters: Array = []   # local-space Vector3i of warp stones
 
 func _init() -> void:
 	for key in ["opaque", "plants", "trans"]:
@@ -109,6 +110,8 @@ func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Di
 					_add_cube(block, x, y, z, cx, cz, "trans")
 					continue
 				_add_cube(block, x, y, z, cx, cz, "opaque")
+				if block == Blocks.TELEPORT:
+					teleporters.append(Vector3i(x, y, z))
 				var light := Blocks.light_of(block)
 				if light > 0.0:
 					lights.append({
@@ -130,6 +133,7 @@ func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Di
 		arrays[Mesh.ARRAY_INDEX] = _indices[key]
 		result[key] = arrays
 	result["lights"] = lights
+	result["teleporters"] = teleporters
 	return result
 
 func _jitter(x: int, y: int, z: int, cx: int, cz: int) -> float:
@@ -142,9 +146,9 @@ func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String
 	var sway := Blocks.sway_of(block)
 	var emit := Blocks.emit_of(block)
 	var translucent := key == "trans"
-	var is_water := block == Blocks.WATER
-	# Water drops its surface a bit below the block top, like Minecraft.
-	var top_y := 0.875 if is_water and _block_at(x, y + 1, z) != Blocks.WATER else 1.0
+	var is_liquid := Blocks.is_liquid(block)
+	# Liquids drop their surface a bit below the block top, like Minecraft.
+	var top_y := 0.875 if is_liquid and _block_at(x, y + 1, z) != block else 1.0
 
 	for face_index in 6:
 		var face: Array = FACES[face_index]
@@ -155,7 +159,7 @@ func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String
 			# the same material (no internal water walls) or opaque blocks.
 			if neighbor == block or Blocks.is_opaque(neighbor):
 				continue
-			if is_water and neighbor == Blocks.ICE:
+			if is_liquid and neighbor == Blocks.ICE:
 				continue
 		else:
 			if Blocks.is_opaque(neighbor):
@@ -192,9 +196,9 @@ func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String
 			var brightness := shade * jitter * (1.0 - AO_STEP * ao[i])
 			var out := Color(color.r * brightness, color.g * brightness, color.b * brightness, color.a)
 			_colors[key].append(out)
-			# Leaves sway everywhere; water waves only on its surface.
+			# Leaves sway everywhere; liquids wave only on their surface.
 			var vertex_sway := sway
-			if is_water:
+			if is_liquid:
 				vertex_sway = 1.0 if n.y == 1 else 0.0
 			_uv2s[key].append(Vector2(vertex_sway, emit))
 		# Flip the quad diagonal to match the AO gradient (kills the classic

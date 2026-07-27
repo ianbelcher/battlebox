@@ -110,6 +110,15 @@ func cycle_direction() -> int:
 				return -1
 	return 0
 
+## Descend while flying (Shift / left trigger).
+func is_descend_pressed() -> bool:
+	match kind:
+		Kind.KEYBOARD_WASD:
+			return Input.is_physical_key_pressed(KEY_SHIFT)
+		Kind.GAMEPAD:
+			return Input.get_joy_axis(device, JOY_AXIS_TRIGGER_LEFT) > 0.5
+	return false
+
 ## Toggle between the isometric view and first person (T / gamepad Y).
 func is_view_toggle_pressed() -> bool:
 	match kind:

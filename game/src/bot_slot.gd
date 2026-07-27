@@ -25,7 +25,14 @@ func get_move_vector() -> Vector2:
 	return Vector2(cos(angle), sin(angle)) * 0.9
 
 func is_primary_pressed() -> bool:
+	# Normal hops, plus an occasional quick double-tap to toggle flight.
+	var fly_phase := fmod(_t() * 0.027 + bot_index * 0.45, 1.0)
+	if fly_phase < 0.006 or (fly_phase > 0.009 and fly_phase < 0.015):
+		return true
 	return fmod(_t() * 0.31 + bot_index * 0.4, 1.0) > 0.92
+
+func is_descend_pressed() -> bool:
+	return fmod(_t() * 0.09 + bot_index * 0.6, 1.0) < 0.15
 
 func is_dig_pressed() -> bool:
 	return fmod(_t() * 0.2 + bot_index * 0.7, 1.0) < 0.06

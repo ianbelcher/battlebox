@@ -17,7 +17,7 @@ const EDIT_REPEAT := 0.24
 ## spins so "stick up" always moves away from the camera.
 const ISO_ROT := PI / 4.0
 
-enum Anim { IDLE, WALK, AIR, SWIM }
+enum Anim { IDLE, WALK, AIR, SWIM, FLY }
 
 var player_id := ""
 var slot := -1
@@ -38,6 +38,14 @@ var leave_hold := 0.0
 var fp_mode := false
 var look_yaw := 0.0
 var look_pitch := 0.0
+
+## Flight (double-tap jump toggles; landing exits).
+var fly_mode := false
+var _prev_jump := false
+var _last_jump_ms := -10000
+var _launch_latched := false
+var _last_note_cell := Vector3i(0, -99, 0)
+var _warp_cooldown := 0.0
 
 var _avatar: Node3D
 var _tag: Label3D
@@ -197,7 +205,7 @@ func _local_move(delta: float) -> void:
 	var move := input.get_move_vector()
 	var dir := Vector3(move.x, 0, move.y).rotated(Vector3.UP, camera_yaw)
 	var feet := Vector3i(floori(position.x), floori(position.y + 0.3), floori(position.z))
-	in_water = _chunks().get_block(feet) == Blocks.WATER
+	in_water = Blocks.is_liquid(_chunks().get_block(feet))
 
 	# If a block appears where we're standing (a place raced our movement, or
 	# a friend walled us in), gently pop upward instead of being entombed.
@@ -209,22 +217,43 @@ func _local_move(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 
+	# Double-tap jump toggles flight (tap again or land to come down).
+	var jump_now := input.is_jump_pressed()
+	if jump_now and not _prev_jump:
+		var now := Time.get_ticks_msec()
+		if now - _last_jump_ms < 320:
+			fly_mode = not fly_mode
+			if fly_mode:
+				velocity.y = 3.0
+				Sfx.play("whoosh", -6.0)
+		_last_jump_ms = now
+	_prev_jump = jump_now
+
 	var speed := SWIM_SPEED if in_water else WALK_SPEED
+	if fly_mode:
+		speed = 7.5
 	velocity.x = dir.x * speed
 	velocity.z = dir.z * speed
 	if dir.length_squared() > 0.01:
 		heading = dir.normalized()
 
-	if in_water:
+	if fly_mode:
+		var vert := 0.0
+		if jump_now:
+			vert = 5.5
+		elif input.is_descend_pressed():
+			vert = -5.5
+		velocity.y = lerpf(velocity.y, vert, minf(1.0, delta * 8.0))
+	elif in_water:
 		velocity.y -= GRAVITY * 0.25 * delta
 		velocity.y = maxf(velocity.y, -2.0)
-		if input.is_jump_pressed():
+		if jump_now:
 			velocity.y = minf(velocity.y + 30.0 * delta, 4.0)
 		# Buoyancy beats gravity so kids bob back up to the surface.
 		velocity.y = minf(velocity.y + 8.0 * delta, 2.5)
 	else:
 		velocity.y -= GRAVITY * delta
-		if input.is_jump_pressed() and on_floor:
+		if jump_now and on_floor:
 			velocity.y = JUMP_VELOCITY
 			Sfx.play("jump", -6.0)
 
@@ -249,10 +278,12 @@ func _local_move(delta: float) -> void:
 	var vertical := velocity.y * delta
 	var v_attempt := next + Vector3(0, vertical, 0)
 	if _collides(v_attempt):
+		var impact := velocity.y
 		if velocity.y < 0.0:
 			if not on_floor and velocity.y < -8.0:
 				Sfx.play("land", -8.0)
 			on_floor = true
+			fly_mode = false  # touching down ends flight, like Minecraft
 			# Land exactly on top of the block we hit (unless we're inside
 			# not-yet-streamed terrain, where we just hold position).
 			var landed := next
@@ -260,6 +291,13 @@ func _local_move(delta: float) -> void:
 			if landed.y <= next.y and not _collides(landed):
 				next = landed
 		velocity.y = 0.0
+		# Bouncy blocks throw you back up with most of your fall.
+		if impact < -3.0:
+			var under := Vector3i(floori(next.x), floori(next.y) - 1, floori(next.z))
+			if _chunks().get_block(under) == Blocks.BOUNCY:
+				velocity.y = clampf(-impact * 0.85, 6.0, 16.0)
+				on_floor = false
+				Sfx.play("boing")
 	else:
 		next = v_attempt
 		on_floor = false
@@ -269,8 +307,11 @@ func _local_move(delta: float) -> void:
 		rotation.y = look_yaw
 	else:
 		rotation.y = lerp_angle(rotation.y, atan2(-heading.x, -heading.z), minf(1.0, delta * 12.0))
+	_check_floor_machines(delta)
 
-	if in_water:
+	if fly_mode:
+		anim = Anim.FLY
+	elif in_water:
 		anim = Anim.SWIM
 	elif not on_floor:
 		anim = Anim.AIR
@@ -278,6 +319,41 @@ func _local_move(delta: float) -> void:
 		anim = Anim.WALK
 	else:
 		anim = Anim.IDLE
+
+## Blocks that do something when stood on: launch pads, music blocks and
+## warp stones (teleport to the nearest other warp stone).
+func _check_floor_machines(delta: float) -> void:
+	_warp_cooldown = maxf(0.0, _warp_cooldown - delta)
+	var below := Vector3i(floori(position.x), floori(position.y) - 1, floori(position.z))
+	var block := _chunks().get_block(below)
+	if block != Blocks.LAUNCHER:
+		_launch_latched = false
+	if block != Blocks.NOTE:
+		_last_note_cell = NO_TARGET
+	if not on_floor:
+		return
+	match block:
+		Blocks.LAUNCHER:
+			if not _launch_latched:
+				_launch_latched = true
+				velocity.y = 17.0
+				on_floor = false
+				Sfx.play("whoosh")
+		Blocks.NOTE:
+			if below != _last_note_cell:
+				_last_note_cell = below
+				var semitone := posmod(below.y * 3 + below.x + below.z, 13)
+				Sfx.play("note", -2.0, pow(2.0, semitone / 12.0))
+		Blocks.TELEPORT:
+			if _warp_cooldown <= 0.0:
+				var target: Vector3 = _chunks().nearest_teleporter(Vector3(below))
+				if target != Vector3.INF:
+					world._burst_particles(below, Blocks.color_of(Blocks.TELEPORT))
+					position = target + Vector3(0.5, 1.01, 0.5)
+					velocity = Vector3.ZERO
+					_warp_cooldown = 3.0
+					world._burst_particles(Vector3i(target), Blocks.color_of(Blocks.TELEPORT))
+					Sfx.play("warp")
 
 # ------------------------------------------------------------------
 # Local actions: dig / place / hotbar / leave
@@ -358,7 +434,7 @@ func _find_fp_targets() -> Array:
 		if cell != last_cell:
 			last_cell = cell
 			var block := chunks.get_block(cell)
-			if block != Blocks.AIR and block != Blocks.WATER and not Blocks.is_cross(block):
+			if block != Blocks.AIR and not Blocks.is_liquid(block) and not Blocks.is_cross(block):
 				if Blocks.is_breakable(block):
 					return [cell, last_open]
 				return [NO_TARGET, last_open]
@@ -384,12 +460,12 @@ func _find_dig_target() -> Vector3i:
 	for dy in [0, 1, -1]:
 		var cell := _front_cell(dy)
 		var block := chunks.get_block(cell)
-		if block != Blocks.AIR and block != Blocks.WATER and Blocks.is_breakable(block):
+		if block != Blocks.AIR and not Blocks.is_liquid(block) and Blocks.is_breakable(block):
 			return cell
 	# Nothing ahead: dig straight down (staircase into the hill).
 	var below := own + Vector3i(0, -1, 0)
 	var under := chunks.get_block(below)
-	if Blocks.is_breakable(under) and under != Blocks.WATER:
+	if Blocks.is_breakable(under) and not Blocks.is_liquid(under):
 		return below
 	return NO_TARGET
 
@@ -398,7 +474,7 @@ func _find_place_target() -> Vector3i:
 	var candidates := [_front_cell(0), _front_cell(1), _front_cell(-1)]
 	for cell: Vector3i in candidates:
 		var block := chunks.get_block(cell)
-		if block == Blocks.AIR or block == Blocks.TALL_GRASS or block == Blocks.WATER:
+		if block == Blocks.AIR or block == Blocks.TALL_GRASS or Blocks.is_liquid(block):
 			# Never place a block inside yourself.
 			var center := Vector3(cell) + Vector3(0.5, 0.5, 0.5)
 			var delta := center - (position + Vector3(0, HEIGHT * 0.5, 0))
@@ -444,6 +520,11 @@ func _animate(delta: float) -> void:
 			_avatar.position.y = sin(_bob_time * 4.0) * 0.06 - 0.35
 			_avatar.scale = _avatar.scale.lerp(Vector3.ONE, minf(1.0, delta * 6.0))
 			swing = sin(_bob_time * 5.0) * 0.9
+		Anim.FLY:
+			# Superhero hover: arms out, legs together, gentle bob.
+			_avatar.position.y = 0.15 + sin(_bob_time * 2.6) * 0.05
+			_avatar.scale = _avatar.scale.lerp(Vector3.ONE, minf(1.0, delta * 6.0))
+			arms_up = 1.35
 		_:
 			_avatar.position.y = sin(_bob_time * 2.2) * 0.015
 			_avatar.scale = _avatar.scale.lerp(Vector3.ONE, minf(1.0, delta * 8.0))

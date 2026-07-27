@@ -30,18 +30,37 @@ the Minecraft save is never modified.
 
 One keyboard player per machine (normal WASD controls) plus any number of
 gamepads. Each player spins their own isometric camera in quarter turns (to
-peek behind hills and houses) and steps through four zoom levels; movement
-stays camera-relative. **First person** (T / gamepad Y) puts you behind your
-character's eyes — mouse look with left-click dig / right-click place on
-keyboard, right-stick look on gamepads, Esc or T to come back out. It's the
-view for digging yourself out of a hole (or mining straight down... good
-luck). Characters are chunky mini-figures — click your name chip
+peek behind hills and houses) and steps through six zoom levels, from
+over-the-shoulder to a map-like overview (chunk streaming widens
+automatically when zoomed out); movement stays camera-relative.
+**First person** (T / gamepad Y) puts you behind your character's eyes —
+mouse look with left-click dig / right-click place on keyboard, right-stick
+look on gamepads, Esc or T to come back out. It's the view for digging
+yourself out of a hole. **Double-tap jump to fly** — hold jump to rise,
+Shift / left trigger to sink, land (or double-tap again) to stop; flyers
+strike a superhero pose. Characters are chunky mini-figures — click your
+name chip
 to type a name, and click the three swatches to cycle **skin tone**,
 **shirt color** and **hat** (7 of each, remembered per device). Blocks are
 infinite (creative-style); digging flowers, shells,
 mushrooms and berries counts treasures (✦). Saplings grow into trees after a
 couple of minutes, fresh flowers bloom at dawn, fireflies come out at night,
 and walking up to a critter and pressing dig pets it.
+
+The hotbar is ~48 blocks: wood/stone/wool building families, gold and
+diamond, a glow set (glowstone, three crystal colors, harmless swimmable
+"glow goo" lava — all real lights), and the **fun machines**:
+
+| Block | What it does |
+| ----- | ------------ |
+| Boom Block | 3-second sparking fuse, then a real crater. Blast launches nearby players (harmlessly) and sets off other boom blocks — chain reactions welcome |
+| Firework | Launches after a moment and bursts in colour over the world |
+| Bouncy Block | Trampoline — returns most of your fall, higher each drop |
+| Launch Pad | Step on, get flung skyward |
+| Music Block | Plays a marimba note when stepped on, pitched by position — build a walkable tune |
+| Sponge | Instantly drinks all water/goo nearby — drain a pond |
+| Warp Stone | Stand on one, teleport to the nearest other one — build portal networks |
+| Party Popper | Dig it: confetti and a crowd cheer |
 
 ## The tech (what's being stress-tested)
 
