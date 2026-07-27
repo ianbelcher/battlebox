@@ -338,8 +338,8 @@ func _update_minimap() -> void:
 	var image := Image.create(96, 96, false, Image.FORMAT_RGB8)
 	for py in 96:
 		for px in 96:
-			var wx := int(center.x) + (px - 48) * 2
-			var wz := int(center.z) + (py - 48) * 2
+			var wx := int(center.x) + (px - 48) * 4
+			var wz := int(center.z) + (py - 48) * 4
 			var block: int = Game.world.chunks.top_block(wx, wz)
 			var color := Color(0.06, 0.07, 0.1)
 			if block > 0:
@@ -347,8 +347,8 @@ func _update_minimap() -> void:
 			image.set_pixel(px, py, color)
 	for child in Game.world.players.get_children():
 		if child is Player:
-			var px := 48 + int((child.position.x - center.x) / 2.0)
-			var py := 48 + int((child.position.z - center.z) / 2.0)
+			var px := 48 + int((child.position.x - center.x) / 4.0)
+			var py := 48 + int((child.position.z - center.z) / 4.0)
 			if px >= 1 and px < 95 and py >= 1 and py < 95:
 				var dot := Color("ffd166") if child.is_local else Color("ff4426")
 				for dy in range(-1, 2):

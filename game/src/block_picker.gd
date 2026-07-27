@@ -52,8 +52,16 @@ func _init() -> void:
 	for i in entries.size():
 		var entry: Dictionary = entries[i]
 		var chip := Panel.new()
-		chip.custom_minimum_size = Vector2(34, 34)
+		chip.custom_minimum_size = Vector2(40, 40)
 		chip.mouse_filter = Control.MOUSE_FILTER_STOP
+		if entry.kind == "block":
+			var icon := BlockIcon.new(int(entry.id))
+			icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			icon.offset_left = 4
+			icon.offset_top = 4
+			icon.offset_right = -4
+			icon.offset_bottom = -4
+			chip.add_child(icon)
 		if entry.kind == "structure":
 			var mark := Label.new()
 			mark.text = "⌂"
@@ -78,7 +86,7 @@ func _init() -> void:
 		_chips.append(chip)
 	var hint := Label.new()
 	hint.text = "move: WASD / stick   choose: Space / A / click   close: E"
-	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_font_size_override("font_size", 16)
 	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(hint)
@@ -137,7 +145,8 @@ func _refresh() -> void:
 		var entry: Dictionary = _chips[i].get_meta("entry", entries[i])
 		var style := StyleBoxFlat.new()
 		var color: Color = entries[i].color
-		style.bg_color = Color(color.r, color.g, color.b, 1.0)
+		style.bg_color = Color(color.r, color.g, color.b, 1.0) if entries[i].kind == "structure" \
+			else Color(0.1, 0.11, 0.16)
 		style.set_corner_radius_all(6)
 		if i == focus_index:
 			style.border_color = Color.WHITE

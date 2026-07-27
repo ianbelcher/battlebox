@@ -11,7 +11,7 @@ extends RefCounted
 
 const RAW_CHUNK_BYTES := WorldGen.CHUNK_SIZE * WorldGen.CHUNK_SIZE * WorldGen.CHUNK_H
 ## Chunks farther than this (in chunks) from the origin are ocean border.
-const WORLD_RADIUS_CHUNKS := 24
+const WORLD_RADIUS_CHUNKS := 28
 
 var data_dir: String
 var source := "procedural"  # or "mca"
@@ -188,8 +188,8 @@ func _border_chunk() -> PackedByteArray:
 	for lz in 16:
 		for lx in 16:
 			data[WorldGen.idx(lx, 0, lz)] = Blocks.BEDROCK
-			for y in range(1, 12):
+			for y in range(1, 24):
 				data[WorldGen.idx(lx, y, lz)] = Blocks.STONE
-			for y in range(12, WorldGen.SEA_LEVEL + 1):
+			for y in range(24, WorldGen.SEA_LEVEL + 1):
 				data[WorldGen.idx(lx, y, lz)] = Blocks.WATER
 	return data

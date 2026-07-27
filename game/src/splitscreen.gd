@@ -10,10 +10,10 @@ extends Control
 
 ## Camera orbit: fixed pitch, four 90-degree yaw stops (spin to see behind
 ## things), and stepped zoom. Both tween smoothly toward their snap targets.
-const CAM_DISTANCE := 42.4
-const CAM_HEIGHT := 37.0
+const CAM_DISTANCE := 72.0
+const CAM_HEIGHT := 63.0
 ## From nearly-on-your-shoulder to a big map-like overview.
-const ZOOM_SIZES: Array[float] = [7.0, 10.0, 15.0, 22.0, 32.0, 48.0]
+const ZOOM_SIZES: Array[float] = [12.0, 17.0, 26.0, 38.0, 56.0, 80.0]
 const DEFAULT_ZOOM := 2
 
 var world: Node = null
@@ -160,9 +160,9 @@ func _process(delta: float) -> void:
 		if cell.slot < 0:
 			# Spectator: slow orbit around the spawn.
 			var spawn := Vector3(world.spawn_pos) if world != null else Vector3.ZERO
-			var offset := Vector3(cos(_orbit_angle), 0, sin(_orbit_angle)) * 34.0 + Vector3(0, 30, 0)
+			var offset := Vector3(cos(_orbit_angle), 0, sin(_orbit_angle)) * 60.0 + Vector3(0, 52, 0)
 			cam.look_at_from_position(spawn + offset, spawn, Vector3.UP)
-			cam.size = 22.0
+			cam.size = 38.0
 			continue
 		var player := _find_player(cell.slot)
 		if player == null:
@@ -217,7 +217,7 @@ func _process(delta: float) -> void:
 		for cell: Dictionary in _cells:
 			if cell.cam != null and not cell.get("fp", false):
 				max_size = maxf(max_size, float(cell.size))
-		world.chunks.view_radius = clampi(4 + int(max_size / 7.0), 5, 9)
+		world.chunks.view_radius = clampi(4 + int(max_size / 12.0), 5, 9)
 	# The mouse belongs to the keyboard player while they're in first person.
 	var want_capture := false
 	for cell: Dictionary in _cells:

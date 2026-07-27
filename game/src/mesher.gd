@@ -32,6 +32,7 @@ const CROSS_SIZES := {
 	Blocks.SAPLING: Vector2(0.6, 0.9),
 	Blocks.SHELL: Vector2(0.4, 0.35),
 	Blocks.BERRY_BUSH: Vector2(0.95, 0.9),
+	Blocks.FIRE: Vector2(1.0, 1.3),
 }
 
 ## Face table: [normal, u_axis, v_axis, shade]. Vertices are laid out

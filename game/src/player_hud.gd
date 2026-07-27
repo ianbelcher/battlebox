@@ -29,11 +29,12 @@ const GUIDE_TEXT := """Move: WASD / left stick        Jump: Space / A
 Double-tap jump = FLY (hold jump to rise, Shift / LT to sink, land to stop)
 
 Break block: LEFT CLICK / B         Place block: RIGHT CLICK / F / X
-Shoot: R / middle click / RT. Pick weapons with 1/2/3 (D-pad < >):
-1 BLASTER: hold to spray fast pellets - break soft stuff, light TNT
-2 BAZOOKA: big explosions. 3 FIRE: sets things burning!
-Materials matter: wood burns and breaks easy, stone laughs at
-pellets, STEEL only chips on a direct bazooka hit, DIAMOND never.
+Shoot: R / middle click / RT. Weapons: 1 BLASTER (hold to spray;
+breaks soft stuff, lights TNT from afar), 2 BAZOOKA (big booms).
+Explosions set grass and wood ON FIRE - it spreads like Minecraft
+and gutters out on stone. Materials matter: wood burns and breaks,
+stone shrugs off pellets, STEEL only chips on a direct bazooka
+hit, DIAMOND is untouchable.
 Blocks & building kits: E / D-pad up      Quick cycle: Tab / bumpers
 
 T / Y: switch between first person and overview
@@ -91,7 +92,7 @@ func _ready() -> void:
 		row.add_child(swatch)
 		_swatches[attr_name] = swatch
 	_name_label = Label.new()
-	_name_label.add_theme_font_size_override("font_size", 18)
+	_name_label.add_theme_font_size_override("font_size", 22)
 	_name_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	_name_label.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.pressed \
@@ -99,11 +100,11 @@ func _ready() -> void:
 			_edit_name())
 	row.add_child(_name_label)
 	_treasure_label = Label.new()
-	_treasure_label.add_theme_font_size_override("font_size", 18)
+	_treasure_label.add_theme_font_size_override("font_size", 22)
 	_treasure_label.add_theme_color_override("font_color", Color("ffd166"))
 	row.add_child(_treasure_label)
 	_hearts_label = Label.new()
-	_hearts_label.add_theme_font_size_override("font_size", 18)
+	_hearts_label.add_theme_font_size_override("font_size", 22)
 	_hearts_label.add_theme_color_override("font_color", Color("ff6b6b"))
 	row.add_child(_hearts_label)
 
@@ -128,10 +129,8 @@ func _ready() -> void:
 	# ~48 chips have to fit half a screen, so they're small; the selected one
 	# grows and its name shows above the bar.
 	for block: int in Blocks.HOTBAR:
-		var chip_rect := ColorRect.new()
-		var color := Blocks.color_of(block)
-		chip_rect.color = Color(color.r, color.g, color.b, 1.0)
-		chip_rect.custom_minimum_size = Vector2(11, 18)
+		var chip_rect := BlockIcon.new(block)
+		chip_rect.custom_minimum_size = Vector2(14, 20)
 		chip_rect.tooltip_text = Blocks.display_name(block)
 		_hotbar.add_child(chip_rect)
 		_chips.append(chip_rect)
@@ -169,7 +168,7 @@ func _ready() -> void:
 	_menu.add_child(_tabs)
 	var guide := Label.new()
 	guide.name = "How to Play"
-	guide.add_theme_font_size_override("font_size", 15)
+	guide.add_theme_font_size_override("font_size", 19)
 	guide.text = GUIDE_TEXT
 	_tabs.add_child(guide)
 	# Weapon row (1/2/3, D-pad left/right on pads), above the hotbar.
@@ -182,10 +181,12 @@ func _ready() -> void:
 	var weapon_row := HBoxContainer.new()
 	weapon_row.add_theme_constant_override("separation", 8)
 	weapon_holder.add_child(weapon_row)
-	for label_text in ["1 Blaster", "2 Bazooka", "3 Fire"]:
+	for label_text in ["[1] BLASTER", "[2] BAZOOKA"]:
 		var chip_label := Label.new()
 		chip_label.text = label_text
-		chip_label.add_theme_font_size_override("font_size", 14)
+		chip_label.add_theme_font_size_override("font_size", 17)
+		chip_label.add_theme_constant_override("outline_size", 5)
+		chip_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
 		weapon_row.add_child(chip_label)
 		_weapon_chips.append(chip_label)
 	# First-person crosshair.
@@ -207,7 +208,7 @@ func _ready() -> void:
 	_tabs.add_child(_picker)
 	_info = Label.new()
 	_info.name = "World"
-	_info.add_theme_font_size_override("font_size", 16)
+	_info.add_theme_font_size_override("font_size", 20)
 	_tabs.add_child(_info)
 
 	if world != null:
@@ -335,8 +336,8 @@ func _process(_delta: float) -> void:
 				Color("ffd166") if i == _last_weapon else Color(1, 1, 1, 0.45))
 	if size.x != _last_width:
 		_last_width = size.x
-		var chip_w := clampf(size.x / 58.0, 9.0, 26.0)
-		for chip: ColorRect in _chips:
+		var chip_w := clampf(size.x / 58.0, 11.0, 30.0)
+		for chip: BlockIcon in _chips:
 			chip.custom_minimum_size = Vector2(chip_w, chip_w * 1.6)
 		_selected_label.add_theme_font_size_override("font_size",
 			int(clampf(size.x / 55.0, 14.0, 30.0)))
@@ -345,11 +346,10 @@ func _process(_delta: float) -> void:
 		_last_index = player.hotbar_index
 		_selected_label.text = Blocks.display_name(Blocks.HOTBAR[_last_index])
 		for i in _chips.size():
-			var chip: ColorRect = _chips[i]
+			var chip: BlockIcon = _chips[i]
 			var selected := i == _last_index
-			var chip_w := clampf(size.x / 58.0, 9.0, 26.0)
+			var chip_w := clampf(size.x / 58.0, 11.0, 30.0)
 			chip.custom_minimum_size = Vector2(chip_w * 1.5, chip_w * 2.2) if selected \
 				else Vector2(chip_w, chip_w * 1.6)
-			var color := Blocks.color_of(Blocks.HOTBAR[i])
-			chip.color = Color(color.r, color.g, color.b, 1.0) if selected \
-				else Color(color.r * 0.75, color.g * 0.75, color.b * 0.75, 0.85)
+			chip.dimmed = not selected
+			chip.queue_redraw()

@@ -9,10 +9,10 @@ extends RefCounted
 ## same seed always builds the same world.
 
 const CHUNK_SIZE := 16
-const CHUNK_H := 80
-const SEA_LEVEL := 24
+const CHUNK_H := 128
+const SEA_LEVEL := 48
 ## Playable radius in blocks; beyond it the terrain sinks into open ocean.
-const ISLAND_RADIUS := 220.0
+const ISLAND_RADIUS := 400.0
 
 var seed_value: int
 
@@ -72,8 +72,8 @@ func height_at(wx: int, wz: int) -> int:
 	var hills := _hills.get_noise_2d(wx, wz) * 0.5 + 0.5
 	var detail := _detail.get_noise_2d(wx, wz)
 	# Ocean floor ~14, beaches just above sea, hills up to ~+30 over sea.
-	var h := 14.0 + (base * 18.0 + hills * hills * 30.0) * falloff + detail * 1.8
-	return clampi(int(h), 2, CHUNK_H - 12)
+	var h := 28.0 + (base * 36.0 + hills * hills * 60.0) * falloff + detail * 3.6
+	return clampi(int(h), 2, CHUNK_H - 24)
 
 func moisture_at(wx: int, wz: int) -> float:
 	return _moisture.get_noise_2d(wx, wz) * 0.5 + 0.5
@@ -81,7 +81,7 @@ func moisture_at(wx: int, wz: int) -> float:
 func biome_at(wx: int, wz: int, h: int) -> int:
 	var moist := moisture_at(wx, wz)
 	var temp := _temperature.get_noise_2d(wx, wz) * 0.5 + 0.5
-	if moist > 0.52 and h <= SEA_LEVEL + 2:
+	if moist > 0.52 and h <= SEA_LEVEL + 4:
 		return Biome.SWAMP
 	if moist > 0.6 and temp > 0.55:
 		return Biome.JUNGLE
@@ -96,12 +96,12 @@ func biome_at(wx: int, wz: int, h: int) -> int:
 ## Lake carving: dips terrain below sea level inland where the lake noise
 ## peaks (only where the land is low-ish already, so hills keep their shape).
 func lake_depth_at(wx: int, wz: int, h: int) -> int:
-	if h > SEA_LEVEL + 8:
+	if h > SEA_LEVEL + 16:
 		return 0
 	var n := _lakes.get_noise_2d(wx, wz)
 	if n < 0.45:
 		return 0
-	return int((n - 0.45) * 26.0)
+	return int((n - 0.45) * 52.0)
 
 ## Fill a chunk's blocks. Returns a PackedByteArray of CHUNK_SIZE^2 * CHUNK_H.
 func generate_chunk(cx: int, cz: int) -> PackedByteArray:
@@ -126,7 +126,7 @@ func _carve_caves(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: 
 	if h <= SEA_LEVEL + 1:
 		return
 	for y in range(4, h - 3):
-		if _caves.get_noise_3d(wx, y * 1.4, wz) > 0.56:
+		if _caves.get_noise_3d(wx, y * 0.7, wz) > 0.56:
 			data[idx(lx, y, lz)] = Blocks.AIR
 	# Decorate fresh cave floors.
 	for y in range(5, h - 3):
@@ -146,8 +146,8 @@ func _sky_island(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int) -> v
 	var n := _sky.get_noise_2d(wx, wz) * 0.5 + 0.5
 	if n < 0.8:
 		return
-	var body := (n - 0.8) * 40.0   # 0..~4 thickness
-	var top := 66
+	var body := (n - 0.8) * 80.0   # 0..~8 thickness
+	var top := 118
 	data[idx(lx, top, lz)] = Blocks.GRASS
 	for dy in range(1, int(body) + 1):
 		data[idx(lx, top - dy, lz)] = Blocks.DIRT if dy == 1 else Blocks.STONE
@@ -164,13 +164,13 @@ static func idx(lx: int, y: int, lz: int) -> int:
 	return (y * CHUNK_SIZE + lz) * CHUNK_SIZE + lx
 
 func _fill_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: int, moist: float) -> void:
-	var snow_line := SEA_LEVEL + 22
-	var beach_top := SEA_LEVEL + 2
+	var snow_line := SEA_LEVEL + 44
+	var beach_top := SEA_LEVEL + 4
 	for y in range(0, mini(h + 1, CHUNK_H)):
 		var block := Blocks.STONE
 		if y == 0:
 			block = Blocks.BEDROCK
-		elif y > h - 3 and h <= beach_top:
+		elif y > h - 5 and h <= beach_top:
 			block = Blocks.SAND
 		elif y == h:
 			if h >= snow_line:
@@ -179,7 +179,7 @@ func _fill_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: 
 				block = Blocks.STONE
 			else:
 				block = Blocks.GRASS
-		elif y > h - 4:
+		elif y > h - 7:
 			block = Blocks.DIRT if h < snow_line - 6 else Blocks.STONE
 		data[idx(lx, y, lz)] = block
 	# Water fills anything below sea level.
@@ -208,7 +208,7 @@ func _scatter_features(data: PackedByteArray, cx: int, cz: int) -> void:
 ## canopies never cross borders (generation stays independent per chunk).
 func _scatter_grass_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, ground: int) -> void:
 	var biome := biome_at(wx, wz, ground)
-	var interior := lx >= 3 and lx < 13 and lz >= 3 and lz < 13
+	var interior := lx >= 4 and lx < 12 and lz >= 4 and lz < 12
 	var tree_roll := hash01(wx, wz, 7)
 	match biome:
 		Biome.SWAMP:
@@ -222,7 +222,7 @@ func _scatter_grass_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz:
 			elif interior and tree_roll < 0.012:
 				_plant_tree(data, lx, ground + 1, lz, hash01(wx, wz, 8), 0)
 		Biome.JUNGLE:
-			if interior and tree_roll < 0.075:
+			if lx >= 5 and lx < 11 and lz >= 5 and lz < 11 and tree_roll < 0.14:
 				_plant_tree(data, lx, ground + 1, lz, hash01(wx, wz, 8), 1)
 			elif hash01(wx, wz, 9) < 0.22:
 				data[idx(lx, ground + 1, lz)] = Blocks.TALL_GRASS
@@ -238,7 +238,7 @@ func _scatter_grass_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz:
 			elif hash01(wx, wz, 12) < 0.007:
 				data[idx(lx, ground + 1, lz)] = Blocks.MUSHROOM
 		Biome.PINE:
-			if lx >= 1 and lx < 15 and lz >= 1 and lz < 15 and tree_roll < 0.05:
+			if lx >= 2 and lx < 14 and lz >= 2 and lz < 14 and tree_roll < 0.05:
 				_plant_tree(data, lx, ground + 1, lz, hash01(wx, wz, 8), 2)
 			elif hash01(wx, wz, 9) < 0.03:
 				data[idx(lx, ground + 1, lz)] = Blocks.TALL_GRASS
@@ -293,16 +293,16 @@ func _surface_of(data: PackedByteArray, lx: int, lz: int) -> int:
 
 ## kind: 0 = oak blob, 1 = tall wide jungle canopy, 2 = narrow pine.
 func _plant_tree(data: PackedByteArray, lx: int, base_y: int, lz: int, size_roll: float, kind := 0) -> void:
-	var trunk := 3 + int(size_roll * 3.0)
-	var radius := 2.45
+	var trunk := 6 + int(size_roll * 6.0)
+	var radius := 3.4
 	var squash := 1.4
 	if kind == 1:
-		trunk = 7 + int(size_roll * 4.0)
-		radius = 3.4
+		trunk = 14 + int(size_roll * 8.0)
+		radius = 5.0
 		squash = 2.0
 	elif kind == 2:
-		trunk = 5 + int(size_roll * 3.0)
-		radius = 1.4
+		trunk = 10 + int(size_roll * 6.0)
+		radius = 2.2
 		squash = 0.8
 	if base_y + trunk + 3 >= CHUNK_H:
 		return
@@ -310,7 +310,7 @@ func _plant_tree(data: PackedByteArray, lx: int, base_y: int, lz: int, size_roll
 		data[idx(lx, base_y + i, lz)] = Blocks.LOG
 	var top := base_y + trunk
 	var reach := int(ceil(radius))
-	for dy in range(-2, 3):
+	for dy in range(-3, 5):
 		for dz in range(-reach, reach + 1):
 			for dx in range(-reach, reach + 1):
 				var r := Vector3(dx, dy * squash, dz).length()
@@ -336,6 +336,6 @@ func find_spawn() -> Vector3i:
 			var wz := int(sin(angle) * radius * 8.0)
 			var h := height_at(wx, wz)
 			h -= lake_depth_at(wx, wz, h)
-			if h > SEA_LEVEL + 1 and h < SEA_LEVEL + 14:
+			if h > SEA_LEVEL + 1 and h < SEA_LEVEL + 28:
 				return Vector3i(wx, h, wz)
 	return Vector3i(0, height_at(0, 0), 0)
