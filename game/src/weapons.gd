@@ -24,6 +24,8 @@ const WEAPONS := [
 		"blurb": "Splats the landscape into random wool colors"},
 	{"id": 9, "name": "Firework Gun", "color": Color("f2e04a"), "cooldown": 0.9, "speed": 40.0,
 		"blurb": "Launches a firework wherever it lands"},
+	{"id": 10, "name": "Grump Whistle", "color": Color("8a5fd0"), "cooldown": 2.0, "speed": 30.0,
+		"blurb": "Summons a wild Grump right there. You asked for this"},
 ]
 
 static func count() -> int:

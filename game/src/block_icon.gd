@@ -6,6 +6,7 @@ extends Control
 var block_id := 0
 var kind := "block"   # block / weapon / structure
 var dimmed := false
+var badge := ""   # letter drawn over weapon/kit glyphs
 
 func _init(p_block := 0, p_kind := "block") -> void:
 	block_id = p_block
@@ -14,10 +15,19 @@ func _init(p_block := 0, p_kind := "block") -> void:
 
 func _draw() -> void:
 	if kind == "weapon":
-		var c := Color("ffe08a") if block_id == 0 else Color("ff7a3d")
+		var c: Color = Weapons.spec(block_id).color
+		if badge.is_empty():
+			badge = str(Weapons.spec(block_id).name).left(1)
 		if dimmed:
 			c = c.darkened(0.3)
 		var mid := size * 0.5
+		if block_id >= 2:
+			# Distinct colored roundel with the weapon's initial.
+			draw_circle(mid, size.x * 0.34, c)
+			draw_circle(mid, size.x * 0.34, Color(1, 1, 1, 0.25), false, 2.0)
+			draw_string(ThemeDB.fallback_font, Vector2(size.x * 0.5 - size.x * 0.18, size.y * 0.5 + size.x * 0.2),
+				badge, HORIZONTAL_ALIGNMENT_CENTER, size.x * 0.4, int(size.x * 0.55), Color(0.05, 0.05, 0.1))
+			return
 		if block_id == 0:
 			# Blaster: barrel + three speed lines.
 			draw_rect(Rect2(size.x * 0.15, mid.y - size.y * 0.1, size.x * 0.55, size.y * 0.2), c)

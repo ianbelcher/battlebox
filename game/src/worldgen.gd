@@ -15,6 +15,7 @@ const SEA_LEVEL := 24
 const ISLAND_RADIUS := 220.0
 
 var seed_value: int
+var theme := "classic"   # classic / desert / isles / castles
 
 enum Biome { MEADOW, FOREST, JUNGLE, PINE, FLOWERS, SWAMP }
 
@@ -27,8 +28,9 @@ var _lakes := FastNoiseLite.new()
 var _caves := FastNoiseLite.new()
 var _sky := FastNoiseLite.new()
 
-func _init(p_seed: int) -> void:
+func _init(p_seed: int, p_theme := "classic") -> void:
 	seed_value = p_seed
+	theme = p_theme
 	_continent.seed = p_seed
 	_continent.frequency = 0.004
 	_continent.fractal_octaves = 3
@@ -72,6 +74,10 @@ func height_at(wx: int, wz: int) -> int:
 	var hills := _hills.get_noise_2d(wx, wz) * 0.5 + 0.5
 	var detail := _detail.get_noise_2d(wx, wz)
 	# Ocean floor ~14, beaches just above sea, hills up to ~+30 over sea.
+	if theme == "isles":
+		# Mostly ocean, steep little islands everywhere.
+		var bump := maxf(0.0, hills - 0.58) * 110.0
+		return clampi(int(16.0 + bump * falloff + detail * 1.2), 2, CHUNK_H - 12)
 	var h := 14.0 + (base * 18.0 + hills * hills * 30.0) * falloff + detail * 1.8
 	return clampi(int(h), 2, CHUNK_H - 12)
 
@@ -115,8 +121,14 @@ func generate_chunk(cx: int, cz: int) -> PackedByteArray:
 			h -= lake_depth_at(wx, wz, h)
 			var moist := moisture_at(wx, wz)
 			_fill_column(data, lx, lz, wx, wz, h, moist)
+			if theme == "desert":
+				for y in range(1, h + 1):
+					var b := data[idx(lx, y, lz)]
+					if b == Blocks.GRASS or b == Blocks.DIRT:
+						data[idx(lx, y, lz)] = Blocks.SAND if y == h else Blocks.SANDSTONE
 			_carve_caves(data, lx, lz, wx, wz, h)
 			_sky_island(data, lx, lz, wx, wz)
+			_landmark_column(data, lx, lz, wx, wz, h)
 	_scatter_features(data, cx, cz)
 	return data
 
@@ -139,6 +151,80 @@ func _carve_caves(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: 
 				data[idx(lx, y - 1, lz)] = Blocks.GLOWSTONE
 			elif roll < 0.05:
 				data[idx(lx, y, lz)] = Blocks.MUSHROOM
+
+## Theme landmarks are laid out on a 96-block anchor grid; each column asks
+## the pure landmark function what it contributes, so structures far bigger
+## than one chunk generate seamlessly: hollow desert pyramids you can
+## explore, castle walls in castle-lands, wooden ships among the isles.
+func _landmark_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: int) -> void:
+	var ax := floori(wx / 96.0)
+	var az := floori(wz / 96.0)
+	var roll := hash01(ax, az, 900)
+	var cx := ax * 96 + 48
+	var cz := az * 96 + 48
+	var dx := wx - cx
+	var dz := wz - cz
+	if Vector2(cx, cz).length() > ISLAND_RADIUS - 30.0:
+		return
+	if theme == "desert" and roll < 0.65:
+		var base := SEA_LEVEL + 2
+		var size := 14 + int(hash01(ax, az, 901) * 6.0)
+		var m := maxi(absi(dx), absi(dz))
+		if m > size:
+			return
+		for k in range(0, size + 1):
+			if m > size - k:
+				continue
+			var y := base + k
+			if y >= CHUNK_H:
+				break
+			var shell: bool = m == size - k or k == 0
+			# Entrance tunnel at ground level on the north face.
+			if k <= 2 and dz == -(size - k) and absi(dx) <= 1:
+				shell = false
+			if shell:
+				data[idx(lx, y, lz)] = Blocks.SANDSTONE
+			else:
+				data[idx(lx, y, lz)] = Blocks.AIR
+				if k % 5 == 1 and hash01(wx, wz, 902 + k) < 0.02:
+					data[idx(lx, y, lz)] = Blocks.GLOWSTONE
+	elif theme == "castles" and roll < 0.45:
+		var m := maxi(absi(dx), absi(dz))
+		var wall_r := 13
+		if m == wall_r or (absi(dx) >= wall_r - 1 and absi(dz) >= wall_r - 1 and m <= wall_r + 1):
+			var tower: bool = absi(dx) >= wall_r - 1 and absi(dz) >= wall_r - 1
+			var height := 8 if tower else 5
+			if not tower and dz == -wall_r and absi(dx) <= 1:
+				height = 0  # gate
+			for k in range(1, height + 1):
+				if h + k < CHUNK_H:
+					var crenel: bool = k == height and not tower and posmod(wx + wz, 2) == 1
+					if not crenel:
+						data[idx(lx, h + k, lz)] = Blocks.COBBLE
+			if tower and h + 9 < CHUNK_H:
+				data[idx(lx, h + 9, lz)] = Blocks.LANTERN
+	elif theme == "isles" and roll < 0.6 and h < SEA_LEVEL - 3:
+		# A wooden ship at anchor.
+		if absi(dx) > 7 or absi(dz) > 3:
+			return
+		var hull_w := 3 - maxi(0, absi(dx) - 5)
+		if absi(dz) > hull_w:
+			return
+		var deck := SEA_LEVEL + 1
+		for y in range(SEA_LEVEL - 1, deck):
+			if absi(dz) == hull_w or absi(dx) == 7:
+				data[idx(lx, y, lz)] = Blocks.DARK_PLANKS
+			else:
+				data[idx(lx, y, lz)] = Blocks.AIR
+		data[idx(lx, deck, lz)] = Blocks.PLANKS
+		if dx == 0 and dz == 0:
+			for k in range(1, 9):
+				data[idx(lx, deck + k, lz)] = Blocks.LOG
+		elif dz == 0 and absi(dx) <= 3 and dx != 0:
+			for k in range(3, 8):
+				data[idx(lx, deck + k, lz)] = Blocks.WOOL_WHITE
+		elif absi(dx) == 7 and dz == 0:
+			data[idx(lx, deck + 1, lz)] = Blocks.LANTERN
 
 ## Rare floating islands high above the world — fly up and explore. Grass
 ## on top, a crystal heart inside the bigger ones.

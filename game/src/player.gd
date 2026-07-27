@@ -401,7 +401,9 @@ func _local_actions(delta: float) -> void:
 	else:
 		dig_target = _find_dig_target()
 		place_target = _find_place_target()
-	if _highlight != null:
+	if _highlight != null and held().kind == "weapon":
+		_highlight.visible = false
+	elif _highlight != null:
 		var show := dig_target if input.is_dig_pressed() or not input.is_place_pressed() else place_target
 		if input.is_place_pressed():
 			show = place_target
@@ -482,10 +484,18 @@ func _find_fp_targets() -> Array:
 				return [NO_TARGET, last_open]
 			if Blocks.is_cross(block) and Blocks.is_breakable(block):
 				return [cell, last_open]
-			if not _cell_overlaps_self(cell):
+			if not _cell_overlaps_self(cell) and _has_solid_neighbor(cell):
 				last_open = cell
 		t += 0.12
 	return [NO_TARGET, last_open]
+
+## Minecraft rule: blocks need something to hang off.
+func _has_solid_neighbor(cell: Vector3i) -> bool:
+	for off in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0),
+			Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		if Blocks.is_solid(_chunks().get_block(cell + off)):
+			return true
+	return false
 
 func _cell_overlaps_self(cell: Vector3i) -> bool:
 	var center := Vector3(cell) + Vector3(0.5, 0.5, 0.5)
@@ -522,6 +532,8 @@ func _find_place_target() -> Vector3i:
 			var delta := center - (position + Vector3(0, HEIGHT * 0.5, 0))
 			if absf(delta.x) < HALF_WIDTH + 0.5 and absf(delta.z) < HALF_WIDTH + 0.5 \
 					and delta.y > -HEIGHT * 0.5 - 0.5 and delta.y < HEIGHT * 0.5 + 0.5:
+				continue
+			if not _has_solid_neighbor(cell):
 				continue
 			return cell
 	return NO_TARGET

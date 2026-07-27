@@ -87,8 +87,8 @@ func _init() -> void:
 		grid.add_child(chip)
 		_chips.append(chip)
 	var hint := Label.new()
-	hint.text = "Choose with Space / A / click — it goes into your current slot (1-8)"
-	hint.add_theme_font_size_override("font_size", 18)
+	hint.text = "Click / Space / A puts it in the highlighted slot — press 1-8 to fill other slots — E closes"
+	hint.add_theme_font_size_override("font_size", 20)
 	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(hint)
@@ -97,14 +97,20 @@ func _init() -> void:
 ## quarter-screen cells and huge fullscreen windows both read well.
 func fit(avail: Vector2) -> void:
 	var rows := ceili(float(entries.size()) / COLUMNS)
-	var chip := clampf(minf((avail.x * 0.82 - 60.0) / COLUMNS,
-		(avail.y * 0.62 - 80.0) / rows) - 5.0, 26.0, 84.0)
+	var chip := clampf(minf((avail.x * 0.92 - 50.0) / COLUMNS,
+		(avail.y * 0.74 - 90.0) / rows) - 5.0, 30.0, 130.0)
 	for panel: Panel in _chips:
 		panel.custom_minimum_size = Vector2(chip, chip)
 		for child in panel.get_children():
 			if child is Label:
 				child.add_theme_font_size_override("font_size", int(chip * 0.55))
 	_title.add_theme_font_size_override("font_size", int(clampf(chip * 0.75, 22.0, 48.0)))
+
+var _slot_label := 1
+func set_slot_label(n: int) -> void:
+	_slot_label = n
+	if visible:
+		_refresh()
 
 func open(_a := 0, _b := 0) -> void:
 	visible = true
@@ -139,7 +145,7 @@ func _select() -> void:
 	close()
 
 func _refresh() -> void:
-	_title.text = str(entries[focus_index].name)
+	_title.text = "%s   →  slot %d" % [entries[focus_index].name, _slot_label]
 	for i in _chips.size():
 		var chip: Panel = _chips[i]
 		var entry: Dictionary = _chips[i].get_meta("entry", entries[i])

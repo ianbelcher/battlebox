@@ -325,6 +325,14 @@ func sv_edit(slot: int, pos: Vector3i, block: int) -> void:
 		if current != Blocks.AIR and current != Blocks.TALL_GRASS \
 				and not Blocks.is_liquid(current):
 			return
+		var supported := false
+		for off in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0),
+				Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+			if Blocks.is_solid(store.get_block(pos + off)):
+				supported = true
+				break
+		if not supported:
+			return
 		match block:
 			Blocks.SAPLING:
 				_saplings.append({"pos": pos, "at_msec": Time.get_ticks_msec()})
@@ -481,6 +489,12 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 			return
 		9:  # Firework Gun.
 			cl_firework_fx.rpc(cell)
+			return
+		10:  # Grump Whistle: a wild Grump, raid or not.
+			if _monsters.size() < 30:
+				_monsters[_next_monster_id] = {"pos": Vector3(cell) + Vector3(0.5, 1.0, 0.5),
+					"hp": 3, "next_bonk_ms": 0}
+				_next_monster_id += 1
 			return
 	var current := store.get_block(cell)
 	if current == Blocks.AIR or Blocks.is_liquid(current) or not Blocks.is_breakable(current):
@@ -919,11 +933,11 @@ func sv_zap(slot: int, monster_id: int) -> void:
 	cl_zap_hit.rpc(monster_id, dead)
 
 func _server_tick_survival() -> void:
-	if not survival_active:
+	if not survival_active and _monsters.is_empty():
 		return
 	var now := Time.get_ticks_msec()
-	# Escalate every 18s.
-	if now - _wave_started_ms > 18_000:
+	# Escalate every 18s (raids only; whistled wild Grumps just roam).
+	if survival_active and now - _wave_started_ms > 18_000:
 		_wave_started_ms = now
 		survival_wave += 1
 		cl_wave.rpc(survival_wave)
@@ -933,12 +947,17 @@ func _server_tick_survival() -> void:
 		if not _downed.has(id) and _player_state.has(id):
 			alive.append(id)
 	if alive.is_empty() or Game.roster.is_empty():
-		_server_end_survival()
+		if survival_active:
+			_server_end_survival()
+		else:
+			_monsters.clear()
+			cl_monsters.rpc([])
 		return
 	# Keep the horde growing.
-	var cap := mini(4 + survival_wave * 2, 26)
-	if _monsters.size() < cap:
-		_spawn_monster(alive)
+	if survival_active:
+		var cap := mini(4 + survival_wave * 2, 26)
+		if _monsters.size() < cap:
+			_spawn_monster(alive)
 	# March.
 	var speed := minf(1.5 + survival_wave * 0.06, 2.8) * 0.33
 	var frozen_check := Time.get_ticks_msec()
@@ -970,9 +989,11 @@ func _server_tick_survival() -> void:
 		if now >= int(monster.next_bonk_ms) 				and Vector3(_player_state[target].pos).distance_to(monster.pos) < 1.5:
 			monster.next_bonk_ms = now + 1200
 			var state: Dictionary = _player_state[target]
+			cl_bonk.rpc(target, monster.pos)
+			if not survival_active:
+				continue
 			state.hp = int(state.get("hp", 5)) - 1
 			cl_hearts.rpc(target, state.hp)
-			cl_bonk.rpc(target, monster.pos)
 			if state.hp <= 0:
 				_downed[target] = true
 				cl_downed.rpc(target)

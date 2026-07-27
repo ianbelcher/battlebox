@@ -15,6 +15,7 @@ const WORLD_RADIUS_CHUNKS := 24
 
 var data_dir: String
 var source := "procedural"  # or "mca"
+var theme := "classic"
 var gen: WorldGen
 var mca: McaWorld = null
 
@@ -38,7 +39,10 @@ func _init() -> void:
 		seed_value = seed_env.to_int()
 	else:
 		seed_value = int(config.get_value("world", "seed", 20260726))
-	gen = WorldGen.new(seed_value)
+	theme = OS.get_environment("WORLD_THEME")
+	if theme.is_empty():
+		theme = str(config.get_value("world", "theme", "classic"))
+	gen = WorldGen.new(seed_value, theme)
 	if source == "mca":
 		var mca_dir := OS.get_environment("WORLD_MCA_DIR")
 		mca = McaWorld.new(mca_dir)
@@ -48,6 +52,7 @@ func _init() -> void:
 			mca = null
 	config.set_value("world", "seed", seed_value)
 	config.set_value("world", "source", source)
+	config.set_value("world", "theme", theme)
 	config.save(data_dir.path_join("world.cfg"))
 	# Remember which chunks already have edit files so misses stay cheap.
 	var dir := DirAccess.open(data_dir.path_join("chunks"))
@@ -134,13 +139,18 @@ func reset_world(new_seed: int) -> void:
 		for file in dir.get_files():
 			dir.remove(file)
 	_edited.clear()
-	gen = WorldGen.new(new_seed)
+	# Every reset rolls a new theme too: classic island, desert with
+	# explorable pyramids, ship-dotted isles, or castle-lands.
+	var themes := ["classic", "classic", "desert", "isles", "castles"]
+	theme = themes[randi() % themes.size()]
+	gen = WorldGen.new(new_seed, theme)
 	mca = null
 	source = "procedural"
 	var config := ConfigFile.new()
 	config.load(data_dir.path_join("world.cfg"))
 	config.set_value("world", "seed", new_seed)
 	config.set_value("world", "source", source)
+	config.set_value("world", "theme", theme)
 	config.save(data_dir.path_join("world.cfg"))
 	# Forget saved positions (treasures survive).
 	var players := ConfigFile.new()

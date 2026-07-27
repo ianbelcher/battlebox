@@ -59,6 +59,7 @@ var _last_index := -1
 var _last_style := -1
 var _last_width := -1.0
 var _slots_dirty := true
+var _prev_slot_pick_menu := -1
 var _crosshair: Label
 
 func _us(n: int) -> int:
@@ -115,8 +116,8 @@ func _ready() -> void:
 	# Bottom: hotbar.
 	var bar_holder := CenterContainer.new()
 	bar_holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	bar_holder.offset_top = -54
-	bar_holder.offset_bottom = -8
+	bar_holder.offset_top = -96
+	bar_holder.offset_bottom = -10
 	bar_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bar_holder)
 	var bar_panel := PanelContainer.new()
@@ -154,8 +155,8 @@ func _ready() -> void:
 	_selected_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
 	_selected_label.add_theme_constant_override("outline_size", 5)
 	_selected_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_selected_label.offset_top = -76
-	_selected_label.offset_bottom = -58
+	_selected_label.offset_top = -124
+	_selected_label.offset_bottom = -98
 	_selected_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_selected_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_selected_label)
@@ -226,6 +227,7 @@ func _toggle_menu(player: Player, tab: int) -> void:
 	_tabs.current_tab = tab
 	player.ui_locked = true
 	_picker.fit(size)
+	_picker.set_slot_label(player.selected_slot + 1)
 	_picker.open()
 	var id := Game.player_id(multiplayer.get_unique_id(), slot)
 	_info.text = "%d playing right now\nYour treasures: %d\nWorld source: %s\n\nThe world is saved all the time - whatever\nyou build is still here tomorrow.\nFly up high... some islands float.\nDig deep... some caves glow." % [
@@ -238,8 +240,8 @@ func _on_picked(entry: Dictionary) -> void:
 		return
 	player.slots[player.selected_slot] = {"kind": entry.kind, "id": entry.id}
 	_slots_dirty = true
-	_menu.visible = false
-	player.ui_locked = false
+	# Stays open: press another number key and keep kitting out slots.
+	_picker.set_slot_label(player.selected_slot + 1)
 
 func _entry() -> Dictionary:
 	return Game.roster.get(Game.player_id(multiplayer.get_unique_id(), slot), {})
@@ -310,8 +312,18 @@ func _process(_delta: float) -> void:
 		if menu_pressed and not _prev_menu:
 			_toggle_menu(player, 0)
 		_prev_menu = menu_pressed
-		if _menu.visible and _tabs.current_tab == 1:
-			_picker.poll(input, _delta)
+		if _menu.visible:
+			# 1-8 (or bumpers) keep working with the picker open, so kids can
+			# fill slot after slot without closing it.
+			var pick := input.slot_pick()
+			if pick != _prev_slot_pick_menu and pick >= 0 and pick < 8:
+				player.selected_slot = pick
+				_slots_dirty = true
+				_picker.set_slot_label(pick + 1)
+				Sfx.play("tick", -10.0)
+			_prev_slot_pick_menu = pick
+			if _tabs.current_tab == 1:
+				_picker.poll(input, _delta)
 	if not _menu.visible and player.ui_locked:
 		player.ui_locked = false
 
