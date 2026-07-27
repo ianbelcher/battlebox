@@ -8,7 +8,7 @@ extends Node3D
 ## Chunks kept meshed around each local player; the split screen raises this
 ## when someone zooms far out so the horizon fills in.
 var view_radius := 5
-const MESH_BUDGET_PER_FRAME := 3
+const MAX_INFLIGHT_MESHES := 3
 const MAX_LIGHTS_PER_CHUNK := 10
 const REQUEST_BATCH := 40
 const REQUEST_RETRY_SECONDS := 6.0
@@ -160,14 +160,21 @@ func _queue_mesh(cpos: Vector2i) -> void:
 	_queued[cpos] = true
 	_mesh_queue.append(cpos)
 
+## One chunk meshed per frame, tops — streaming spreads over frames instead
+## of spiking them, and the mesher itself skips empty slabs at C++ speed.
 func _process(_delta: float) -> void:
-	var budget := MESH_BUDGET_PER_FRAME
-	while budget > 0 and not _mesh_queue.is_empty():
+	if not _mesh_queue.is_empty():
 		var cpos: Vector2i = _mesh_queue.pop_front()
 		_queued.erase(cpos)
 		if _data.has(cpos):
-			_mesh_chunk(cpos)
-			budget -= 1
+			var neighbors := {}
+			for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var n: PackedByteArray = _data.get(cpos + off, PackedByteArray())
+				if not n.is_empty():
+					neighbors[off] = n
+			var surfaces := Mesher.new().build(_data[cpos], neighbors, cpos.x, cpos.y)
+			_topmaps[cpos] = surfaces.get("topmap", PackedByteArray())
+			_apply_surfaces(cpos, surfaces)
 	if not _announced_ready and _mesh_queue.is_empty() and _data.size() > 8:
 		_announced_ready = true
 		first_chunks_ready.emit()
@@ -180,25 +187,7 @@ func _process(_delta: float) -> void:
 			var phase: float = entry.phase
 			light.light_energy = base * (0.86 + 0.22 * sin(t * 11.0 + phase) + 0.1 * sin(t * 27.0 + phase * 2.0))
 
-func _mesh_chunk(cpos: Vector2i) -> void:
-	var neighbors := {}
-	for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-		var n: PackedByteArray = _data.get(cpos + off, PackedByteArray())
-		if not n.is_empty():
-			neighbors[off] = n
-	var mesher := Mesher.new()
-	var surfaces := mesher.build(_data[cpos], neighbors, cpos.x, cpos.y)
-	var chunk_data: PackedByteArray = _data[cpos]
-	var topmap := PackedByteArray()
-	topmap.resize(256)
-	for lz in 16:
-		for lx in 16:
-			for y in range(WorldGen.CHUNK_H - 1, -1, -1):
-				var block := chunk_data[WorldGen.idx(lx, y, lz)]
-				if block != Blocks.AIR:
-					topmap[lz * 16 + lx] = block
-					break
-	_topmaps[cpos] = topmap
+func _apply_surfaces(cpos: Vector2i, surfaces: Dictionary) -> void:
 	var warps: Array = []
 	for local: Vector3i in surfaces.get("teleporters", []):
 		warps.append(Vector3(cpos.x * 16 + local.x, local.y, cpos.y * 16 + local.z))

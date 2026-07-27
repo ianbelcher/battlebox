@@ -37,7 +37,7 @@ const CROSS_SIZES := {
 
 ## Face table: [normal, u_axis, v_axis, shade]. Vertices are laid out
 ## (-u,-v) (+u,-v) (+u,+v) (-u,+v) around the face center.
-static var FACES := [
+const FACES := [
 	[Vector3i(0, 1, 0), Vector3i(0, 0, 1), Vector3i(1, 0, 0), SHADE_TOP],
 	[Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(0, 0, 1), SHADE_BOTTOM],
 	[Vector3i(1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, 0, 1), SHADE_X],
@@ -98,12 +98,19 @@ func _occludes(x: int, y: int, z: int) -> bool:
 func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Dictionary:
 	_data = data
 	_neighbors = neighbors
+	var topmap := PackedByteArray()
+	topmap.resize(SIZE * SIZE)
 	for y in H:
+		# Whole-slab air check runs in C++ — skips most of the sky instantly.
+		var slab_off := y * SIZE * SIZE
+		if _data.slice(slab_off, slab_off + SIZE * SIZE).count(0) == SIZE * SIZE:
+			continue
 		for z in SIZE:
 			for x in SIZE:
 				var block := int(_data[(y * SIZE + z) * SIZE + x])
 				if block == Blocks.AIR:
 					continue
+				topmap[z * SIZE + x] = block
 				if Blocks.is_cross(block):
 					_add_cross(block, x, y, z, cx, cz)
 					continue
@@ -135,6 +142,7 @@ func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Di
 		result[key] = arrays
 	result["lights"] = lights
 	result["teleporters"] = teleporters
+	result["topmap"] = topmap
 	return result
 
 func _jitter(x: int, y: int, z: int, cx: int, cz: int) -> float:

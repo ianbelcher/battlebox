@@ -60,6 +60,9 @@ var _weapon_chips: Array = []
 var _last_weapon := -1
 var _crosshair: Label
 
+func _us(n: int) -> int:
+	return int(n * clampf(DisplayServer.window_get_size().x / 1280.0, 1.0, 2.4))
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -92,7 +95,7 @@ func _ready() -> void:
 		row.add_child(swatch)
 		_swatches[attr_name] = swatch
 	_name_label = Label.new()
-	_name_label.add_theme_font_size_override("font_size", 22)
+	_name_label.add_theme_font_size_override("font_size", _us(22))
 	_name_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	_name_label.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.pressed \
@@ -100,11 +103,11 @@ func _ready() -> void:
 			_edit_name())
 	row.add_child(_name_label)
 	_treasure_label = Label.new()
-	_treasure_label.add_theme_font_size_override("font_size", 22)
+	_treasure_label.add_theme_font_size_override("font_size", _us(22))
 	_treasure_label.add_theme_color_override("font_color", Color("ffd166"))
 	row.add_child(_treasure_label)
 	_hearts_label = Label.new()
-	_hearts_label.add_theme_font_size_override("font_size", 22)
+	_hearts_label.add_theme_font_size_override("font_size", _us(22))
 	_hearts_label.add_theme_color_override("font_color", Color("ff6b6b"))
 	row.add_child(_hearts_label)
 
@@ -135,7 +138,7 @@ func _ready() -> void:
 		_hotbar.add_child(chip_rect)
 		_chips.append(chip_rect)
 	_selected_label = Label.new()
-	_selected_label.add_theme_font_size_override("font_size", 15)
+	_selected_label.add_theme_font_size_override("font_size", _us(15))
 	_selected_label.add_theme_color_override("font_color", Color("ffd166"))
 	_selected_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
 	_selected_label.add_theme_constant_override("outline_size", 5)
@@ -168,7 +171,7 @@ func _ready() -> void:
 	_menu.add_child(_tabs)
 	var guide := Label.new()
 	guide.name = "How to Play"
-	guide.add_theme_font_size_override("font_size", 19)
+	guide.add_theme_font_size_override("font_size", _us(19))
 	guide.text = GUIDE_TEXT
 	_tabs.add_child(guide)
 	# Weapon row (1/2/3, D-pad left/right on pads), above the hotbar.
@@ -184,7 +187,7 @@ func _ready() -> void:
 	for label_text in ["[1] BLASTER", "[2] BAZOOKA"]:
 		var chip_label := Label.new()
 		chip_label.text = label_text
-		chip_label.add_theme_font_size_override("font_size", 17)
+		chip_label.add_theme_font_size_override("font_size", _us(17))
 		chip_label.add_theme_constant_override("outline_size", 5)
 		chip_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
 		weapon_row.add_child(chip_label)
@@ -192,7 +195,7 @@ func _ready() -> void:
 	# First-person crosshair.
 	_crosshair = Label.new()
 	_crosshair.text = "+"
-	_crosshair.add_theme_font_size_override("font_size", 30)
+	_crosshair.add_theme_font_size_override("font_size", _us(30))
 	_crosshair.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
 	_crosshair.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
 	_crosshair.add_theme_constant_override("outline_size", 4)
@@ -208,7 +211,7 @@ func _ready() -> void:
 	_tabs.add_child(_picker)
 	_info = Label.new()
 	_info.name = "World"
-	_info.add_theme_font_size_override("font_size", 20)
+	_info.add_theme_font_size_override("font_size", _us(20))
 	_tabs.add_child(_info)
 
 	if world != null:
@@ -285,7 +288,7 @@ func _edit_name() -> void:
 	var edit := LineEdit.new()
 	edit.text = str(entry.name)
 	edit.max_length = 12
-	edit.add_theme_font_size_override("font_size", 18)
+	edit.add_theme_font_size_override("font_size", _us(18))
 	edit.custom_minimum_size = Vector2(120, 0)
 	var parent := _name_label.get_parent()
 	parent.add_child(edit)

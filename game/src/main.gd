@@ -82,10 +82,13 @@ func _show_screen(screen: Control) -> void:
 		if child != null:
 			child.visible = child == screen
 
+static func ui_scale() -> float:
+	return clampf(DisplayServer.window_get_size().x / 1280.0, 1.0, 2.4)
+
 func _make_label(text: String, size: int, color := Color.WHITE, outline := 0) -> Label:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_font_size_override("font_size", int(size * ui_scale()))
 	label.add_theme_color_override("font_color", color)
 	if outline > 0:
 		label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
@@ -217,14 +220,14 @@ func _build_game_screen() -> void:
 	vote_row.add_child(no)
 	# Minimap, top right.
 	_minimap = TextureRect.new()
-	_minimap.custom_minimum_size = Vector2(170, 170)
+	_minimap.custom_minimum_size = Vector2(170, 170) * ui_scale()
 	_minimap.stretch_mode = TextureRect.STRETCH_SCALE
 	_minimap.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_minimap.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	_minimap.offset_left = -180
+	_minimap.offset_left = -10 - 170 * ui_scale()
 	_minimap.offset_top = 10
 	_minimap.offset_right = -10
-	_minimap.offset_bottom = 180
+	_minimap.offset_bottom = 10 + 170 * ui_scale()
 	_minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_game_screen.add_child(_minimap)
 	var map_timer := Timer.new()
