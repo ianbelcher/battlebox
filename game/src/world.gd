@@ -328,17 +328,55 @@ func sv_structure(slot: int, base: Vector3i, index: int, roll: int) -> void:
 ## renders it. Hits on players knock them about (no harm); hits on Grumps
 ## use the survival damage path.
 @rpc("any_peer", "unreliable")
-func sv_shoot(slot: int, origin: Vector3, dir: Vector3) -> void:
+func sv_shoot(slot: int, origin: Vector3, dir: Vector3, boom: bool) -> void:
 	if not multiplayer.is_server():
 		return
 	var id := Game.player_id(multiplayer.get_remote_sender_id(), slot)
 	if Game.roster.has(id):
-		cl_orb.rpc(id, origin, dir)
+		cl_orb.rpc(id, origin, dir, boom)
 
 @rpc("authority", "unreliable")
-func cl_orb(shooter_id: String, origin: Vector3, dir: Vector3) -> void:
+func cl_orb(shooter_id: String, origin: Vector3, dir: Vector3, boom: bool) -> void:
 	if orbs != null:
-		orbs.spawn(shooter_id, origin, dir)
+		orbs.spawn(shooter_id, origin, dir, boom)
+
+## Projectile impact. Pellets pop the single block they hit (or light a Boom
+## Block from afar); shells detonate like a lit charge, splashing Grumps too.
+@rpc("any_peer", "reliable")
+func sv_shot(slot: int, cell: Vector3i, boom: bool) -> void:
+	if not multiplayer.is_server():
+		return
+	var id := Game.player_id(multiplayer.get_remote_sender_id(), slot)
+	var state: Dictionary = _player_state.get(id, {})
+	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 34.0:
+		return
+	if boom:
+		_blast(cell, 3.4, [])
+		for monster_id: int in _monsters.keys().duplicate():
+			if Vector3(cell).distance_to(_monsters[monster_id].pos) < 4.5:
+				_monsters[monster_id].hp = int(_monsters[monster_id].hp) - 2
+				var dead: bool = _monsters[monster_id].hp <= 0
+				if dead:
+					_monsters.erase(monster_id)
+					_bonked_count += 1
+				cl_zap_hit.rpc(monster_id, dead)
+		return
+	var current := store.get_block(cell)
+	if current == Blocks.AIR or Blocks.is_liquid(current) or not Blocks.is_breakable(current):
+		return
+	if current == Blocks.BOOM:
+		for entry: Dictionary in _bombs:
+			if entry.pos == cell:
+				return
+		_bombs.append({"pos": cell, "at_msec": Time.get_ticks_msec() + 2500})
+		cl_fuse_fx.rpc(cell)
+		return
+	if Blocks.is_collectible(current):
+		state.treasures = int(state.treasures) + 1
+		cl_treasures.rpc(id, state.treasures)
+	store.set_block(cell, Blocks.AIR)
+	cl_edit.rpc(cell, Blocks.AIR, id)
+	_disturb_water([cell])
 
 @rpc("any_peer", "reliable")
 func sv_orb_hit(slot: int, target_id: String, hit_pos: Vector3) -> void:

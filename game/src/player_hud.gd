@@ -29,7 +29,9 @@ const GUIDE_TEXT := """Move: WASD / left stick        Jump: Space / A
 Double-tap jump = FLY (hold jump to rise, Shift / LT to sink, land to stop)
 
 Break block: LEFT CLICK / B         Place block: RIGHT CLICK / F / X
-Throw orb: R / middle click / RT    (bonks friends and Grumps!)
+Shoot: R / middle click / RT. TAP = fast pellet (pops one block,
+lights Boom Blocks from afar). HOLD then release = bazooka shell
+that explodes where it lands. Both bonk friends and Grumps!
 Blocks & building kits: E / D-pad up      Quick cycle: Tab / bumpers
 
 T / Y: switch between first person and overview
@@ -50,6 +52,7 @@ var _hotbar: HBoxContainer
 var _chips: Array = []
 var _last_index := -1
 var _last_style := -1
+var _last_width := -1.0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -149,13 +152,15 @@ func _ready() -> void:
 	menu_style.border_color = Color("ffd166")
 	menu_style.set_border_width_all(2)
 	_menu.add_theme_stylebox_override("panel", menu_style)
-	_menu.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	_menu.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_menu.grow_vertical = Control.GROW_DIRECTION_BOTH
+	# Fill ~90% of this player's cell whatever its size — quarter-screen
+	# split or a huge fullscreen window alike.
+	_menu.anchor_left = 0.05
+	_menu.anchor_right = 0.95
+	_menu.anchor_top = 0.05
+	_menu.anchor_bottom = 0.95
 	_menu.visible = false
 	add_child(_menu)
 	_tabs = TabContainer.new()
-	_tabs.custom_minimum_size = Vector2(560, 380)
 	_menu.add_child(_tabs)
 	var guide := Label.new()
 	guide.name = "How to Play"
@@ -189,6 +194,7 @@ func _toggle_menu(player: Player, tab: int) -> void:
 	_menu.visible = true
 	_tabs.current_tab = tab
 	player.ui_locked = true
+	_picker.fit(size)
 	_picker.open(player.hotbar_index, player.selected_structure)
 	var id := Game.player_id(multiplayer.get_unique_id(), slot)
 	_info.text = "%d playing right now\nYour treasures: %d\nWorld source: %s\n\nThe world is saved all the time - whatever\nyou build is still here tomorrow.\nFly up high... some islands float.\nDig deep... some caves glow." % [
@@ -286,13 +292,23 @@ func _process(_delta: float) -> void:
 		if player.selected_structure >= 0:
 			_selected_label.text = str(Structures.spec(player.selected_structure).name)
 			_last_index = -1
+	if size.x != _last_width:
+		_last_width = size.x
+		var chip_w := clampf(size.x / 58.0, 9.0, 26.0)
+		for chip: ColorRect in _chips:
+			chip.custom_minimum_size = Vector2(chip_w, chip_w * 1.6)
+		_selected_label.add_theme_font_size_override("font_size",
+			int(clampf(size.x / 55.0, 14.0, 30.0)))
+		_last_index = -1
 	if player.hotbar_index != _last_index and player.selected_structure < 0:
 		_last_index = player.hotbar_index
 		_selected_label.text = Blocks.display_name(Blocks.HOTBAR[_last_index])
 		for i in _chips.size():
 			var chip: ColorRect = _chips[i]
 			var selected := i == _last_index
-			chip.custom_minimum_size = Vector2(18, 26) if selected else Vector2(11, 18)
+			var chip_w := clampf(size.x / 58.0, 9.0, 26.0)
+			chip.custom_minimum_size = Vector2(chip_w * 1.5, chip_w * 2.2) if selected \
+				else Vector2(chip_w, chip_w * 1.6)
 			var color := Blocks.color_of(Blocks.HOTBAR[i])
 			chip.color = Color(color.r, color.g, color.b, 1.0) if selected \
 				else Color(color.r * 0.75, color.g * 0.75, color.b * 0.75, 0.85)

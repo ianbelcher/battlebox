@@ -52,6 +52,7 @@ var fly_mode := false
 var _prev_jump := false
 var _last_jump_ms := -10000
 var _launch_latched := false
+var _shoot_hold := 0.0
 var _last_note_cell := Vector3i(0, -99, 0)
 var _warp_cooldown := 0.0
 
@@ -395,6 +396,19 @@ func _local_actions(delta: float) -> void:
 		else:
 			_highlight.visible = false
 
+	# Shooting: TAP = fast pellet that pops the one block it hits (and can
+	# light Boom Blocks from a distance). HOLD half a second and release =
+	# slow bazooka shell that explodes like a lit Boom Block where it lands.
+	if input.is_shoot_pressed():
+		_shoot_hold += delta
+		return
+	if _shoot_hold > 0.0:
+		var boom := _shoot_hold >= 0.5
+		if _edit_cooldown <= 0.0:
+			world.orbs.shoot_local(self, boom)
+			_edit_cooldown = 1.2 if boom else 0.28
+		_shoot_hold = 0.0
+		return
 	if _edit_cooldown > 0.0:
 		return
 	# In first person the keyboard player can also mouse-click: left digs,
@@ -405,10 +419,6 @@ func _local_actions(delta: float) -> void:
 		or (mouse_ok and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT))
 	var wants_place: bool = input.is_place_pressed() \
 		or (mouse_ok and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
-	if input.is_shoot_pressed() and _edit_cooldown <= 0.0:
-		world.orbs.shoot_local(self)
-		_edit_cooldown = 0.45
-		return
 	if wants_dig:
 		# Petting beats digging when a critter is close.
 		var critter: int = world.critter_view.nearest_id(position, 1.9)

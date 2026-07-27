@@ -83,6 +83,19 @@ func _init() -> void:
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(hint)
 
+## Scale chips and text so the grid uses the space it's given — tiny
+## quarter-screen cells and huge fullscreen windows both read well.
+func fit(avail: Vector2) -> void:
+	var rows := ceili(float(entries.size()) / COLUMNS)
+	var chip := clampf(minf((avail.x * 0.82 - 60.0) / COLUMNS,
+		(avail.y * 0.62 - 80.0) / rows) - 5.0, 26.0, 84.0)
+	for panel: Panel in _chips:
+		panel.custom_minimum_size = Vector2(chip, chip)
+		for child in panel.get_children():
+			if child is Label:
+				child.add_theme_font_size_override("font_size", int(chip * 0.55))
+	_title.add_theme_font_size_override("font_size", int(clampf(chip * 0.75, 20.0, 46.0)))
+
 func open(current_block_index: int, current_structure: int) -> void:
 	focus_index = current_block_index if current_structure < 0 \
 		else Blocks.HOTBAR.size() + current_structure
