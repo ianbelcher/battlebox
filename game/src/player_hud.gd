@@ -178,6 +178,7 @@ func _ready() -> void:
 	_menu.anchor_top = 0.05
 	_menu.anchor_bottom = 0.95
 	_menu.visible = false
+	_menu.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_menu)
 	_tabs = TabContainer.new()
 	_menu.add_child(_tabs)

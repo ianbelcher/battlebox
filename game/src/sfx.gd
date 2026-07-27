@@ -40,6 +40,8 @@ func _ready() -> void:
 		"boing": _notes([[240, 0.05], [420, 0.06], [660, 0.09]], 0.55, "soft"),
 		"drop": _notes([[659, 0.08], [440, 0.1]], 0.45, "soft"),
 		"pew": _notes([[1400, 0.03], [900, 0.03], [560, 0.05]], 0.4, "soft"),
+		"click": _notes([[2200, 0.02]], 0.28, "thump"),
+		"thoomp": _thoomp(),
 		"bonk": _notes([[220, 0.06], [160, 0.1]], 0.6, "thump"),
 		"baa": _baa(),
 		"quack": _quack(),
@@ -67,6 +69,23 @@ func _ready() -> void:
 const STABLE_PITCH := ["join", "collect", "pet", "cheer", "warp"]
 
 ## Deep rumble + noise burst for the boom blocks.
+func _thoomp() -> AudioStreamWAV:
+	# Deep launch whump: fast downward sweep + breath of noise.
+	var seconds := 0.5
+	var count := int(seconds * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(count)
+	var phase := 0.0
+	var smooth := 0.0
+	for i in count:
+		var t := float(i) / RATE
+		var frac := t / seconds
+		phase += TAU * lerpf(220.0, 55.0, minf(frac * 2.0, 1.0)) / RATE
+		smooth = smooth * 0.85 + (randf() * 2.0 - 1.0) * 0.15
+		var env := exp(-t * 6.0) * minf(1.0, i / (0.004 * RATE))
+		buf[i] = (sin(phase) * 0.9 + smooth * 0.35) * env
+	return _to_wav(buf, 0.7)
+
 func _boom() -> AudioStreamWAV:
 	var seconds := 0.9
 	var count := int(seconds * RATE)

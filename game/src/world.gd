@@ -487,8 +487,21 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 			if not pairs.is_empty():
 				cl_edits.rpc(pairs)
 			return
-		9:  # Firework Gun.
-			cl_firework_fx.rpc(cell)
+		9:  # Napalm Rocket: mid blast plus short-lived fire.
+			_blast(cell, 2.2, [], cell)
+			var splashed: Array = []
+			for off in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1),
+					Vector3i(0, 0, -1), Vector3i(0, 1, 0), Vector3i(0, 0, 0)]:
+				var pos: Vector3i = cell + off
+				var block := store.get_block(pos)
+				if (block == Blocks.AIR or Blocks.is_flammable(block)) and _fires.size() < 120:
+					store.set_block(pos, Blocks.FIRE)
+					_fires[pos] = Time.get_ticks_msec() + randi_range(1200, 2800)
+					splashed.append(pos)
+			if not splashed.is_empty():
+				cl_batch.rpc(splashed, Blocks.FIRE)
+			return
+		11:  # Wings do their work while held; the trigger does nothing.
 			return
 		10:  # Grump Whistle: a wild Grump, raid or not.
 			if _monsters.size() < 30:
@@ -527,6 +540,11 @@ func sv_orb_hit(slot: int, target_id: String, hit_pos: Vector3) -> void:
 	if target_state.is_empty() or Vector3(target_state.pos).distance_to(hit_pos) > 4.0:
 		return
 	cl_bonk.rpc(target_id, hit_pos)
+
+@rpc("any_peer", "reliable")
+func sv_shoot_critter(_slot: int, critter_id: int) -> void:
+	if multiplayer.is_server() and _critters.has(critter_id):
+		_critters.erase(critter_id)
 
 @rpc("any_peer", "reliable")
 func sv_pet(slot: int, critter_id: int) -> void:
@@ -1083,7 +1101,9 @@ func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 		return
 	var ground := store.get_block(Vector3i(wx, y, wz))
 	var kind := -1
-	if ground == Blocks.WATER:
+	if WorldGen.hash01(wx, wz, 500) < 0.15:
+		kind = CritterView.BIRD
+	elif ground == Blocks.WATER:
 		kind = CritterView.DUCK
 	elif ground == Blocks.SAND:
 		kind = CritterView.CRAB
@@ -1111,7 +1131,7 @@ func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 	var pos := Vector3(wx + 0.5, y + 1.0, wz + 0.5)
 	_critters[_next_critter_id] = {
 		"kind": kind, "pos": pos, "target": pos,
-		"speed": [1.2, 2.2, 1.6, 0.9, 1.1, 1.4, 0.8, 1.3, 1.8, 0.9][kind],
+		"speed": [1.2, 2.2, 1.6, 0.9, 1.1, 1.4, 0.8, 1.3, 1.8, 0.9, 3.0][kind],
 		"think": 0.0,
 	}
 	_next_critter_id += 1
@@ -1140,6 +1160,10 @@ func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 		var next: Vector3 = critter.pos + step
 		var y := store.surface_y(int(next.x), int(next.z))
 		var ground := store.get_block(Vector3i(int(next.x), y, int(next.z)))
+		if critter.kind == CritterView.BIRD:
+			next.y = float(y) + 1.0  # view adds soaring height
+			critter.pos = next
+			return
 		if critter.kind == CritterView.DUCK:
 			if ground != Blocks.WATER:
 				critter.think = 0.0

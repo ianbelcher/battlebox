@@ -357,6 +357,28 @@ func _update_minimap() -> void:
 					for dx in range(-1, 2):
 						image.set_pixel(px + dx, py + dy, dot)
 	_minimap.texture = ImageTexture.create_from_image(image)
+	# The 3-player layout's fourth quarter shows a wide shared battle map.
+	if _split != null and _split.big_map != null and is_instance_valid(_split.big_map):
+		var wide := Image.create(120, 120, false, Image.FORMAT_RGB8)
+		for py in 120:
+			for px in 120:
+				var wx := int(center.x) + (px - 60) * 4
+				var wz := int(center.z) + (py - 60) * 4
+				var block: int = Game.world.chunks.top_block(wx, wz)
+				var color := Color(0.06, 0.07, 0.1)
+				if block > 0:
+					color = Blocks.top_color_of(block)
+				wide.set_pixel(px, py, color)
+		for child in Game.world.players.get_children():
+			if child is Player:
+				var px := 60 + int((child.position.x - center.x) / 4.0)
+				var py := 60 + int((child.position.z - center.z) / 4.0)
+				if px >= 1 and px < 119 and py >= 1 and py < 119:
+					var dot := Color("ffd166") if child.is_local else Color("ff4426")
+					for dy in range(-1, 2):
+						for dx in range(-1, 2):
+							wide.set_pixel(px + dx, py + dy, dot)
+		_split.big_map.texture = ImageTexture.create_from_image(wide)
 
 func _refresh_survival() -> void:
 	if _survival_button == null or Game.world == null:

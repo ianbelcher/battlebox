@@ -126,7 +126,7 @@ func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Di
 						"pos": Vector3(x + 0.5, y + 0.6, z + 0.5),
 						"energy": light,
 						"color": Blocks.color_of(block),
-						"flicker": block == Blocks.CAMPFIRE,
+						"flicker": block == Blocks.CAMPFIRE or block == Blocks.FIRE,
 					})
 	var result := {}
 	for key in ["opaque", "plants", "trans"]:

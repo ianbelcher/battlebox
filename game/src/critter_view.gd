@@ -4,7 +4,7 @@ extends Node3D
 ## here they glide, bob, flap and face their travel — and get petted.
 
 enum { SHEEP = 0, BUNNY = 1, BUTTERFLY = 2, FIREFLY = 3, DUCK = 4,
-	CHICKEN = 5, CRAB = 6, FROG = 7, DEER = 8, PENGUIN = 9 }
+	CHICKEN = 5, CRAB = 6, FROG = 7, DEER = 8, PENGUIN = 9, BIRD = 10 }
 
 ## Animal voices: clip + pitch range; played at random intervals, faded by
 ## distance, so the world chatters without ever sounding like a metronome.
@@ -15,6 +15,7 @@ const CALLS := {
 	FROG: ["ribbit", 0.85, 1.2],
 	PENGUIN: ["quack", 1.4, 1.7],
 	DEER: ["cluck", 0.5, 0.6],
+	BIRD: ["ribbit", 1.8, 2.4],
 }
 
 var _nodes: Dictionary = {}    # id -> {node: Node3D, target: Vector3, kind: int, phase: float}
@@ -53,6 +54,36 @@ func nearest_id(pos: Vector3, radius: float) -> int:
 			best_dist = dist
 			best = id
 	return best
+
+## Shot! A puff of fluff and it's gone.
+func pop(id: int) -> void:
+	if not _nodes.has(id):
+		return
+	var node: Node3D = _nodes[id].node
+	Sfx.play("pop", -2.0)
+	var puff := CPUParticles3D.new()
+	puff.position = node.position + Vector3(0, 0.4, 0)
+	puff.amount = 12
+	puff.lifetime = 0.5
+	puff.one_shot = true
+	puff.explosiveness = 1.0
+	puff.spread = 180.0
+	puff.initial_velocity_min = 2.0
+	puff.initial_velocity_max = 3.5
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.08
+	mesh.height = 0.16
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.95, 0.93, 0.88)
+	mesh.material = mat
+	puff.mesh = mesh
+	add_child(puff)
+	puff.emitting = true
+	get_tree().create_timer(1.0).timeout.connect(func() -> void:
+		if is_instance_valid(puff):
+			puff.queue_free())
+	node.queue_free()
+	_nodes.erase(id)
 
 func pet(id: int) -> void:
 	if not _nodes.has(id):
@@ -132,6 +163,12 @@ func _process(delta: float) -> void:
 					if wing.name.begins_with("Wing"):
 						var side := 1.0 if wing.name == "WingL" else -1.0
 						wing.rotation.z = side * (0.5 + sin(t * 14.0 + phase) * 0.55)
+			BIRD:
+				visual.position.y = 4.0 + sin(t * 1.4 + phase) * 0.8
+				for wing in visual.get_children():
+					if wing.name.begins_with("Wing"):
+						var side := 1.0 if wing.name == "WingL" else -1.0
+						wing.rotation.z = side * (0.4 + sin(t * 9.0 + phase) * 0.5)
 			FIREFLY:
 				visual.position.y = 0.7 + sin(t * 1.6 + phase) * 0.3
 				visual.position.x = sin(t * 0.9 + phase) * 0.2
@@ -223,6 +260,23 @@ func _build(kind: int) -> Node3D:
 				wing.mesh = mesh
 				wing.position = Vector3(side * 0.12, 0.02, 0)
 				var mat := _mat(Color("7bb8f0") if randf() < 0.5 else Color("f2a3c2"))
+				mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+				wing.material_override = mat
+				visual.add_child(wing)
+		BIRD:
+			var body := _sphere(0.11, Color("4a76c9"), 1.2)
+			visual.add_child(body)
+			var beak := _sphere(0.04, Color("e08c3a"))
+			beak.position = Vector3(0, 0.02, -0.13)
+			visual.add_child(beak)
+			for side in [-1.0, 1.0]:
+				var wing := MeshInstance3D.new()
+				wing.name = "WingL" if side > 0 else "WingR"
+				var mesh := QuadMesh.new()
+				mesh.size = Vector2(0.3, 0.16)
+				wing.mesh = mesh
+				wing.position = Vector3(side * 0.14, 0.03, 0)
+				var mat := _mat(Color("3a5f9e"))
 				mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 				wing.material_override = mat
 				visual.add_child(wing)

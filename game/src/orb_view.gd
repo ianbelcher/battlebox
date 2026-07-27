@@ -27,9 +27,11 @@ func shoot_local(player: Player, kind: int) -> void:
 	_add_orb(player.player_id, origin, dir, true, player.slot, kind)
 	world.sv_shoot.rpc_id(1, player.slot, origin, dir, kind)
 	if kind == 0:
-		Sfx.play("pew", -8.0)
+		Sfx.play("click", -6.0)
+	elif kind == 1 or kind == 9:
+		Sfx.play("thoomp", -2.0)
 	else:
-		Sfx.play("whoosh", -3.0, 0.7 if kind == 1 else 1.1)
+		Sfx.play("whoosh", -3.0, 1.1)
 
 func _add_orb(shooter_id: String, origin: Vector3, dir: Vector3, mine: bool, slot: int, kind: int) -> void:
 	var node := MeshInstance3D.new()
@@ -71,11 +73,16 @@ func _physics_process(delta: float) -> void:
 			if orb.mine:
 				world.sv_shot.rpc_id(1, orb.slot, cell, orb.kind)
 				if orb.kind == 2:
-					# Grapple: zip the shooter to the hook point.
+					# Grapple: launch the shooter in an arc that lands them ON
+					# TOP of the block they hooked (ceilings just bonk you).
 					for child in world.players.get_children():
 						if child is Player and child.player_id == orb.shooter_id:
-							var pull: Vector3 = (node.position - child.position)
-							child.velocity = pull.normalized() * 24.0 + Vector3.UP * 6.0
+							var target := Vector3(cell) + Vector3(0.5, 1.2, 0.5)
+							var delta_v: Vector3 = target - child.position
+							var rise: float = maxf(delta_v.y + 1.6, 1.5)
+							var vy := sqrt(2.0 * 22.0 * rise)
+							var flight := vy / 22.0 + 0.25
+							child.velocity = Vector3(delta_v.x / flight, vy, delta_v.z / flight)
 							child.on_floor = false
 							Sfx.play("warp", -4.0)
 		if not died and orb.mine:
@@ -89,6 +96,13 @@ func _physics_process(delta: float) -> void:
 						world.sv_orb_hit.rpc_id(1, orb.slot, child.player_id, node.position)
 					died = true
 					break
+			# Critters poof when shot (kind 0 pellets only — be humane-ish).
+			if not died and orb.kind == 0:
+				var critter: int = world.critter_view.nearest_id(node.position, 1.2)
+				if critter >= 0:
+					world.sv_shoot_critter.rpc_id(1, orb.slot, critter)
+					world.critter_view.pop(critter)
+					died = true
 			# Direct Grump hits (shell splash is handled server-side).
 			if not died and world.survival_active and orb.kind == 0:
 				var monster: int = world.monster_view.nearest_to(node.position, 1.1)

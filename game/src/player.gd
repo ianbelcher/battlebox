@@ -276,6 +276,12 @@ func _local_move(delta: float) -> void:
 			velocity.y = minf(velocity.y + 30.0 * delta, 4.0)
 		# Buoyancy beats gravity so kids bob back up to the surface.
 		velocity.y = minf(velocity.y + 8.0 * delta, 2.5)
+	elif held().kind == "weapon" and int(held().id) == 11 and velocity.y < 0.0:
+		# Wings held: glide. Slow fall, extra reach — and no shooting hand.
+		velocity.y = maxf(velocity.y - GRAVITY * delta * 0.15, -2.4)
+		velocity.x *= 1.35
+		velocity.z *= 1.35
+		anim = Anim.FLY
 	else:
 		velocity.y -= GRAVITY * delta
 		if jump_now and on_floor:

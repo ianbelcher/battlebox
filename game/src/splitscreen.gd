@@ -18,6 +18,7 @@ const FP_FOVS: Array[float] = [78.0, 45.0, 20.0, 8.0]
 const DEFAULT_ZOOM := 3
 
 var world: Node = null
+var big_map: TextureRect = null
 var _cells: Array = []   # [{slot:int(-1=spectator), container, viewport, rig, cam, hud,
                          #   yaw_index, yaw, zoom_index, size, prev_rot, prev_zoom}]
 var _orbit_angle := 0.0
@@ -125,21 +126,20 @@ func _spectator_prompt() -> Control:
 	box.add_child(prompt)
 	return center
 
+## With three players the spare quarter becomes a big battle map of the
+## whole area (main.gd redraws it alongside the corner minimaps).
 func _add_join_hint(frac: Rect2) -> void:
 	var panel := PanelContainer.new()
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.06, 0.07, 0.1)
+	style.bg_color = Color(0.04, 0.05, 0.08)
 	style.set_corner_radius_all(0)
 	panel.add_theme_stylebox_override("panel", style)
 	_place(panel, frac)
 	add_child(panel)
-	var label := Label.new()
-	label.text = "Press a button\nto join!"
-	label.add_theme_font_size_override("font_size", 30)
-	label.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	panel.add_child(label)
+	big_map = TextureRect.new()
+	big_map.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	big_map.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	panel.add_child(big_map)
 	_cells.append({"slot": -2, "container": panel, "viewport": null,
 		"rig": null, "cam": null, "hud": null})
 
