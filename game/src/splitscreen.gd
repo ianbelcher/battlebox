@@ -97,7 +97,7 @@ func _add_cell(slot: int, frac: Rect2) -> void:
 		"rig": rig, "cam": cam, "hud": hud,
 		"yaw_index": 0, "yaw": Player.ISO_ROT, "zoom_index": DEFAULT_ZOOM,
 		"size": ZOOM_SIZES[DEFAULT_ZOOM], "prev_rot": 0, "prev_zoom": 0,
-		"fp": false, "prev_view": false})
+		"fp": true, "prev_view": false})
 
 func _spectator_prompt() -> Control:
 	var center := CenterContainer.new()
@@ -175,9 +175,6 @@ func _process(delta: float) -> void:
 				cell.fp = not cell.fp
 				Sfx.play("tick", -8.0)
 			cell.prev_view = view
-			if cell.fp and input.kind == InputSlot.Kind.KEYBOARD_WASD \
-					and Input.is_physical_key_pressed(KEY_ESCAPE):
-				cell.fp = false
 		player.set_fp(cell.fp)
 		if cell.fp:
 			# Through the character's eyes: perspective, own body culled.
@@ -185,7 +182,7 @@ func _process(delta: float) -> void:
 			cam.fov = 78.0
 			cam.near = 0.05
 			cam.cull_mask = ((1 << 20) - 1) & ~player.render_layer_bit()
-			var eye: Vector3 = player.position + Vector3(0, 1.12, 0)
+			var eye: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT, 0)
 			cam.look_at_from_position(eye, eye + player.look_dir(), Vector3.UP)
 			continue
 		cam.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -226,7 +223,8 @@ func _process(delta: float) -> void:
 	for cell: Dictionary in _cells:
 		var input: InputSlot = Game.local_inputs.get(cell.slot)
 		if cell.get("fp", false) and input != null \
-				and input.kind == InputSlot.Kind.KEYBOARD_WASD:
+				and input.kind == InputSlot.Kind.KEYBOARD_WASD \
+				and (cell.hud == null or not cell.hud.is_ui_open()):
 			want_capture = true
 	var target_mode := Input.MOUSE_MODE_CAPTURED if want_capture else Input.MOUSE_MODE_VISIBLE
 	if Input.mouse_mode != target_mode:

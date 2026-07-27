@@ -28,6 +28,9 @@ window/stretch/mode="disabled"
 [rendering]
 
 renderer/rendering_method="forward_plus"
+; If Vulkan can't initialize (some Linux driver stacks), fall back to
+; OpenGL instead of crashing on startup; effects auto-degrade.
+rendering_device/fallback_to_opengl3=true
 ; Required for the macOS universal/arm64 export (Apple Silicon needs
 ; ETC2/ASTC textures imported alongside S3TC).
 textures/vram_compression/import_etc2_astc=true

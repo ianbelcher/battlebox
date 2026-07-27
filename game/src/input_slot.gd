@@ -4,12 +4,13 @@ extends RefCounted
 ## WASD controls) plus any number of gamepads. Everything is polled directly
 ## (no InputMap) so slots never fight over actions.
 ##
-##           move        jump    dig      place  cycle blk  spin   zoom     1st person  leave(hold)
-## Keyboard  WASD        Space   E        F      Tab / R    Z / C  X / V    T           Q
-## Gamepad   Left stick  A       B        X      bumpers    R stick ←→ / ↕  Y           Back/Select
+##           move        jump    dig        place      picker     spin   zoom     1st person  leave(hold)
+## Keyboard  WASD        Space   L-click/G  R-click/F  E          Z / C  X / V    T           Q
+## Gamepad   Left stick  A       B          X          D-pad up   R stick ←→ / ↕  Y      Back/Select
 ##
-## In first person the right stick looks around; on keyboard the mouse looks
-## and left/right click also dig/place. Esc leaves first person.
+## Tab / R and the bumpers still quick-cycle the selection; E (or D-pad up)
+## opens the full picker with names. In first person the right stick looks
+## around; on keyboard the mouse looks. Esc leaves first person.
 
 enum Kind { KEYBOARD_WASD, KEYBOARD_ARROWS, GAMEPAD }
 
@@ -52,14 +53,6 @@ func get_move_vector() -> Vector2:
 			v.y = Input.get_joy_axis(device, JOY_AXIS_LEFT_Y)
 			if v.length() < DEADZONE:
 				v = Vector2.ZERO
-			if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_LEFT):
-				v.x = -1.0
-			if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_RIGHT):
-				v.x = 1.0
-			if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_UP):
-				v.y = -1.0
-			if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_DOWN):
-				v.y = 1.0
 	return v.limit_length(1.0)
 
 ## The big friendly "join" button: Space, Enter, or A. In the world it jumps.
@@ -75,11 +68,12 @@ func is_primary_pressed() -> bool:
 func is_jump_pressed() -> bool:
 	return is_primary_pressed()
 
-## Dig a block, collect a treasure, pet a critter.
+## Dig a block, collect a treasure, pet a critter (and zap Grumps).
 func is_dig_pressed() -> bool:
 	match kind:
 		Kind.KEYBOARD_WASD:
-			return Input.is_physical_key_pressed(KEY_E)
+			return Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) \
+				or Input.is_physical_key_pressed(KEY_G)
 		Kind.KEYBOARD_ARROWS:
 			return Input.is_physical_key_pressed(KEY_PERIOD)
 		_:
@@ -89,7 +83,8 @@ func is_dig_pressed() -> bool:
 func is_place_pressed() -> bool:
 	match kind:
 		Kind.KEYBOARD_WASD:
-			return Input.is_physical_key_pressed(KEY_F)
+			return Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) \
+				or Input.is_physical_key_pressed(KEY_F)
 		Kind.KEYBOARD_ARROWS:
 			return Input.is_physical_key_pressed(KEY_COMMA)
 		_:
@@ -101,14 +96,57 @@ func cycle_direction() -> int:
 		Kind.KEYBOARD_WASD:
 			if Input.is_physical_key_pressed(KEY_TAB):
 				return 1
-			if Input.is_physical_key_pressed(KEY_R):
-				return -1
 		Kind.GAMEPAD:
 			if Input.is_joy_button_pressed(device, JOY_BUTTON_RIGHT_SHOULDER):
 				return 1
 			if Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER):
 				return -1
 	return 0
+
+## Throw an orb (R / middle click / right trigger) — always available.
+func is_shoot_pressed() -> bool:
+	match kind:
+		Kind.KEYBOARD_WASD:
+			return Input.is_physical_key_pressed(KEY_R) \
+				or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)
+		Kind.GAMEPAD:
+			return Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.5
+	return false
+
+## Open the tabbed menu (Esc / Start).
+func is_menu_pressed() -> bool:
+	match kind:
+		Kind.KEYBOARD_WASD:
+			return Input.is_physical_key_pressed(KEY_ESCAPE)
+		Kind.GAMEPAD:
+			return Input.is_joy_button_pressed(device, JOY_BUTTON_START)
+	return false
+
+## Open/close the block & structure picker (E / D-pad up).
+func is_picker_pressed() -> bool:
+	match kind:
+		Kind.KEYBOARD_WASD:
+			return Input.is_physical_key_pressed(KEY_E)
+		Kind.GAMEPAD:
+			return Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_UP)
+	return false
+
+## Directional input for navigating the picker grid.
+func get_ui_vector() -> Vector2:
+	if kind == Kind.GAMEPAD:
+		var v := Vector2.ZERO
+		if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_LEFT):
+			v.x = -1.0
+		if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_RIGHT):
+			v.x = 1.0
+		if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_DOWN):
+			v.y = 1.0
+		if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_UP):
+			v.y = -1.0
+		if v == Vector2.ZERO:
+			v = get_move_vector()
+		return v
+	return get_move_vector()
 
 ## Descend while flying (Shift / left trigger).
 func is_descend_pressed() -> bool:

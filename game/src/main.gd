@@ -18,6 +18,9 @@ var _address_edit: LineEdit
 var _status_label: Label
 var _clock_label: Label
 var _players_label: Label
+var _survival_button: Button
+var _wave_label: Label
+var _banner: Label
 var _loading_label: Label
 
 var _prev_pressed: Dictionary = {}
@@ -168,6 +171,23 @@ func _build_game_screen() -> void:
 	row.add_child(_clock_label)
 	_players_label = _make_label("", 17, Color(1, 1, 1, 0.7))
 	row.add_child(_players_label)
+	_survival_button = Button.new()
+	_survival_button.text = "⚔ Attack!"
+	_survival_button.add_theme_font_size_override("font_size", 15)
+	_survival_button.tooltip_text = "Start a Grump attack — defend yourselves!"
+	_survival_button.pressed.connect(func() -> void:
+		if Game.world != null and not Game.world.survival_active:
+			Game.world.sv_survival_start.rpc_id(1, 0))
+	row.add_child(_survival_button)
+	_wave_label = _make_label("", 17, Color("ff6b6b"))
+	row.add_child(_wave_label)
+	# Center banner for survival results.
+	_banner = _make_label("", 40, GOLD, 8)
+	_banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_banner.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_banner.visible = false
+	_game_screen.add_child(_banner)
 
 # ------------------------------------------------------------------
 # Connection flow
@@ -189,6 +209,12 @@ func _on_connected() -> void:
 	_split.world = world
 	world.world_ready.connect(func() -> void:
 		_loading_label.visible = false)
+	world.survival_changed.connect(_refresh_survival)
+	world.survival_ended.connect(func(seconds: float, bonked: int) -> void:
+		_show_banner("You survived %d:%02d and bonked %d Grumps!" % [
+			int(seconds / 60.0), int(seconds) % 60, bonked])
+	)
+	_refresh_survival()
 	_in_world = true
 	_loading_label.visible = true
 	_show_screen(_game_screen)
@@ -210,6 +236,10 @@ func _maybe_start_autotest() -> void:
 			Game.cycle_local_style(slot, ["body", "shirt", "hat"][slot % 3], 1))
 	# WORLD_AUTOTEST_BLOCK=<id>: pin every bot's hotbar to one block so a
 	# smoke test can hammer a specific mechanic (booms, warp stones...).
+	if OS.get_environment("WORLD_AUTOTEST_SURVIVAL") == "1":
+		get_tree().create_timer(8.0).timeout.connect(func() -> void:
+			if Game.world != null:
+				Game.world.sv_survival_start.rpc_id(1, 0))
 	var forced := OS.get_environment("WORLD_AUTOTEST_BLOCK")
 	if forced.is_valid_int():
 		var index := Blocks.HOTBAR.find(forced.to_int())
@@ -233,6 +263,22 @@ func _on_server_lost() -> void:
 func _set_status(text: String) -> void:
 	if _status_label != null:
 		_status_label.text = text
+
+func _refresh_survival() -> void:
+	if _survival_button == null or Game.world == null:
+		return
+	_survival_button.visible = not Game.world.survival_active
+	_wave_label.text = "Wave %d!" % Game.world.survival_wave \
+		if Game.world.survival_active else ""
+
+func _show_banner(text: String) -> void:
+	_banner.text = text
+	_banner.visible = true
+	_banner.modulate.a = 1.0
+	var tween := create_tween()
+	tween.tween_interval(5.0)
+	tween.tween_property(_banner, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(func() -> void: _banner.visible = false)
 
 func _on_roster_changed() -> void:
 	if _split != null:

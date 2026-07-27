@@ -16,7 +16,35 @@ const HAT_CHIP_COLORS: Array[Color] = [
 
 var _name_label: Label
 var _treasure_label: Label
+var _hearts_label: Label
 var _selected_label: Label
+var _picker: BlockPicker
+var _menu: PanelContainer
+var _tabs: TabContainer
+var _info: Label
+var _prev_picker := false
+var _prev_menu := false
+
+const GUIDE_TEXT := """Move: WASD / left stick        Jump: Space / A
+Double-tap jump = FLY (hold jump to rise, Shift / LT to sink, land to stop)
+
+Break block: LEFT CLICK / B         Place block: RIGHT CLICK / F / X
+Throw orb: R / middle click / RT    (bonks friends and Grumps!)
+Blocks & building kits: E / D-pad up      Quick cycle: Tab / bumpers
+
+T / Y: switch between first person and overview
+In the overview: Z C spin the view, X V zoom (right stick on gamepads)
+
+Boom Blocks are safe until you CLICK them - then run! Stack them
+together and they all go up in one giant blast. Click a lit one to defuse.
+Warp Stones teleport to each other. Music Blocks sing when stepped on.
+Sponges drink ponds. Party Poppers are best discovered.
+
+The [sword] Attack! button starts a Grump raid: they climb ONE block at
+most, so walls keep them out. Orbs bonk them. Last as long as you can!
+
+Hold Q / Back to leave. Everything is always saved."""
+var _last_structure := -2
 var _swatches: Dictionary = {}   # attr -> ColorRect
 var _hotbar: HBoxContainer
 var _chips: Array = []
@@ -66,6 +94,10 @@ func _ready() -> void:
 	_treasure_label.add_theme_font_size_override("font_size", 18)
 	_treasure_label.add_theme_color_override("font_color", Color("ffd166"))
 	row.add_child(_treasure_label)
+	_hearts_label = Label.new()
+	_hearts_label.add_theme_font_size_override("font_size", 18)
+	_hearts_label.add_theme_color_override("font_color", Color("ff6b6b"))
+	row.add_child(_hearts_label)
 
 	# Bottom: hotbar.
 	var bar_holder := CenterContainer.new()
@@ -107,10 +139,73 @@ func _ready() -> void:
 	_selected_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_selected_label)
 
+	# Tabbed menu (Esc / Start), also home of the block picker (E jumps
+	# straight to the Blocks tab). Minecraft brains expected this.
+	_menu = PanelContainer.new()
+	var menu_style := StyleBoxFlat.new()
+	menu_style.bg_color = Color(0.05, 0.06, 0.1, 0.94)
+	menu_style.set_corner_radius_all(14)
+	menu_style.set_content_margin_all(12)
+	menu_style.border_color = Color("ffd166")
+	menu_style.set_border_width_all(2)
+	_menu.add_theme_stylebox_override("panel", menu_style)
+	_menu.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_menu.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_menu.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_menu.visible = false
+	add_child(_menu)
+	_tabs = TabContainer.new()
+	_tabs.custom_minimum_size = Vector2(560, 380)
+	_menu.add_child(_tabs)
+	var guide := Label.new()
+	guide.name = "How to Play"
+	guide.add_theme_font_size_override("font_size", 15)
+	guide.text = GUIDE_TEXT
+	_tabs.add_child(guide)
+	_picker = BlockPicker.new()
+	_picker.name = "Blocks & Kits"
+	_picker.picked.connect(_on_picked)
+	_tabs.add_child(_picker)
+	_info = Label.new()
+	_info.name = "World"
+	_info.add_theme_font_size_override("font_size", 16)
+	_tabs.add_child(_info)
+
 	if world != null:
 		world.treasures_changed.connect(_refresh_identity)
+		world.survival_changed.connect(_refresh_identity)
+		world.hearts_changed.connect(_refresh_identity)
 	Game.roster_changed.connect(_refresh_identity)
 	_refresh_identity()
+
+func is_ui_open() -> bool:
+	return _menu != null and _menu.visible
+
+func _toggle_menu(player: Player, tab: int) -> void:
+	if _menu.visible and _tabs.current_tab == tab:
+		_menu.visible = false
+		player.ui_locked = false
+		return
+	_menu.visible = true
+	_tabs.current_tab = tab
+	player.ui_locked = true
+	_picker.open(player.hotbar_index, player.selected_structure)
+	var id := Game.player_id(multiplayer.get_unique_id(), slot)
+	_info.text = "%d playing right now\nYour treasures: %d\nWorld source: %s\n\nThe world is saved all the time - whatever\nyou build is still here tomorrow.\nFly up high... some islands float.\nDig deep... some caves glow." % [
+		Game.roster.size(), int(world.treasures.get(id, 0)), str(world.source)]
+	Sfx.play("card" if Sfx._streams.has("card") else "tick", -8.0)
+
+func _on_picked(entry: Dictionary) -> void:
+	var player := _player()
+	if player == null:
+		return
+	if entry.kind == "block":
+		player.hotbar_index = Blocks.HOTBAR.find(int(entry.id))
+		player.selected_structure = -1
+	else:
+		player.selected_structure = int(entry.id)
+	_menu.visible = false
+	player.ui_locked = false
 
 func _entry() -> Dictionary:
 	return Game.roster.get(Game.player_id(multiplayer.get_unique_id(), slot), {})
@@ -135,6 +230,12 @@ func _refresh_identity() -> void:
 	var id := Game.player_id(multiplayer.get_unique_id(), slot)
 	var count: int = world.treasures.get(id, 0) if world != null else 0
 	_treasure_label.text = "✦ %d" % count
+	if world != null and world.survival_active:
+		var hp: int = world.hearts.get(id, 5)
+		_hearts_label.text = "♥".repeat(maxi(hp, 0))
+		_hearts_label.visible = true
+	else:
+		_hearts_label.visible = false
 
 func _edit_name() -> void:
 	var entry := _entry()
@@ -163,7 +264,29 @@ func _process(_delta: float) -> void:
 	var player := _player()
 	if player == null:
 		return
-	if player.hotbar_index != _last_index:
+	# Menu toggling: E opens straight onto the Blocks tab, Esc/Start onto
+	# the guide; either closes it again.
+	var input: InputSlot = Game.local_inputs.get(slot)
+	if input != null:
+		var picker_pressed := input.is_picker_pressed()
+		if picker_pressed and not _prev_picker:
+			_toggle_menu(player, 1)
+		_prev_picker = picker_pressed
+		var menu_pressed := input.is_menu_pressed()
+		if menu_pressed and not _prev_menu:
+			_toggle_menu(player, 0)
+		_prev_menu = menu_pressed
+		if _menu.visible and _tabs.current_tab == 1:
+			_picker.poll(input, _delta)
+	if not _menu.visible and player.ui_locked:
+		player.ui_locked = false
+	# Selected-structure label beats the block label.
+	if player.selected_structure != _last_structure:
+		_last_structure = player.selected_structure
+		if player.selected_structure >= 0:
+			_selected_label.text = str(Structures.spec(player.selected_structure).name)
+			_last_index = -1
+	if player.hotbar_index != _last_index and player.selected_structure < 0:
 		_last_index = player.hotbar_index
 		_selected_label.text = Blocks.display_name(Blocks.HOTBAR[_last_index])
 		for i in _chips.size():

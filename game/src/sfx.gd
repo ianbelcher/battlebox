@@ -18,6 +18,8 @@ var _next := 0
 var _ambients: Dictionary = {}
 var _ambient_player: AudioStreamPlayer
 var _current_ambient := ""
+var _chirps: Array = []
+var _bird_timer: Timer
 
 func _ready() -> void:
 	for i in PLAYER_POOL:
@@ -36,6 +38,13 @@ func _ready() -> void:
 		"pop": _notes([[988, 0.06]], 0.45, "soft"),
 		"splash": _notes([[740, 0.04], [520, 0.05], [620, 0.06]], 0.4, "soft"),
 		"boing": _notes([[240, 0.05], [420, 0.06], [660, 0.09]], 0.55, "soft"),
+		"drop": _notes([[659, 0.08], [440, 0.1]], 0.45, "soft"),
+		"pew": _notes([[1400, 0.03], [900, 0.03], [560, 0.05]], 0.4, "soft"),
+		"bonk": _notes([[220, 0.06], [160, 0.1]], 0.6, "thump"),
+		"baa": _baa(),
+		"quack": _quack(),
+		"cluck": _cluck(),
+		"ribbit": _ribbit(),
 		"whoosh": _notes([[320, 0.05], [480, 0.05], [720, 0.06], [1080, 0.1]], 0.4, "soft"),
 		"boom": _boom(),
 		"note": _notes([[523, 0.12]], 0.55),
@@ -47,8 +56,13 @@ func _ready() -> void:
 	add_child(_ambient_player)
 	_ambients = {
 		"crickets": _crickets(8),
-		"birds": _birds(),
 	}
+	for i in 4:
+		_chirps.append(_chirp())
+	_bird_timer = Timer.new()
+	_bird_timer.one_shot = true
+	_bird_timer.timeout.connect(_on_bird_timer)
+	add_child(_bird_timer)
 
 const STABLE_PITCH := ["join", "collect", "pet", "cheer", "warp"]
 
@@ -111,17 +125,35 @@ func play(clip: String, volume_db := 0.0, pitch := 0.0) -> void:
 		player.pitch_scale = 1.0 if clip in STABLE_PITCH else randf_range(0.9, 1.1)
 	player.play()
 
+## "birds" is a scheduler, not a loop: one-shot chirps at random intervals
+## and pitches, so the forest never sings in time.
 func play_ambient(clip: String) -> void:
 	if clip == _current_ambient:
 		return
 	_current_ambient = clip
 	if _ambient_player == null:
 		return
+	_bird_timer.stop()
+	if clip == "birds":
+		_ambient_player.stop()
+		_on_bird_timer()
+		return
 	if clip.is_empty() or not _ambients.has(clip):
 		_ambient_player.stop()
 		return
 	_ambient_player.stream = _ambients[clip]
 	_ambient_player.play()
+
+func _on_bird_timer() -> void:
+	if _current_ambient != "birds":
+		return
+	var player := _players[_next]
+	_next = (_next + 1) % _players.size()
+	player.stream = _chirps[randi() % _chirps.size()]
+	player.volume_db = randf_range(-22.0, -14.0)
+	player.pitch_scale = randf_range(0.8, 1.3)
+	player.play()
+	_bird_timer.start(randf_range(0.8, 5.5))
 
 func _notes(notes: Array, volume: float, timbre := "bell") -> AudioStreamWAV:
 	var spec: Dictionary = TIMBRES[timbre]
@@ -216,3 +248,84 @@ func _birds() -> AudioStreamWAV:
 			if chirp_start + i < buf.size():
 				buf[chirp_start + i] += sin(phase) * env * 0.5
 	return _to_wav(buf, 0.4, true)
+
+## One randomized birdsong phrase (1-3 sweeping chirps).
+func _chirp() -> AudioStreamWAV:
+	var seconds := 0.7
+	var buf := PackedFloat32Array()
+	buf.resize(int(seconds * RATE))
+	var chirp_count := 1 + randi() % 3
+	for chirp in chirp_count:
+		var start := chirp * randf_range(0.14, 0.24)
+		var f_start := 1800.0 + randf() * 1200.0
+		var f_end := f_start * randf_range(0.7, 1.35)
+		var chirp_len := int(randf_range(0.06, 0.13) * RATE)
+		var chirp_start := int(start * RATE)
+		var phase := 0.0
+		for i in chirp_len:
+			var frac := float(i) / chirp_len
+			phase += TAU * lerpf(f_start, f_end, frac) / RATE
+			var env := sin(PI * frac)
+			if chirp_start + i < buf.size():
+				buf[chirp_start + i] += sin(phase) * env * 0.5
+	return _to_wav(buf, 0.4)
+
+## Wobbly sheep bleat.
+func _baa() -> AudioStreamWAV:
+	var seconds := 0.55
+	var count := int(seconds * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(count)
+	for i in count:
+		var t := float(i) / RATE
+		var env := sin(PI * t / seconds)
+		var vibrato := 6.0 * sin(TAU * 7.0 * t)
+		buf[i] = sin(TAU * 285.0 * t + vibrato) * env * (0.7 + 0.3 * sin(TAU * 14.0 * t))
+	return _to_wav(buf, 0.5)
+
+## Nasal descending duck quack.
+func _quack() -> AudioStreamWAV:
+	var seconds := 0.22
+	var count := int(seconds * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(count)
+	var phase := 0.0
+	for i in count:
+		var t := float(i) / RATE
+		var frac := t / seconds
+		phase += TAU * lerpf(260.0, 170.0, frac) / RATE
+		var env := sin(PI * frac)
+		buf[i] = (sin(phase) + 0.5 * sin(phase * 2.0) + 0.3 * sin(phase * 3.0)) * env
+	return _to_wav(buf, 0.5)
+
+## Two quick hen pops.
+func _cluck() -> AudioStreamWAV:
+	var seconds := 0.3
+	var count := int(seconds * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(count)
+	for pop in 2:
+		var start := int(pop * 0.14 * RATE)
+		var pop_len := int(0.06 * RATE)
+		var phase := 0.0
+		for i in pop_len:
+			var frac := float(i) / pop_len
+			phase += TAU * lerpf(700.0, 350.0, frac) / RATE
+			if start + i < count:
+				buf[start + i] += sin(phase) * exp(-frac * 5.0)
+	return _to_wav(buf, 0.5)
+
+## Low two-note frog croak.
+func _ribbit() -> AudioStreamWAV:
+	var seconds := 0.4
+	var count := int(seconds * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(count)
+	for i in count:
+		var t := float(i) / RATE
+		var freq := 105.0 if t < 0.2 else 140.0
+		var syllable := fmod(t, 0.2) / 0.2
+		var env := sin(PI * syllable)
+		var buzz := 1.0 if fmod(t * 42.0, 1.0) < 0.6 else 0.35
+		buf[i] = sin(TAU * freq * t) * env * buzz
+	return _to_wav(buf, 0.55)

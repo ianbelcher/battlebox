@@ -66,3 +66,6 @@ func zoom_direction() -> int:
 
 func is_leave_pressed() -> bool:
 	return false
+
+func is_shoot_pressed() -> bool:
+	return fmod(_t() * 0.15 + bot_index * 0.55, 1.0) < 0.03

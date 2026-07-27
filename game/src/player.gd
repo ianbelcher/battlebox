@@ -13,6 +13,9 @@ const HALF_WIDTH := 0.32
 const HEIGHT := 1.25
 const SEND_HZ := 12.0
 const EDIT_REPEAT := 0.24
+## Eye level for first person — near the top of the head, so blocks read
+## about waist height like they should.
+const EYE_HEIGHT := 1.5
 ## Default camera yaw; the split-screen rig updates camera_yaw as the view
 ## spins so "stick up" always moves away from the camera.
 const ISO_ROT := PI / 4.0
@@ -38,6 +41,11 @@ var leave_hold := 0.0
 var fp_mode := false
 var look_yaw := 0.0
 var look_pitch := 0.0
+
+## Set while this player's picker is open: input drives the UI, not the body.
+var ui_locked := false
+## Picked prefab from the picker (-1 = placing single blocks).
+var selected_structure := -1
 
 ## Flight (double-tap jump toggles; landing exits).
 var fly_mode := false
@@ -160,9 +168,10 @@ func selected_block() -> int:
 
 func _physics_process(delta: float) -> void:
 	if is_local:
-		if _spawned:
+		if _spawned and not ui_locked:
 			_local_move(delta)
 			_local_actions(delta)
+		if _spawned:
 			_send_state(delta)
 	else:
 		position = position.lerp(_remote_target, minf(1.0, delta * 10.0))
@@ -396,6 +405,10 @@ func _local_actions(delta: float) -> void:
 		or (mouse_ok and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT))
 	var wants_place: bool = input.is_place_pressed() \
 		or (mouse_ok and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+	if input.is_shoot_pressed() and _edit_cooldown <= 0.0:
+		world.orbs.shoot_local(self)
+		_edit_cooldown = 0.45
+		return
 	if wants_dig:
 		# Petting beats digging when a critter is close.
 		var critter: int = world.critter_view.nearest_id(position, 1.9)
@@ -408,8 +421,13 @@ func _local_actions(delta: float) -> void:
 			_edit_cooldown = EDIT_REPEAT
 	elif wants_place:
 		if place_target != Vector3i(0, -99, 0):
-			world.send_edit(slot, place_target, selected_block())
-			_edit_cooldown = EDIT_REPEAT
+			if selected_structure >= 0:
+				world.sv_structure.rpc_id(1, slot, place_target, selected_structure,
+					randi() % 1000)
+				_edit_cooldown = 1.0
+			else:
+				world.send_edit(slot, place_target, selected_block())
+				_edit_cooldown = EDIT_REPEAT
 
 func _front_cell(dy: int) -> Vector3i:
 	var front := position + heading * 0.95
@@ -423,7 +441,7 @@ const NO_TARGET := Vector3i(0, -99, 0)
 ## and build under your feet mid-jump.
 func _find_fp_targets() -> Array:
 	var chunks := _chunks()
-	var eye := position + Vector3(0, 1.12, 0)
+	var eye := position + Vector3(0, EYE_HEIGHT, 0)
 	var dir := look_dir()
 	var last_open := NO_TARGET
 	var last_cell := Vector3i(floori(eye.x), floori(eye.y), floori(eye.z))
