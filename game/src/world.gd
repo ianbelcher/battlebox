@@ -1517,7 +1517,9 @@ func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 		return
 	var ground := store.get_block(Vector3i(wx, y, wz))
 	var kind := -1
-	if WorldGen.hash01(wx, wz, 500) < 0.15:
+	if WorldGen.hash01(wx, wz, 501) < 0.02:
+		kind = CritterView.DRAGON
+	elif WorldGen.hash01(wx, wz, 500) < 0.15:
 		kind = CritterView.BIRD
 	elif ground == Blocks.WATER:
 		kind = CritterView.DUCK
@@ -1547,7 +1549,7 @@ func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 	var pos := Vector3(wx + 0.5, y + 1.0, wz + 0.5)
 	_critters[_next_critter_id] = {
 		"kind": kind, "pos": pos, "target": pos,
-		"speed": [1.2, 2.2, 1.6, 0.9, 1.1, 1.4, 0.8, 1.3, 1.8, 0.9, 3.0][kind],
+		"speed": [1.2, 2.2, 1.6, 0.9, 1.1, 1.4, 0.8, 1.3, 1.8, 0.9, 3.0, 2.4][kind],
 		"think": 0.0,
 	}
 	_next_critter_id += 1
@@ -1576,6 +1578,10 @@ func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 		var next: Vector3 = critter.pos + step
 		var y := store.surface_y(int(next.x), int(next.z))
 		var ground := store.get_block(Vector3i(int(next.x), y, int(next.z)))
+		if critter.kind == CritterView.DRAGON:
+			next.y = float(y) + 1.0
+			critter.pos = next
+			return
 		if critter.kind == CritterView.BIRD:
 			next.y = float(y) + 1.0  # view adds soaring height
 			critter.pos = next
@@ -1676,9 +1682,14 @@ func _client_sync_players() -> void:
 		var is_local: bool = entry.peer == me and Game.local_inputs.has(entry.slot)
 		var player := Player.new()
 		player.name = "P_" + id.replace(":", "_")
-		player.setup(id, entry, is_local,
-			Game.local_inputs.get(entry.slot) if is_local else null, self)
+		var input_slot: InputSlot = Game.local_inputs.get(entry.slot) if is_local else null
+		player.setup(id, entry, is_local, input_slot, self)
 		players.add_child(player)
+		if is_local and input_slot is BotSlot:
+			var brain := BotBrain.new()
+			brain.player = player
+			brain.bot = input_slot
+			player.add_child(brain)
 		if is_local:
 			sv_where.rpc_id(1, int(entry.slot))
 			Sfx.play("join")

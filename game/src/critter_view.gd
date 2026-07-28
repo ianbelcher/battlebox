@@ -4,7 +4,7 @@ extends Node3D
 ## here they glide, bob, flap and face their travel — and get petted.
 
 enum { SHEEP = 0, BUNNY = 1, BUTTERFLY = 2, FIREFLY = 3, DUCK = 4,
-	CHICKEN = 5, CRAB = 6, FROG = 7, DEER = 8, PENGUIN = 9, BIRD = 10 }
+	CHICKEN = 5, CRAB = 6, FROG = 7, DEER = 8, PENGUIN = 9, BIRD = 10, DRAGON = 11 }
 
 ## Animal voices: clip + pitch range; played at random intervals, faded by
 ## distance, so the world chatters without ever sounding like a metronome.
@@ -43,6 +43,17 @@ func update_critters(payload: Array) -> void:
 			var node: Node3D = _nodes[id].node
 			node.queue_free()
 			_nodes.erase(id)
+
+## Where a rider sits: the dragon's back, at soaring height.
+func mount_point(id: int) -> Vector3:
+	if not _nodes.has(id):
+		return Vector3.INF
+	var node: Node3D = _nodes[id].node
+	var visual: Node3D = node.get_child(0)
+	return node.position + Vector3(0, visual.position.y + 1.0, 0)
+
+func is_dragon(id: int) -> bool:
+	return _nodes.has(id) and int(_nodes[id].kind) == DRAGON
 
 func nearest_id(pos: Vector3, radius: float) -> int:
 	var best := -1
@@ -163,6 +174,12 @@ func _process(delta: float) -> void:
 					if wing.name.begins_with("Wing"):
 						var side := 1.0 if wing.name == "WingL" else -1.0
 						wing.rotation.z = side * (0.5 + sin(t * 14.0 + phase) * 0.55)
+			DRAGON:
+				visual.position.y = 8.0 + sin(t * 0.9 + phase) * 1.2
+				for wing in visual.get_children():
+					if wing.name.begins_with("Wing"):
+						var side := 1.0 if wing.name == "WingL" else -1.0
+						wing.rotation.z = side * (0.3 + sin(t * 4.0 + phase) * 0.45)
 			BIRD:
 				visual.position.y = 4.0 + sin(t * 1.4 + phase) * 0.8
 				for wing in visual.get_children():
@@ -263,6 +280,38 @@ func _build(kind: int) -> Node3D:
 				mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 				wing.material_override = mat
 				visual.add_child(wing)
+		DRAGON:
+			var body := _sphere(0.55, Color("7a3a8f"), 0.9)
+			body.position = Vector3(0, 0.4, 0)
+			body.scale = Vector3(1.0, 1.0, 1.7)
+			visual.add_child(body)
+			var head := _sphere(0.26, Color("8f4aa5"))
+			head.position = Vector3(0, 0.7, -1.0)
+			visual.add_child(head)
+			for side in [-1.0, 1.0]:
+				var eye := _sphere(0.07, Color("ffd166"), 1.0, true)
+				eye.position = Vector3(side * 0.12, 0.8, -1.18)
+				visual.add_child(eye)
+				var wing := MeshInstance3D.new()
+				wing.name = "WingL" if side > 0 else "WingR"
+				var wing_mesh := QuadMesh.new()
+				wing_mesh.size = Vector2(1.6, 0.9)
+				wing.mesh = wing_mesh
+				wing.position = Vector3(side * 0.9, 0.55, 0)
+				var wing_mat := _mat(Color("5d2a70"))
+				wing_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+				wing.material_override = wing_mat
+				visual.add_child(wing)
+			var tail := MeshInstance3D.new()
+			var tail_mesh := CylinderMesh.new()
+			tail_mesh.top_radius = 0.02
+			tail_mesh.bottom_radius = 0.22
+			tail_mesh.height = 1.4
+			tail.mesh = tail_mesh
+			tail.position = Vector3(0, 0.5, 1.3)
+			tail.rotation_degrees = Vector3(-75, 0, 0)
+			tail.material_override = _mat(Color("5d2a70"))
+			visual.add_child(tail)
 		BIRD:
 			var body := _sphere(0.11, Color("4a76c9"), 1.2)
 			visual.add_child(body)

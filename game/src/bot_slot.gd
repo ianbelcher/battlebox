@@ -18,7 +18,14 @@ func claim_key() -> String:
 func _t() -> float:
 	return Time.get_ticks_msec() / 1000.0
 
+## When a BotBrain is steering, it writes these; otherwise wander.
+var drive := Vector2.ZERO
+var drive_until := 0.0
+var brain_shoot := false
+
 func get_move_vector() -> Vector2:
+	if _t() < drive_until:
+		return drive
 	# A new heading every couple of seconds, unique per bot.
 	var step := floori(_t() / 1.7) + bot_index * 31
 	var angle := WorldGen.hash01(step, bot_index, 5) * TAU
@@ -38,6 +45,8 @@ func is_dig_pressed() -> bool:
 	return fmod(_t() * 0.2 + bot_index * 0.7, 1.0) < 0.06
 
 func is_place_pressed() -> bool:
+	if brain_shoot:
+		return true
 	var phase := fmod(_t() * 0.2 + bot_index * 0.7, 1.0)
 	return phase > 0.5 and phase < 0.56
 

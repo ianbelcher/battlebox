@@ -141,7 +141,7 @@ func reset_world(new_seed: int) -> void:
 	_edited.clear()
 	# Every reset rolls a new theme too: classic island, desert with
 	# explorable pyramids, ship-dotted isles, or castle-lands.
-	var themes := ["classic", "desert", "isles", "castles"]
+	var themes := ["classic", "desert", "isles", "castles", "city"]
 	theme = themes[randi() % themes.size()]
 	gen = WorldGen.new(new_seed, theme)
 	mca = null

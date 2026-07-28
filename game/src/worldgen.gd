@@ -74,6 +74,8 @@ func height_at(wx: int, wz: int) -> int:
 	var hills := _hills.get_noise_2d(wx, wz) * 0.5 + 0.5
 	var detail := _detail.get_noise_2d(wx, wz)
 	# Ocean floor ~14, beaches just above sea, hills up to ~+30 over sea.
+	if theme == "city":
+		return clampi(SEA_LEVEL + 4 + int(detail * 1.2), 2, CHUNK_H - 12)
 	if theme == "desert":
 		# Flat rolling dunes well above the water table.
 		var dune := 14.0 + (base * 18.0 + hills * hills * 30.0) * falloff + detail * 1.8
@@ -170,6 +172,12 @@ func _landmark_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 	var dz := wz - cz
 	if Vector2(cx, cz).length() > ISLAND_RADIUS - 30.0:
 		return
+	if theme == "city":
+		_city_column(data, lx, lz, wx, wz, h)
+		return
+	if theme == "castles":
+		_megacastle_column(data, lx, lz, wx, wz, h)
+		return
 	if theme == "desert" and roll < 0.65:
 		# Pyramids sit ON the dunes: base from the terrain at their center,
 		# and never in the water.
@@ -196,7 +204,7 @@ func _landmark_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 				data[idx(lx, y, lz)] = Blocks.AIR
 				if k % 5 == 1 and hash01(wx, wz, 902 + k) < 0.02:
 					data[idx(lx, y, lz)] = Blocks.GLOWSTONE
-	elif theme == "castles" and roll < 0.45:
+	elif false:
 		var m := maxi(absi(dx), absi(dz))
 		var wall_r := 13
 		if m == wall_r or (absi(dx) >= wall_r - 1 and absi(dz) >= wall_r - 1 and m <= wall_r + 1):
@@ -233,6 +241,103 @@ func _landmark_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 				data[idx(lx, deck + k, lz)] = Blocks.WOOL_WHITE
 		elif absi(dx) == 7 and dz == 0:
 			data[idx(lx, deck + 1, lz)] = Blocks.LANTERN
+
+## CITY: a street grid with procedural buildings, sidewalks and glass.
+func _city_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: int) -> void:
+	if Vector2(wx, wz).length() > ISLAND_RADIUS - 40.0 or h <= SEA_LEVEL:
+		return
+	var street_x := posmod(wx, 22)
+	var street_z := posmod(wz, 22)
+	# Roads every 22 blocks.
+	if street_x < 4 or street_z < 4:
+		data[idx(lx, h, lz)] = Blocks.PATH
+		if data[idx(lx, h + 1, lz)] != Blocks.AIR and not Blocks.is_cross(data[idx(lx, h + 1, lz)]):
+			pass
+		for y in range(h + 1, mini(h + 8, CHUNK_H)):
+			data[idx(lx, y, lz)] = Blocks.AIR
+		# Street lamps on corners.
+		if street_x == 2 and street_z == 2:
+			for k in range(1, 5):
+				data[idx(lx, h + k, lz)] = Blocks.SLATE if k < 4 else Blocks.LANTERN
+		return
+	# City lot: one building per 22-grid cell, inset 2 from streets.
+	var bx := floori(wx / 22.0)
+	var bz := floori(wz / 22.0)
+	var build_roll := hash01(bx, bz, 800)
+	if build_roll < 0.2:
+		return  # park lot: leave nature
+	var height := 6 + int(hash01(bx, bz, 801) * 18.0)
+	if street_x < 6 or street_z < 6 or street_x > 19 or street_z > 19:
+		return  # sidewalk margin
+	var wall: bool = street_x == 6 or street_z == 6 or street_x == 19 or street_z == 19
+	var material: int = [Blocks.BRICK, Blocks.MARBLE, Blocks.SLATE, Blocks.SANDSTONE][int(hash01(bx, bz, 802) * 4.0)]
+	for k in range(1, height + 1):
+		var y := h + k
+		if y >= CHUNK_H - 2:
+			break
+		if wall:
+			# Window bands.
+			var window: bool = k % 3 != 1 and posmod(wx + wz, 3) != 0
+			data[idx(lx, y, lz)] = Blocks.GLASS if window else material
+		elif k == height:
+			data[idx(lx, y, lz)] = material
+		else:
+			data[idx(lx, y, lz)] = Blocks.AIR
+	# Rooftop lantern sometimes.
+	if wall and hash01(wx, wz, 803) < 0.02 and h + height + 1 < CHUNK_H:
+		data[idx(lx, h + height + 1, lz)] = Blocks.LANTERN
+
+## CASTLES: one enormous central castle — curtain walls, corner towers,
+## and a tall keep with floors you can fight through.
+func _megacastle_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: int) -> void:
+	var m := maxi(absi(wx), absi(wz))
+	if h <= SEA_LEVEL:
+		return
+	# Curtain wall ring at |max| = 56..58, height 10, gate on the north.
+	if m >= 56 and m <= 58:
+		var gate: bool = wz <= -56 and absi(wx) <= 3
+		if not gate:
+			for k in range(1, 11):
+				if h + k < CHUNK_H:
+					var crenel: bool = k == 10 and posmod(wx + wz, 2) == 1
+					if not crenel:
+						data[idx(lx, h + k, lz)] = Blocks.COBBLE
+		return
+	# Corner towers.
+	if absi(absi(wx) - 57) <= 4 and absi(absi(wz) - 57) <= 4:
+		var tower_r := maxi(absi(absi(wx) - 57), absi(absi(wz) - 57))
+		if tower_r <= 4:
+			for k in range(1, 16):
+				if h + k >= CHUNK_H:
+					break
+				if tower_r >= 3 or k >= 14:
+					data[idx(lx, h + k, lz)] = Blocks.COBBLE
+				else:
+					data[idx(lx, h + k, lz)] = Blocks.AIR
+			if tower_r == 0 and h + 16 < CHUNK_H:
+				data[idx(lx, h + 16, lz)] = Blocks.LANTERN
+		return
+	# The keep: 24x24 at the center, 26 tall, hollow floors every 6.
+	if m <= 12:
+		for k in range(1, 27):
+			var y := h + k
+			if y >= CHUNK_H - 1:
+				break
+			var shell: bool = m >= 11
+			var floor_slab: bool = k % 6 == 0
+			var door: bool = wz <= -11 and absi(wx) <= 2 and k <= 4
+			var window: bool = shell and k % 6 >= 2 and k % 6 <= 3 and posmod(wx + wz, 4) == 0
+			if door:
+				data[idx(lx, y, lz)] = Blocks.AIR
+			elif shell:
+				data[idx(lx, y, lz)] = Blocks.GLASS if window else Blocks.STONE
+			elif floor_slab:
+				data[idx(lx, y, lz)] = Blocks.PLANKS
+			else:
+				data[idx(lx, y, lz)] = Blocks.AIR
+				if k % 6 == 1 and hash01(wx, wz, 810) < 0.02:
+					data[idx(lx, y, lz)] = Blocks.GLOWSTONE
+		return
 
 ## Rare floating islands high above the world — fly up and explore. Grass
 ## on top, a crystal heart inside the bigger ones.

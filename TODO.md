@@ -10,26 +10,25 @@ strike items when shipped, add new asks immediately.
       weapon you just picked wasn't in hand (fixed: stays on filled slot)
 - [x] Shots left the body at chest height, not matching the crosshair
       (fixed: muzzle at eye line, converges with crosshair)
-- [ ] Menu tab ORDER review with Ian (current: Blocks Tools Special Kits
-      Character Game)
-- [ ] Overlapping center banners (loading label vs banner label)
+- [x] Menu tabs reordered: Tools first (battle game), then Blocks etc.
+- [x] Overlapping center banners fixed
 
 ## Features (medium)
-- [ ] SPRINT (hold a key/stick-click to run faster, mild tradeoff)
-- [ ] Held-item viewmodel: see your weapon/block in hand (first person and
-      on other players' avatars), swing/recoil animation on use
-- [ ] 3D item models instead of glowing orbs for crates + hand items
-      (build like the critters: chunky procedural meshes per weapon)
-- [ ] Better special-block icons (lantern/campfire/glowstone/lava glyphs)
-- [ ] Bot AI that actually plays: seek crates, chase/shoot enemies, stay
-      near team, revive ghosts (currently wander-only)
+- [x] SPRINT: hold Shift / click left stick, 1.55x on the ground
+- [x] Held items visible: right-hand item on every avatar (replicated) +
+      first-person viewmodel (per-player render layer). Swing/recoil anim
+      still open
+- [x] ItemFactory: procedural 3D models for all weapons; crates show them
+- [x] Special-block icon glyphs (lantern/glow/fire/glass)
+- [x] BotBrain v1: seeks crates, chases and shoots enemies, revives
+      teammates. Still basic (no pathfinding around cliffs)
 
 ## Features (large)
-- [ ] Rideable flying creatures (dragons/pterodactyls): grapple onto one,
-      sit a mount point, steer it around — non-block creatures
-- [ ] Worldgen themes that are truly different: a CASTLE world (one huge
-      explorable castle), a CITY world, denser distinct biomes; option to
-      import open-source Minecraft maps as arenas
+- [x] DRAGONS: rare soaring beasts; grapple one to mount and ride its
+      flight, jump to dismount. Steering is v2
+- [x] CITY theme (street grid, glass-windowed buildings, lamps, parks) and
+      CASTLES rebuilt as ONE mega-castle (curtain walls, towers, hollow
+      keep with floors). Minecraft-map arena import still open
 - [ ] Multi-server flow: team eliminated -> back to lobby -> join the next
       match; multiple match servers at once
 - [ ] Match arena pre-generation as its own compact map (250x250, capped

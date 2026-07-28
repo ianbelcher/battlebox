@@ -209,7 +209,6 @@ func _build_game_screen() -> void:
 		Game.world.sv_reset_answer.rpc_id(1, false)
 		_vote_panel.visible = false)
 	vote_row.add_child(no)
-	_game_screen.add_child(_minimap)
 	var map_timer := Timer.new()
 	map_timer.wait_time = 1.5
 	map_timer.timeout.connect(_update_minimap)

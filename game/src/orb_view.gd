@@ -99,6 +99,15 @@ func _physics_process(delta: float) -> void:
 						world.sv_orb_hit.rpc_id(1, orb.slot, child.player_id, node.position)
 					died = true
 					break
+			# Grapple a DRAGON and you climb aboard.
+			if not died and orb.kind == 2:
+				var dragon: int = world.critter_view.nearest_id(node.position, 3.5)
+				if dragon >= 0 and world.critter_view.is_dragon(dragon):
+					for child in world.players.get_children():
+						if child is Player and child.player_id == orb.shooter_id:
+							child.riding = dragon
+							Sfx.play("warp")
+					died = true
 			# Critters poof when shot (kind 0 pellets only — be humane-ish).
 			if not died and orb.kind == 0:
 				var critter: int = world.critter_view.nearest_id(node.position, 1.2)

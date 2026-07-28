@@ -66,6 +66,8 @@ var _shoot_hold := 0.0
 ## Sky-drop at match start: fall gently until touching down.
 var drop_glide := false
 var downed := false
+## Riding a dragon (critter id) — grapple one to mount, jump to dismount.
+var riding := -1
 ## While > 0, horizontal velocity is carried (grapple zips, knockbacks)
 ## instead of being overwritten by stick input every frame.
 var carry_time := 0.0
@@ -321,6 +323,19 @@ func _local_move(delta: float) -> void:
 		_last_jump_ms = now
 	_prev_jump = jump_now
 
+	if riding >= 0:
+		var seat: Vector3 = world.critter_view.mount_point(riding)
+		if seat == Vector3.INF:
+			riding = -1
+		else:
+			position = position.lerp(seat, minf(1.0, delta * 8.0))
+			velocity = Vector3.ZERO
+			anim = Anim.FLY
+			if input.is_jump_pressed() and not _prev_jump:
+				riding = -1
+				velocity.y = 4.0
+			_prev_jump = input.is_jump_pressed()
+			return
 	carry_time = maxf(0.0, carry_time - delta)
 	var speed := SWIM_SPEED if in_water else WALK_SPEED
 	if input.is_sprint_pressed() and on_floor and not downed:
