@@ -19,6 +19,11 @@ var _status_label: Label
 var _clock_label: Label
 var _players_label: Label
 var _survival_button: Button
+var _battle_button: Button
+var _lobby_panel: PanelContainer
+var _lobby_label: Label
+var _storm_tint: ColorRect
+var _team_rows: VBoxContainer
 var _wave_label: Label
 var _banner: Label
 var _vote_panel: PanelContainer
@@ -177,8 +182,8 @@ func _build_game_screen() -> void:
 	_players_label = _make_label("", 17, Color(1, 1, 1, 0.7))
 	row.add_child(_players_label)
 	_survival_button = Button.new()
-	_survival_button.text = "⚔ Attack!"
-	_survival_button.add_theme_font_size_override("font_size", 15)
+	_survival_button.text = "⚔ Grumps"
+	_survival_button.add_theme_font_size_override("font_size", int(20 * ui_scale()))
 	_survival_button.tooltip_text = "Start a Grump attack — defend yourselves!"
 	_survival_button.pressed.connect(func() -> void:
 		if Game.world != null and not Game.world.survival_active:
@@ -186,9 +191,16 @@ func _build_game_screen() -> void:
 	row.add_child(_survival_button)
 	_wave_label = _make_label("", 17, Color("ff6b6b"))
 	row.add_child(_wave_label)
+	_battle_button = Button.new()
+	_battle_button.text = "🏆 Battle Royale"
+	_battle_button.add_theme_font_size_override("font_size", int(20 * ui_scale()))
+	_battle_button.pressed.connect(func() -> void:
+		if Game.world != null:
+			Game.world.sv_match_start.rpc_id(1, 0))
+	row.add_child(_battle_button)
 	var reset_button := Button.new()
 	reset_button.text = "↺ New map"
-	reset_button.add_theme_font_size_override("font_size", 14)
+	reset_button.add_theme_font_size_override("font_size", int(20 * ui_scale()))
 	reset_button.tooltip_text = "Ask everyone to regenerate the world with a new seed"
 	reset_button.pressed.connect(func() -> void:
 		if Game.world != null:
@@ -235,6 +247,29 @@ func _build_game_screen() -> void:
 	map_timer.timeout.connect(_update_minimap)
 	add_child(map_timer)
 	map_timer.start()
+	# Battle-royale lobby overlay: countdown + team picking per local player.
+	_lobby_panel = PanelContainer.new()
+	_lobby_panel.add_theme_stylebox_override("panel", style.duplicate())
+	_lobby_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_lobby_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_lobby_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_lobby_panel.visible = false
+	_game_screen.add_child(_lobby_panel)
+	var lobby_box := VBoxContainer.new()
+	lobby_box.add_theme_constant_override("separation", int(12 * ui_scale()))
+	_lobby_panel.add_child(lobby_box)
+	_lobby_label = _make_label("BATTLE ROYALE", 34, GOLD, 6)
+	lobby_box.add_child(_lobby_label)
+	lobby_box.add_child(_make_label("Pick your team!", 20, Color.WHITE))
+	_team_rows = VBoxContainer.new()
+	_team_rows.add_theme_constant_override("separation", int(8 * ui_scale()))
+	lobby_box.add_child(_team_rows)
+	# Storm warning tint.
+	_storm_tint = ColorRect.new()
+	_storm_tint.color = Color(0.9, 0.15, 0.1, 0.0)
+	_storm_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_storm_tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_game_screen.add_child(_storm_tint)
 	# Center banner for survival results.
 	_banner = _make_label("", 40, GOLD, 8)
 	_banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -264,6 +299,10 @@ func _on_connected() -> void:
 	world.world_ready.connect(func() -> void:
 		_loading_label.visible = false)
 	world.survival_changed.connect(_refresh_survival)
+	world.match_changed.connect(_refresh_match)
+	world.match_won.connect(func(winner: int) -> void:
+		_show_banner("TEAM %s WINS THE BATTLE!" % WorldNode.TEAM_NAMES[winner].to_upper() \
+			if winner >= 0 else "The storm wins... nobody survived!"))
 	world.reset_vote_started.connect(func() -> void: _vote_panel.visible = true)
 	world.reset_result.connect(func(happened: bool) -> void:
 		_vote_panel.visible = false
@@ -304,6 +343,12 @@ func _maybe_start_autotest() -> void:
 			Game.cycle_local_style(slot, ["body", "shirt", "hat"][slot % 3], 1))
 	# WORLD_AUTOTEST_BLOCK=<id>: pin every bot's hotbar to one block so a
 	# smoke test can hammer a specific mechanic (booms, warp stones...).
+	if OS.get_environment("WORLD_AUTOTEST_MATCH") == "1":
+		get_tree().create_timer(6.0).timeout.connect(func() -> void:
+			if Game.world != null:
+				Game.world.sv_match_start.rpc_id(1, 0)
+				for slot: int in Game.local_inputs.keys():
+					Game.set_local_team(slot, slot % 4))
 	if OS.get_environment("WORLD_AUTOTEST_SURVIVAL") == "1":
 		get_tree().create_timer(8.0).timeout.connect(func() -> void:
 			if Game.world != null:
@@ -357,6 +402,14 @@ func _update_minimap() -> void:
 			if block > 0:
 				color = Blocks.top_color_of(block)
 			image.set_pixel(px, py, color)
+	if Game.world.match_phase == "BATTLE":
+		var ring: float = Game.world.storm_radius
+		for angle_i in 140:
+			var a := angle_i * TAU / 140.0
+			var px := 48 + int((cos(a) * ring - center.x) / 2.0)
+			var py := 48 + int((sin(a) * ring - center.z) / 2.0)
+			if px >= 0 and px < 96 and py >= 0 and py < 96:
+				image.set_pixel(px, py, Color(1.0, 0.25, 0.2))
 	for child in Game.world.players.get_children():
 		if child is Player:
 			var px := 48 + int((child.position.x - center.x) / 2.0)
@@ -401,6 +454,49 @@ func _apply_low_fx() -> void:
 		_split.set_low_fx(true)
 	print("Low-FX mode enabled (fps was %d)" % Engine.get_frames_per_second())
 
+func _refresh_match() -> void:
+	var world := Game.world
+	if world == null:
+		return
+	var phase: String = world.match_phase
+	_lobby_panel.visible = phase == "LOBBY"
+	_battle_button.visible = phase == "IDLE"
+	if phase == "LOBBY":
+		_rebuild_team_rows()
+	elif phase == "DROP":
+		_show_banner("DROP! Glide to a good spot!")
+	elif phase == "BATTLE":
+		_show_banner("FIGHT! Stay inside the storm circle!")
+	elif phase == "END":
+		pass  # cl_match_end banner below
+
+func _rebuild_team_rows() -> void:
+	for child in _team_rows.get_children():
+		child.queue_free()
+	var me := multiplayer.get_unique_id()
+	for slot: int in Game.local_inputs.keys():
+		var entry: Dictionary = Game.roster.get(Game.player_id(me, slot), {})
+		if entry.is_empty():
+			continue
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", int(8 * ui_scale()))
+		var who := _make_label(str(entry.name) + ":", 20, Color.WHITE)
+		row.add_child(who)
+		for t in 4:
+			var btn := Button.new()
+			btn.text = WorldNode.TEAM_NAMES[t]
+			btn.add_theme_font_size_override("font_size", int(18 * ui_scale()))
+			var col: Color = WorldNode.TEAM_COLORS[t]
+			btn.add_theme_color_override("font_color",
+				col if int(entry.get("team", -1)) != t else Color.BLACK)
+			var team := t
+			var s := slot
+			btn.pressed.connect(func() -> void:
+				Game.set_local_team(s, team)
+				Sfx.play("pop", -4.0))
+			row.add_child(btn)
+		_team_rows.add_child(row)
+
 func _refresh_survival() -> void:
 	if _survival_button == null or Game.world == null:
 		return
@@ -418,6 +514,8 @@ func _show_banner(text: String) -> void:
 	tween.tween_callback(func() -> void: _banner.visible = false)
 
 func _on_roster_changed() -> void:
+	if _lobby_panel != null and _lobby_panel.visible:
+		_rebuild_team_rows()
 	if _split != null:
 		_split.update_layout()
 	if _players_label != null:
@@ -434,6 +532,17 @@ func _process(_delta: float) -> void:
 	var world := Game.world
 	if world == null:
 		return
+	if world.match_phase == "LOBBY":
+		world.match_seconds = maxf(0.0, world.match_seconds - _delta)
+		_lobby_label.text = "BATTLE ROYALE — starting in %d" % int(ceil(world.match_seconds))
+	# Red edges when someone local is outside the storm.
+	var danger := 0.0
+	if world.match_phase == "BATTLE" and world.players != null:
+		for child in world.players.get_children():
+			if child is Player and child.is_local \
+					and Vector2(child.position.x, child.position.z).length() > world.storm_radius:
+				danger = 0.25
+	_storm_tint.color.a = lerpf(_storm_tint.color.a, danger, 0.1)
 	var clock: float = world.clock
 	var hour := int(fposmod(clock * 24.0, 24.0))
 	var night: bool = clock > 0.78 or clock < 0.22

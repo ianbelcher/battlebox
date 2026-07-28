@@ -21,36 +21,9 @@ var _selected_label: Label
 var _picker: BlockPicker
 var _menu: PanelContainer
 var _tabs: TabContainer
-var _info: Label
 var _prev_picker := false
 var _prev_menu := false
 
-const GUIDE_TEXT := """Move: WASD / left stick        Jump: Space / A
-Double-tap jump = FLY (hold jump to rise, Shift / LT to sink, land to stop)
-
-Break block: LEFT CLICK / B         Place block: RIGHT CLICK / F / X
-Glowing SUPPLY CRATES dot the world - walk into one to grab its\nweapon! Your 8 hotbar slots hold blocks, kits AND weapons - press E to
-fill the current slot, switch with 1-8 (bumpers / D-pad on pads).
-Hold a weapon and RIGHT-CLICK (X / F) to fire: BLASTER sprays,
-BAZOOKA booms. During a raid: NO FLYING, and Grumps climb walls!
-Explosions set grass and wood ON FIRE - it spreads like Minecraft
-and gutters out on stone. Materials matter: wood burns and breaks,
-stone shrugs off pellets, STEEL only chips on a direct bazooka
-hit, DIAMOND is untouchable.
-Blocks & building kits: E / D-pad up      Quick cycle: Tab / bumpers
-
-T / Y: switch between first person and overview
-In the overview: Z C spin the view, X V zoom (right stick on gamepads)
-
-Boom Blocks are safe until you CLICK them - then run! Stack them
-together and they all go up in one giant blast. Click a lit one to defuse.
-Warp Stones teleport to each other. Music Blocks sing when stepped on.
-Sponges drink ponds. Party Poppers are best discovered.
-
-The [sword] Attack! button starts a Grump raid: they climb ONE block at
-most, so walls keep them out. Orbs bonk them. Last as long as you can!
-
-Hold Q / Back to leave. Everything is always saved."""
 
 var _swatches: Dictionary = {}   # attr -> ColorRect
 var _hotbar: HBoxContainer
@@ -58,6 +31,7 @@ var _chips: Array = []
 var _last_index := -1
 var _last_style := -1
 var _last_width := -1.0
+var _last_held := ""
 var _slots_dirty := true
 var _prev_slot_pick_menu := -1
 var _autoopened := false
@@ -78,7 +52,7 @@ func _ready() -> void:
 	style.set_corner_radius_all(10)
 	style.set_content_margin_all(8)
 	chip.add_theme_stylebox_override("panel", style)
-	chip.position = Vector2(10, 10)
+	chip.position = Vector2(10, _us(58))
 	add_child(chip)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -174,21 +148,16 @@ func _ready() -> void:
 	_menu.add_theme_stylebox_override("panel", menu_style)
 	# Fill ~90% of this player's cell whatever its size — quarter-screen
 	# split or a huge fullscreen window alike.
-	_menu.anchor_left = 0.05
-	_menu.anchor_right = 0.95
-	_menu.anchor_top = 0.05
-	_menu.anchor_bottom = 0.95
+	_menu.anchor_left = 0.1
+	_menu.anchor_right = 0.9
+	_menu.anchor_top = 0.08
+	_menu.anchor_bottom = 0.86
 	_menu.visible = false
 	_menu.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_menu)
 	_tabs = TabContainer.new()
 	_tabs.add_theme_font_size_override("font_size", _us(20))
 	_menu.add_child(_tabs)
-	var guide := Label.new()
-	guide.name = "How to Play"
-	guide.add_theme_font_size_override("font_size", _us(19))
-	guide.text = GUIDE_TEXT
-	_tabs.add_child(guide)
 	# First-person crosshair.
 	_crosshair = Label.new()
 	_crosshair.text = "+"
@@ -206,10 +175,6 @@ func _ready() -> void:
 	_picker.name = "Blocks & Kits"
 	_picker.picked.connect(_on_picked)
 	_tabs.add_child(_picker)
-	_info = Label.new()
-	_info.name = "World"
-	_info.add_theme_font_size_override("font_size", _us(22))
-	_tabs.add_child(_info)
 	_build_character_tab()
 
 	if world != null:
@@ -230,13 +195,10 @@ func _toggle_menu(player: Player, tab: int) -> void:
 	_menu.visible = true
 	_tabs.current_tab = tab
 	player.ui_locked = true
-	_picker.fit(size)
+	_picker.fit(size * Vector2(0.8, 0.78))
 	_picker.set_slot_label(player.selected_slot + 1)
 	_picker.open()
-	var id := Game.player_id(multiplayer.get_unique_id(), slot)
-	_info.text = "%d playing right now\nYour treasures: %d\nWorld source: %s\n\nThe world is saved all the time - whatever\nyou build is still here tomorrow.\nFly up high... some islands float.\nDig deep... some caves glow." % [
-		Game.roster.size(), int(world.treasures.get(id, 0)), str(world.source)]
-	Sfx.play("card" if Sfx._streams.has("card") else "tick", -8.0)
+	Sfx.play("tick", -8.0)
 
 ## "Character" tab: big friendly buttons for name, skin, shirt and hat.
 func _build_character_tab() -> void:
@@ -356,11 +318,11 @@ func _process(_delta: float) -> void:
 	if input != null:
 		var picker_pressed := input.is_picker_pressed()
 		if picker_pressed and not _prev_picker:
-			_toggle_menu(player, 1)
+			_toggle_menu(player, 0)
 		_prev_picker = picker_pressed
 		var menu_pressed := input.is_menu_pressed()
 		if menu_pressed and not _prev_menu:
-			_toggle_menu(player, 0)
+			_toggle_menu(player, 1)
 		_prev_menu = menu_pressed
 		if _menu.visible:
 			# 1-8 (or bumpers) keep working with the picker open, so kids can
@@ -372,7 +334,7 @@ func _process(_delta: float) -> void:
 				_picker.set_slot_label(pick + 1)
 				Sfx.play("tick", -10.0)
 			_prev_slot_pick_menu = pick
-			if _tabs.current_tab == 1:
+			if _tabs.current_tab == 0:
 				_picker.poll(input, _delta)
 	if not _menu.visible and player.ui_locked:
 		player.ui_locked = false
@@ -388,8 +350,10 @@ func _process(_delta: float) -> void:
 		_selected_label.add_theme_font_size_override("font_size",
 			int(clampf(size.x / 45.0, 16.0, 34.0)))
 		_last_index = -1
-	if player.selected_slot != _last_index or _slots_dirty:
+	var held_now := str(player.held())
+	if player.selected_slot != _last_index or _slots_dirty or held_now != _last_held:
 		_last_index = player.selected_slot
+		_last_held = held_now
 		_slots_dirty = false
 		var item: Dictionary = player.held()
 		if item.kind == "weapon":

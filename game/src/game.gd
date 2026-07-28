@@ -108,7 +108,7 @@ func sv_register_player(slot: int, pname: String, style: Dictionary) -> void:
 	if pname.is_empty():
 		pname = _pick_name()
 	roster[id] = {"peer": peer, "slot": slot, "name": pname,
-		"style": AvatarFactory.normalize_style(style)}
+		"style": AvatarFactory.normalize_style(style), "team": -1}
 	print("Player joined: %s (%s), %d in world" % [pname, id, roster.size()])
 	_broadcast_roster()
 
@@ -121,6 +121,18 @@ func sv_unregister_player(slot: int) -> void:
 		print("Player left: %s (%s)" % [roster[id].name, id])
 	roster.erase(id)
 	_broadcast_roster()
+
+func set_local_team(slot: int, team: int) -> void:
+	sv_set_team.rpc_id(1, slot, team)
+
+@rpc("any_peer", "call_local", "reliable")
+func sv_set_team(slot: int, team: int) -> void:
+	if not multiplayer.is_server():
+		return
+	var id := player_id(_sender_id(), slot)
+	if roster.has(id):
+		roster[id].team = clampi(team, -1, 3)
+		_broadcast_roster()
 
 @rpc("any_peer", "call_local", "reliable")
 func sv_set_name(slot: int, pname: String) -> void:

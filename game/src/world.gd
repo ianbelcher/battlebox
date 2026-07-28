@@ -25,6 +25,8 @@ signal edit_applied(pos: Vector3i, block: int, by_id: String)
 signal survival_changed
 signal hearts_changed
 signal survival_ended(seconds: float, bonked: int)
+signal match_changed
+signal storm_changed
 signal reset_vote_started
 signal reset_result(happened: bool)
 
@@ -46,6 +48,13 @@ var treasures: Dictionary = {}   # player id -> int (client mirror)
 var hearts: Dictionary = {}      # player id -> int, during survival
 var survival_active := false
 var survival_wave := 0
+## Battle royale: IDLE / LOBBY / DROP / BATTLE / END (mirrored on clients).
+const TEAM_NAMES := ["Red", "Blue", "Green", "Yellow"]
+const TEAM_COLORS := [Color("ff5a5a"), Color("4a9df8"), Color("51c979"), Color("ffd166")]
+var match_phase := "IDLE"
+var match_seconds := 0.0
+var storm_radius := 0.0
+var storm_center := Vector3.ZERO
 
 # Client
 var chunks: ChunkView = null
@@ -54,6 +63,7 @@ var critter_view: CritterView = null
 var monster_view: MonsterView = null
 var orbs: OrbView = null
 var crates: CrateView = null
+var _storm_wall: MeshInstance3D = null
 var sky: DayNight = null
 var _ready_announced := false
 
@@ -125,6 +135,7 @@ func _process(delta: float) -> void:
 		_drain_chunk_queues()
 		_server_dawn_check()
 		_server_tick_bombs()
+		_server_tick_match(delta)
 		_water_accum += delta
 		if _water_accum > 0.3:
 			_water_accum = 0.0
@@ -401,6 +412,12 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 	match kind:
 		1:  # Bazooka
 			_blast(cell, 3.4, [], cell)
+			if match_phase == "BATTLE":
+				for pid: String in _match_alive.keys():
+					if pid != id and _teams_differ(id, pid) \
+							and _player_state.has(pid) \
+							and Vector3(cell).distance_to(_player_state[pid].pos) < 5.0:
+						_match_hurt(pid, 2, Vector3(cell))
 			for monster_id: int in _monsters.keys().duplicate():
 				if Vector3(cell).distance_to(_monsters[monster_id].pos) < 4.5:
 					_monsters[monster_id].hp = int(_monsters[monster_id].hp) - 2
@@ -558,6 +575,9 @@ func sv_orb_hit(slot: int, target_id: String, hit_pos: Vector3) -> void:
 		return
 	var target_state: Dictionary = _player_state.get(target_id, {})
 	if target_state.is_empty() or Vector3(target_state.pos).distance_to(hit_pos) > 4.0:
+		return
+	if match_phase == "BATTLE" and _teams_differ(shooter, target_id):
+		_match_hurt(target_id, 1, hit_pos)
 		return
 	cl_bonk.rpc(target_id, hit_pos)
 
@@ -922,6 +942,187 @@ func _do_world_reset() -> void:
 	cl_reset_result.rpc(true)
 	cl_world_info.rpc(spawn_pos, clock, source)
 	cl_world_reset.rpc()
+
+# ------------------------------------------------------------------
+# Battle royale match
+# ------------------------------------------------------------------
+const LOBBY_SECONDS := 25.0
+const STORM_START := 360.0
+const STORM_END := 16.0
+const STORM_MINUTES := 5.0
+
+var _match_timer := 0.0
+var _match_alive: Dictionary = {}   # id -> true while still fighting
+var _storm_hurt_ms: Dictionary = {}
+
+@rpc("any_peer", "reliable")
+func sv_match_start(_slot: int) -> void:
+	if not multiplayer.is_server() or match_phase != "IDLE" or Game.roster.is_empty():
+		return
+	match_phase = "LOBBY"
+	_match_timer = LOBBY_SECONDS
+	print("Battle royale lobby open")
+	cl_match.rpc("LOBBY", LOBBY_SECONDS)
+
+func _server_tick_match(delta: float) -> void:
+	if match_phase == "IDLE":
+		return
+	_match_timer -= delta
+	match match_phase:
+		"LOBBY":
+			if _match_timer <= 0.0:
+				_server_match_drop()
+		"DROP":
+			if _match_timer <= 0.0:
+				match_phase = "BATTLE"
+				_match_timer = STORM_MINUTES * 60.0
+				cl_match.rpc("BATTLE", _match_timer)
+		"BATTLE":
+			var frac := 1.0 - clampf(_match_timer / (STORM_MINUTES * 60.0), 0.0, 1.0)
+			storm_radius = lerpf(STORM_START, STORM_END, frac)
+			cl_storm.rpc(storm_radius)
+			_storm_damage()
+			_check_match_win()
+			if _match_timer <= 0.0:
+				_server_match_end(-1)
+		"END":
+			if _match_timer <= 0.0:
+				match_phase = "IDLE"
+				cl_match.rpc("IDLE", 0.0)
+
+## Everyone gets a team (auto-balanced if unpicked), full hearts, and a drop
+## point high above a spread ring. Gliding down is automatic.
+func _server_match_drop() -> void:
+	match_phase = "DROP"
+	_match_timer = 6.0
+	_match_alive.clear()
+	var counts := [0, 0, 0, 0]
+	for id: String in Game.roster.keys():
+		var team := int(Game.roster[id].get("team", -1))
+		if team >= 0:
+			counts[team] += 1
+	var i := 0
+	for id: String in Game.roster.keys():
+		var entry: Dictionary = Game.roster[id]
+		if int(entry.get("team", -1)) < 0:
+			var best := 0
+			for t in 4:
+				if counts[t] < counts[best]:
+					best = t
+			entry.team = best
+			counts[best] += 1
+		_match_alive[id] = true
+		var state: Dictionary = _player_state.get(id, {})
+		if not state.is_empty():
+			state.hp = 5
+		cl_hearts.rpc(id, 5)
+		var angle := float(i) * TAU / maxf(Game.roster.size(), 1.0) + randf() * 0.3
+		var dist := randf_range(90.0, 150.0)
+		var drop := Vector3(cos(angle) * dist, WorldGen.CHUNK_H - 4, sin(angle) * dist)
+		cl_drop.rpc(id, drop)
+		i += 1
+	Game.cl_roster.rpc(Game.roster)
+	storm_radius = STORM_START
+	cl_match.rpc("DROP", 6.0)
+	print("Battle royale: dropping %d players" % _match_alive.size())
+
+func _storm_damage() -> void:
+	var now := Time.get_ticks_msec()
+	for id: String in _match_alive.keys():
+		var state: Dictionary = _player_state.get(id, {})
+		if state.is_empty() or now < int(_storm_hurt_ms.get(id, 0)):
+			continue
+		var pos: Vector3 = state.pos
+		if Vector2(pos.x, pos.z).length() > storm_radius:
+			_storm_hurt_ms[id] = now + 3000
+			state.hp = int(state.get("hp", 5)) - 1
+			cl_hearts.rpc(id, state.hp)
+			cl_bonk.rpc(id, pos + Vector3(1, -1, 1))
+			if state.hp <= 0:
+				_match_eliminate(id)
+
+func _match_eliminate(id: String) -> void:
+	if not _match_alive.has(id):
+		return
+	_match_alive.erase(id)
+	cl_eliminated.rpc(id)
+	_check_match_win()
+
+func _check_match_win() -> void:
+	var teams_alive: Dictionary = {}
+	for id: String in _match_alive.keys():
+		if Game.roster.has(id):
+			teams_alive[int(Game.roster[id].get("team", 0))] = true
+	if teams_alive.size() <= 1 and match_phase == "BATTLE":
+		var winner := -1
+		for t in teams_alive.keys():
+			winner = t
+		_server_match_end(winner)
+
+func _server_match_end(winner: int) -> void:
+	match_phase = "END"
+	_match_timer = 10.0
+	print("Battle royale over: team %d" % winner)
+	cl_match_end.rpc(winner)
+
+## Match damage between enemies (orbs and blast splash call this).
+func _match_hurt(id: String, amount: int, from_pos: Vector3) -> void:
+	if match_phase != "BATTLE" or not _match_alive.has(id):
+		return
+	var state: Dictionary = _player_state.get(id, {})
+	if state.is_empty():
+		return
+	state.hp = int(state.get("hp", 5)) - amount
+	cl_hearts.rpc(id, state.hp)
+	cl_bonk.rpc(id, from_pos)
+	if state.hp <= 0:
+		_match_eliminate(id)
+
+func _teams_differ(a: String, b: String) -> bool:
+	if not (Game.roster.has(a) and Game.roster.has(b)):
+		return true
+	return int(Game.roster[a].get("team", -1)) != int(Game.roster[b].get("team", -2))
+
+@rpc("authority", "reliable")
+func cl_match(phase: String, seconds: float) -> void:
+	match_phase = phase
+	match_seconds = seconds
+	match_changed.emit()
+	if phase == "DROP":
+		Sfx.play("whoosh")
+	elif phase == "BATTLE":
+		Sfx.play("boom", -8.0)
+
+@rpc("authority", "reliable")
+func cl_storm(radius: float) -> void:
+	storm_radius = radius
+	storm_changed.emit()
+
+@rpc("authority", "reliable")
+func cl_drop(id: String, pos: Vector3) -> void:
+	for child in players.get_children():
+		if child is Player and child.player_id == id and child.is_local:
+			child.teleport(pos)
+			child.drop_glide = true
+			child.fly_mode = false
+
+@rpc("authority", "reliable")
+func cl_eliminated(id: String) -> void:
+	hearts[id] = 0
+	hearts_changed.emit()
+	for child in players.get_children():
+		if child is Player and child.player_id == id and child.is_local:
+			child.teleport(Vector3(spawn_pos) + Vector3(0.5, 2.0, 0.5))
+			Sfx.play("drop")
+
+signal match_won(winner: int)
+
+@rpc("authority", "reliable")
+func cl_match_end(winner: int) -> void:
+	match_phase = "END"
+	match_changed.emit()
+	match_won.emit(winner)
+	Sfx.play("cheer")
 
 @rpc("any_peer", "reliable")
 func sv_survival_start(_slot: int) -> void:
@@ -1288,6 +1489,28 @@ func _client_setup() -> void:
 	crates = CrateView.new()
 	crates.name = "Crates"
 	add_child(crates)
+	_storm_wall = MeshInstance3D.new()
+	var wall_mesh := CylinderMesh.new()
+	wall_mesh.top_radius = 1.0
+	wall_mesh.bottom_radius = 1.0
+	wall_mesh.height = 160.0
+	wall_mesh.radial_segments = 96
+	_storm_wall.mesh = wall_mesh
+	var wall_mat := StandardMaterial3D.new()
+	wall_mat.albedo_color = Color(1.0, 0.2, 0.15, 0.16)
+	wall_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	wall_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	wall_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_storm_wall.material_override = wall_mat
+	_storm_wall.visible = false
+	add_child(_storm_wall)
+	storm_changed.connect(func() -> void:
+		_storm_wall.visible = match_phase == "BATTLE"
+		_storm_wall.scale = Vector3(storm_radius, 1.0, storm_radius)
+		_storm_wall.position = Vector3(0, 40, 0))
+	match_changed.connect(func() -> void:
+		if match_phase != "BATTLE":
+			_storm_wall.visible = false)
 	sky = DayNight.new()
 	sky.name = "Sky"
 	add_child(sky)

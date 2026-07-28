@@ -63,6 +63,8 @@ var _prev_jump := false
 var _last_jump_ms := -10000
 var _launch_latched := false
 var _shoot_hold := 0.0
+## Sky-drop at match start: fall gently until touching down.
+var drop_glide := false
 var _prev_slot_pick := -1
 var _last_note_cell := Vector3i(0, -99, 0)
 var _warp_cooldown := 0.0
@@ -116,6 +118,8 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 
 func refresh_from_roster(entry: Dictionary) -> void:
 	_tag.text = str(entry.name)
+	var team := int(entry.get("team", -1))
+	_tag.modulate = WorldNode.TEAM_COLORS[team] if team >= 0 else Color.WHITE
 	var style: Dictionary = AvatarFactory.normalize_style(entry.get("style"))
 	if str(_avatar.get_meta("style", "")) != str(style):
 		var old := _avatar
@@ -282,6 +286,13 @@ func _local_move(delta: float) -> void:
 		velocity.x *= 1.5
 		velocity.z *= 1.5
 		anim = Anim.FLY
+	elif drop_glide:
+		velocity.y = maxf(velocity.y - GRAVITY * delta * 0.1, -3.5)
+		velocity.x *= 1.2
+		velocity.z *= 1.2
+		anim = Anim.FLY
+		if on_floor:
+			drop_glide = false
 	else:
 		velocity.y -= GRAVITY * delta
 		if jump_now and on_floor:
