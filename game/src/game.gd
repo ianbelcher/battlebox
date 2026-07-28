@@ -56,7 +56,7 @@ func join_local(input: InputSlot) -> void:
 	# Each physical device remembers its character between sessions, so every
 	# kid's character comes back when they grab "their" controller.
 	var profile := _load_profile(input.claim_key())
-	sv_register_player.rpc_id(1, slot, profile.name, profile.style)
+	sv_register_player.rpc_id(1, slot, profile.name, profile.style, input is BotSlot)
 
 func leave_local(slot: int) -> void:
 	if not local_inputs.has(slot):
@@ -97,7 +97,7 @@ func _pick_name() -> String:
 # ------------------------------------------------------------------
 
 @rpc("any_peer", "call_local", "reliable")
-func sv_register_player(slot: int, pname: String, style: Dictionary) -> void:
+func sv_register_player(slot: int, pname: String, style: Dictionary, bot := false) -> void:
 	if not multiplayer.is_server():
 		return
 	var peer := _sender_id()
@@ -108,7 +108,7 @@ func sv_register_player(slot: int, pname: String, style: Dictionary) -> void:
 	if pname.is_empty():
 		pname = _pick_name()
 	roster[id] = {"peer": peer, "slot": slot, "name": pname,
-		"style": AvatarFactory.normalize_style(style), "team": -1}
+		"style": AvatarFactory.normalize_style(style), "team": -1, "bot": bot}
 	print("Player joined: %s (%s), %d in world" % [pname, id, roster.size()])
 	_broadcast_roster()
 

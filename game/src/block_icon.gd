@@ -18,6 +18,9 @@ func _dim(c: Color) -> Color:
 	return c.darkened(0.3) if dimmed else c
 
 func _draw() -> void:
+	if kind == "empty":
+		draw_circle(size * 0.5, size.x * 0.06, Color(1, 1, 1, 0.2))
+		return
 	var w := size.x
 	var h := size.y
 	var mid := Vector2(w, h) * 0.5

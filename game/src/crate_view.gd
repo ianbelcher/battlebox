@@ -48,6 +48,15 @@ func update_crates(payload: Array) -> void:
 		light.shadow_enabled = false
 		light.position = Vector3(0, 1.2, 0)
 		node.add_child(light)
+		var tag := Label3D.new()
+		tag.text = str(Weapons.spec(weapon).name)
+		tag.font_size = 52
+		tag.pixel_size = 0.008
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.modulate = color
+		tag.outline_size = 12
+		tag.position = Vector3(0, 1.9, 0)
+		node.add_child(tag)
 		add_child(node)
 		_nodes[id] = {"node": node, "weapon": weapon}
 	for id: int in _nodes.keys().duplicate():

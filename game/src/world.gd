@@ -153,6 +153,8 @@ func _exit_tree() -> void:
 		_save_player_file()
 
 func _server_autosave() -> void:
+	if match_phase != "IDLE":
+		return  # matches live in RAM; nothing touches disk mid-fight
 	var saved := store.save_dirty()
 	var config := ConfigFile.new()
 	config.load(store.data_dir.path_join("world.cfg"))
@@ -971,6 +973,15 @@ var _match_timer := 0.0
 var _match_alive: Dictionary = {}   # id -> true while still fighting
 var _storm_hurt_ms: Dictionary = {}
 
+## Anyone may re-team a computer player from the lobby.
+@rpc("any_peer", "reliable")
+func sv_set_bot_team(target_id: String, team: int) -> void:
+	if not multiplayer.is_server():
+		return
+	if Game.roster.has(target_id) and Game.roster[target_id].get("bot", false):
+		Game.roster[target_id].team = clampi(team, -1, 3)
+		Game.cl_roster.rpc(Game.roster)
+
 @rpc("any_peer", "reliable")
 func sv_match_config(minutes: int, loot: int) -> void:
 	if not multiplayer.is_server() or match_phase != "LOBBY":
@@ -1007,6 +1018,7 @@ func _server_tick_match(delta: float) -> void:
 			storm_radius = lerpf(STORM_START, STORM_END, frac)
 			cl_storm.rpc(storm_radius)
 			_storm_damage()
+			_tick_revives()
 			_check_match_win()
 			if _match_timer <= 0.0:
 				_server_match_end(-1)
@@ -1021,6 +1033,8 @@ func _server_match_drop() -> void:
 	match_phase = "DROP"
 	_match_timer = 6.0
 	_match_alive.clear()
+	_downed_ids.clear()
+	_revive_progress.clear()
 	var counts := [0, 0, 0, 0]
 	for id: String in Game.roster.keys():
 		var team := int(Game.roster[id].get("team", -1))
@@ -1048,6 +1062,8 @@ func _server_match_drop() -> void:
 		i += 1
 	Game.cl_roster.rpc(Game.roster)
 	storm_radius = STORM_START
+	clock = 0.79  # dusk falls as the match starts: hunt loot in the dark
+	cl_clock.rpc(clock)
 	cl_match.rpc("DROP", 6.0)
 	print("Battle royale: dropping %d players" % _match_alive.size())
 
@@ -1066,12 +1082,61 @@ func _storm_damage() -> void:
 			if state.hp <= 0:
 				_match_eliminate(id)
 
+var _downed_ids: Dictionary = {}   # id -> downed_at_msec
+var _revive_progress: Dictionary = {}
+
+## Down-but-not-out: if living teammates remain you crawl and can be
+## revived (teammate stands close for ~3s); alone, you're out.
 func _match_eliminate(id: String) -> void:
-	if not _match_alive.has(id):
+	if not _match_alive.has(id) or _downed_ids.has(id):
+		return
+	var team := int(Game.roster.get(id, {}).get("team", -1))
+	var has_standing_mate := false
+	for other: String in _match_alive.keys():
+		if other != id and not _downed_ids.has(other) \
+				and int(Game.roster.get(other, {}).get("team", -2)) == team:
+			has_standing_mate = true
+	if has_standing_mate:
+		_downed_ids[id] = Time.get_ticks_msec()
+		cl_downed_state.rpc(id, true)
 		return
 	_match_alive.erase(id)
+	_downed_ids.erase(id)
 	cl_eliminated.rpc(id)
 	_check_match_win()
+
+func _tick_revives() -> void:
+	var now := Time.get_ticks_msec()
+	for id: String in _downed_ids.keys().duplicate():
+		# Bleed out after 45s down.
+		if now - int(_downed_ids[id]) > 45_000:
+			_downed_ids.erase(id)
+			_match_alive.erase(id)
+			cl_eliminated.rpc(id)
+			_check_match_win()
+			continue
+		var team := int(Game.roster.get(id, {}).get("team", -1))
+		var pos: Vector3 = _player_state.get(id, {}).get("pos", Vector3.ZERO)
+		var mate_close := false
+		for other: String in _match_alive.keys():
+			if other == id or _downed_ids.has(other):
+				continue
+			if int(Game.roster.get(other, {}).get("team", -2)) == team \
+					and Vector3(_player_state.get(other, {}).get("pos", Vector3.INF)).distance_to(pos) < 3.0:
+				mate_close = true
+		if mate_close:
+			_revive_progress[id] = float(_revive_progress.get(id, 0.0)) + 0.35
+			if _revive_progress[id] >= 3.0:
+				_downed_ids.erase(id)
+				_revive_progress.erase(id)
+				var state: Dictionary = _player_state.get(id, {})
+				if not state.is_empty():
+					state.hp = 2
+				cl_hearts.rpc(id, 2)
+				cl_downed_state.rpc(id, false)
+				Sfx.play("collect")
+		else:
+			_revive_progress.erase(id)
 
 func _check_match_win() -> void:
 	var teams_alive: Dictionary = {}
@@ -1094,6 +1159,13 @@ func _server_match_end(winner: int) -> void:
 func _match_hurt(id: String, amount: int, from_pos: Vector3) -> void:
 	if match_phase != "BATTLE" or not _match_alive.has(id):
 		return
+	if _downed_ids.has(id):
+		# Finishing blow on a downed enemy.
+		_downed_ids.erase(id)
+		_match_alive.erase(id)
+		cl_eliminated.rpc(id)
+		_check_match_win()
+		return
 	var state: Dictionary = _player_state.get(id, {})
 	if state.is_empty():
 		return
@@ -1112,6 +1184,10 @@ func _teams_differ(a: String, b: String) -> bool:
 func cl_match(phase: String, seconds: float) -> void:
 	match_phase = phase
 	match_seconds = seconds
+	if chunks != null:
+		chunks.match_mode = phase != "IDLE"
+		if phase == "LOBBY":
+			chunks.prefetch(10)  # whole arena in RAM before the drop
 	match_changed.emit()
 	if phase == "DROP":
 		Sfx.play("whoosh")
@@ -1130,15 +1206,20 @@ func cl_drop(id: String, pos: Vector3, loot := false) -> void:
 			child.teleport(pos)
 			child.drop_glide = true
 			child.fly_mode = false
-			if loot:
-				# Loot-only: basics in hand, everything else found in crates.
-				child.slots = [
-					{"kind": "weapon", "id": 0}, {"kind": "weapon", "id": 12},
-					{"kind": "block", "id": Blocks.M_SOIL + 3}, {"kind": "block", "id": Blocks.M_STONE + 8},
-					{"kind": "block", "id": Blocks.M_STEEL + 9}, {"kind": "block", "id": Blocks.GLASS},
-					{"kind": "block", "id": Blocks.LANTERN}, {"kind": "block", "id": Blocks.TELEPORT},
-				]
-				child.selected_slot = 0
+			# PUBG rules: everyone drops with just a sword — the rest is loot.
+			child.slots = [{"kind": "weapon", "id": 13}]
+			for i in 7:
+				child.slots.append({"kind": "empty", "id": 0})
+			child.selected_slot = 0
+			child.downed = false
+
+@rpc("authority", "reliable")
+func cl_downed_state(id: String, is_down: bool) -> void:
+	for child in players.get_children():
+		if child is Player and child.player_id == id:
+			child.downed = is_down
+			if child.is_local and is_down:
+				Sfx.play("drop")
 
 @rpc("authority", "reliable")
 func cl_eliminated(id: String) -> void:
@@ -1367,9 +1448,14 @@ func cl_crate_taken(id: String, weapon: int) -> void:
 			# Into the first non-weapon slot (or replace the last slot).
 			var target := 7
 			for i in 8:
-				if child.slots[i].kind != "weapon":
+				if child.slots[i].kind == "empty":
 					target = i
 					break
+			if target == 7 and child.slots[7].kind != "empty":
+				for i in 8:
+					if child.slots[i].kind != "weapon":
+						target = i
+						break
 			child.slots[target] = {"kind": "weapon", "id": weapon}
 			child.selected_slot = target
 			Sfx.play("collect")

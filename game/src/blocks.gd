@@ -89,15 +89,18 @@ static func _static_init() -> void:
 	for i in FAMILY_COLORS.size():
 		var cname: String = FAMILY_COLORS[i][0]
 		var base: Color = FAMILY_COLORS[i][1]
-		EXTRA[M_STEEL + i] = {"name": cname + " Steel", "color": base.lerp(Color("dfe4ea"), 0.45),
-			"top": base.lerp(Color.WHITE, 0.6), "solid": true, "opaque": true, "emit": 0.12}
-		EXTRA[M_STONE + i] = {"name": cname + " Stone", "color": base.lerp(Color("8d9296"), 0.5),
-			"solid": true, "opaque": true}
-		EXTRA[M_SOIL + i] = {"name": cname + " Soil", "color": base.lerp(Color("8a6242"), 0.35),
-			"solid": true, "opaque": true}
-		# Snow is soft: you sink through it, and it puffs away to anything.
-		EXTRA[M_SNOW + i] = {"name": cname + " Snow", "color": base.lerp(Color("f2f6fa"), 0.65),
-			"solid": false, "opaque": true}
+		# Same COLOR across materials — the finish tells them apart:
+		# steel smooth + sheen, stone rough + faint sheen, soil rough matte,
+		# snow smooth and translucent (and soft to walk through).
+		EXTRA[M_STEEL + i] = {"name": cname + " Steel", "color": base,
+			"top": base.lightened(0.18), "solid": true, "opaque": true, "emit": 0.25}
+		EXTRA[M_STONE + i] = {"name": cname + " Stone", "color": base,
+			"solid": true, "opaque": true, "emit": 0.06, "rough": 1.6}
+		EXTRA[M_SOIL + i] = {"name": cname + " Soil", "color": base.darkened(0.06),
+			"solid": true, "opaque": true, "rough": 2.4}
+		EXTRA[M_SNOW + i] = {"name": cname + " Snow",
+			"color": Color(base.lightened(0.35), 0.8),
+			"solid": false, "opaque": false, "translucent": true}
 
 ## Per-block info, indexed by block id:
 ##   color: base albedo

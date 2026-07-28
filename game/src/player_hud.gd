@@ -41,6 +41,9 @@ var _last_width := -1.0
 var _last_held := ""
 var _slots_dirty := true
 var _prev_slot_pick_menu := -1
+var _menu_tab_latch := false
+var _preview_viewport: SubViewport
+var _preview_avatar: Node3D
 var _autoopened := false
 var _crosshair: Label
 
@@ -220,12 +223,13 @@ func is_ui_open() -> bool:
 	return _menu != null and _menu.visible
 
 func _toggle_menu(player: Player, tab: int) -> void:
-	if _menu.visible and _tabs.current_tab == tab:
-		_menu.visible = false
-		player.ui_locked = false
+	if _menu.visible:
+		_close_menu()
 		return
 	_menu.visible = true
 	_tabs.current_tab = tab
+	_tabs.set_tab_disabled(1, world != null and world.match_phase != "IDLE")
+	_refresh_preview()
 	player.ui_locked = true
 	for picker: BlockPicker in _pickers:
 		picker.fit(size * Vector2(0.75, 0.66))
@@ -276,6 +280,20 @@ func _build_character_tab() -> void:
 				Game.cycle_local_style(slot, attr_name, d)
 				Sfx.play("pop", -6.0))
 			row.add_child(btn)
+	_preview_viewport = SubViewport.new()
+	_preview_viewport.own_world_3d = true
+	_preview_viewport.transparent_bg = true
+	_preview_viewport.size = Vector2i(_us(190), _us(230))
+	var holder := SubViewportContainer.new()
+	holder.stretch = false
+	holder.add_child(_preview_viewport)
+	tab.add_child(holder)
+	var cam := Camera3D.new()
+	cam.position = Vector3(0, 0.9, 2.6)
+	_preview_viewport.add_child(cam)
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-40, 30, 0)
+	_preview_viewport.add_child(sun)
 	var hint := Label.new()
 	hint.text = "Changes save to this controller and follow you between sessions."
 	hint.add_theme_font_size_override("font_size", _us(16))
@@ -315,6 +333,17 @@ func _build_game_tab() -> void:
 			_close_menu())
 	tab.add_child(reset)
 
+## Live rotating you in the Character tab.
+func _refresh_preview() -> void:
+	if _preview_viewport == null:
+		return
+	if _preview_avatar != null:
+		_preview_avatar.queue_free()
+	var entry := _entry()
+	_preview_avatar = AvatarFactory.build_character(entry.get("style", {}))
+	_preview_avatar.position = Vector3(0, 0, 0)
+	_preview_viewport.add_child(_preview_avatar)
+
 func _close_menu() -> void:
 	_menu.visible = false
 	var player := _player()
@@ -327,8 +356,8 @@ func _on_picked(entry: Dictionary) -> void:
 		return
 	player.slots[player.selected_slot] = {"kind": entry.kind, "id": entry.id}
 	_slots_dirty = true
-	# Stays open: press another number key and keep kitting out slots.
-	_picker.set_slot_label(player.selected_slot + 1)
+	# Stays open, and the target hops to the next slot: pick, pick, pick.
+	player.selected_slot = mini(player.selected_slot + 1, 7)
 
 func _entry() -> Dictionary:
 	return Game.roster.get(Game.player_id(multiplayer.get_unique_id(), slot), {})
@@ -346,6 +375,8 @@ func _refresh_identity() -> void:
 	if entry.is_empty():
 		return
 	_name_label.text = str(entry.name)
+	if _menu != null and _menu.visible and _tabs.current_tab == 4:
+		_refresh_preview()
 	var team := int(entry.get("team", -1))
 	_name_label.add_theme_color_override("font_color",
 		WorldNode.TEAM_COLORS[team] if team >= 0 else Color.WHITE)
@@ -398,15 +429,27 @@ func _process(_delta: float) -> void:
 			_toggle_menu(player, 1)
 		_prev_menu = menu_pressed
 		if _menu.visible:
-			# 1-8 (or bumpers) keep working with the picker open, so kids can
-			# fill slot after slot without closing it.
+			# Controller-first: bumpers change tabs, stick/D-pad moves the
+			# grid, A picks (then hops to the next slot), 1-8 jump slots,
+			# and view/menu buttons close.
 			var pick := input.slot_pick()
 			if pick != _prev_slot_pick_menu and pick >= 0 and pick < 8:
 				player.selected_slot = pick
 				_slots_dirty = true
-				_picker.set_slot_label(pick + 1)
 				Sfx.play("tick", -10.0)
 			_prev_slot_pick_menu = pick
+			var tab_cycle := input.cycle_direction()
+			if tab_cycle != 0 and not _menu_tab_latch:
+				var next_tab := _tabs.current_tab
+				for attempt in 6:
+					next_tab = posmod(next_tab + tab_cycle, 6)
+					if not _tabs.is_tab_disabled(next_tab):
+						break
+				_tabs.current_tab = next_tab
+				Sfx.play("tick", -12.0)
+			_menu_tab_latch = tab_cycle != 0
+			if input.is_view_toggle_pressed():
+				_close_menu()
 			if _tabs.current_tab < 4:
 				_pickers[_tabs.current_tab].poll(input, _delta)
 	if not _menu.visible and player.ui_locked:
@@ -425,6 +468,8 @@ func _process(_delta: float) -> void:
 		_last_index = -1
 	if _chip != null:
 		_chip.visible = not _menu.visible
+	if _preview_avatar != null and _menu.visible:
+		_preview_avatar.rotation.y += _delta * 1.2
 	var held_now := str(player.held())
 	if player.selected_slot != _last_index or _slots_dirty or held_now != _last_held:
 		_last_index = player.selected_slot

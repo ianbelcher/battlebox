@@ -484,26 +484,32 @@ func _rebuild_team_rows() -> void:
 	for child in _team_rows.get_children():
 		child.queue_free()
 	var me := multiplayer.get_unique_id()
-	for slot: int in Game.local_inputs.keys():
-		var entry: Dictionary = Game.roster.get(Game.player_id(me, slot), {})
-		if entry.is_empty():
-			continue
+	for id: String in Game.roster.keys():
+		var entry: Dictionary = Game.roster[id]
+		var is_bot: bool = entry.get("bot", false)
+		var is_mine: bool = entry.peer == me and Game.local_inputs.has(entry.slot)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", int(8 * ui_scale()))
-		var who := _make_label(str(entry.name) + ":", 20, Color.WHITE)
+		var who := _make_label(("🤖 " if is_bot else "") + str(entry.name) + ":", 20,
+			Color.WHITE if is_mine or is_bot else Color(1, 1, 1, 0.55))
 		row.add_child(who)
 		for t in 4:
 			var btn := Button.new()
 			btn.focus_mode = Control.FOCUS_NONE
 			btn.text = WorldNode.TEAM_NAMES[t]
+			btn.disabled = not (is_mine or is_bot)
 			btn.add_theme_font_size_override("font_size", int(18 * ui_scale()))
 			var col: Color = WorldNode.TEAM_COLORS[t]
 			btn.add_theme_color_override("font_color",
 				col if int(entry.get("team", -1)) != t else Color.BLACK)
 			var team := t
-			var s := slot
+			var s: int = entry.slot
+			var target := id
 			btn.pressed.connect(func() -> void:
-				Game.set_local_team(s, team)
+				if is_mine:
+					Game.set_local_team(s, team)
+				else:
+					Game.world.sv_set_bot_team.rpc_id(1, target, team)
 				Sfx.play("pop", -4.0))
 			row.add_child(btn)
 		_team_rows.add_child(row)

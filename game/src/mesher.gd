@@ -145,13 +145,14 @@ func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Di
 	result["topmap"] = topmap
 	return result
 
-func _jitter(x: int, y: int, z: int, cx: int, cz: int) -> float:
-	return 0.94 + 0.09 * WorldGen.hash01(cx * SIZE + x, cz * SIZE + z, y * 31)
+func _jitter(x: int, y: int, z: int, cx: int, cz: int, rough := 0.0) -> float:
+	var amp := 0.09 * (1.0 + rough)
+	return 1.0 - amp * 0.6 + amp * WorldGen.hash01(cx * SIZE + x, cz * SIZE + z, y * 31)
 
 func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String) -> void:
 	var base_color := Blocks.color_of(block)
 	var top_color := Blocks.top_color_of(block)
-	var jitter := _jitter(x, y, z, cx, cz)
+	var jitter := _jitter(x, y, z, cx, cz, float(Blocks.info(block).get("rough", 0.0)))
 	var sway := Blocks.sway_of(block)
 	var emit := Blocks.emit_of(block)
 	var translucent := key == "trans"

@@ -9,13 +9,13 @@ const GRAVITY := 22.0
 const JUMP_VELOCITY := 8.6
 const WALK_SPEED := 4.6
 const SWIM_SPEED := 3.0
-const HALF_WIDTH := 0.32
-const HEIGHT := 1.25
+const HALF_WIDTH := 0.4
+const HEIGHT := 1.95
 const SEND_HZ := 12.0
 const EDIT_REPEAT := 0.24
 ## Eye level for first person — near the top of the head, so blocks read
 ## about waist height like they should.
-const EYE_HEIGHT := 1.5
+const EYE_HEIGHT := 2.15
 ## Default camera yaw; the split-screen rig updates camera_yaw as the view
 ## spins so "stick up" always moves away from the camera.
 const ISO_ROT := PI / 4.0
@@ -65,6 +65,7 @@ var _launch_latched := false
 var _shoot_hold := 0.0
 ## Sky-drop at match start: fall gently until touching down.
 var drop_glide := false
+var downed := false
 ## While > 0, horizontal velocity is carried (grapple zips, knockbacks)
 ## instead of being overwritten by stick input every frame.
 var carry_time := 0.0
@@ -91,17 +92,18 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	input = p_input
 	world = p_world
 	_avatar = AvatarFactory.build_character(entry.get("style", {}))
+	_avatar.scale = Vector3(1.5, 1.5, 1.5)
 	add_child(_avatar)
 	_tag = Label3D.new()
 	_tag.text = str(entry.name)
 	_tag.font_size = 64
 	_tag.pixel_size = 0.006
 	_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_tag.no_depth_test = true
+	_tag.no_depth_test = false
 	_tag.modulate = Color.WHITE
 	_tag.outline_modulate = Color(0.05, 0.05, 0.1, 0.9)
 	_tag.outline_size = 16
-	_tag.position = Vector3(0, 1.85, 0)
+	_tag.position = Vector3(0, 1.5, 0)
 	add_child(_tag)
 	if is_local:
 		# A faint personal glow so caves and midnight are never a black void.
@@ -135,6 +137,7 @@ func refresh_from_roster(entry: Dictionary) -> void:
 	if str(_avatar.get_meta("style", "")) != str(style):
 		var old := _avatar
 		_avatar = AvatarFactory.build_character(style)
+		_avatar.scale = Vector3(1.5, 1.5, 1.5)
 		_avatar.rotation = old.rotation
 		add_child(_avatar)
 		old.queue_free()
@@ -259,7 +262,8 @@ func _local_move(delta: float) -> void:
 	var jump_now := input.is_jump_pressed()
 	if jump_now and not _prev_jump:
 		var now := Time.get_ticks_msec()
-		if now - _last_jump_ms < 320 and not world.survival_active:
+		if now - _last_jump_ms < 320 and not world.survival_active \
+				and world.match_phase == "IDLE":
 			fly_mode = not fly_mode
 			if fly_mode:
 				velocity.y = 3.0
@@ -274,6 +278,8 @@ func _local_move(delta: float) -> void:
 		speed *= 0.45  # wading through soft snow
 	if fly_mode:
 		speed = 7.5
+	if downed:
+		speed *= 0.3
 	if carry_time > 0.0:
 		# Momentum rules: input only nudges while being flung.
 		velocity.x = velocity.x * 0.99 + dir.x * speed * 0.1
@@ -284,8 +290,8 @@ func _local_move(delta: float) -> void:
 	if dir.length_squared() > 0.01:
 		heading = dir.normalized()
 
-	if fly_mode and world.survival_active:
-		fly_mode = false  # no flying away from a Grump raid!
+	if fly_mode and (world.survival_active or world.match_phase != "IDLE"):
+		fly_mode = false  # no flying away from raids or matches
 	if fly_mode:
 		var vert := 0.0
 		if jump_now:
@@ -317,7 +323,6 @@ func _local_move(delta: float) -> void:
 		velocity.y -= GRAVITY * delta
 		if jump_now and on_floor:
 			velocity.y = JUMP_VELOCITY
-			Sfx.play("jump", -6.0)
 
 	# Axis-separated sweep against the voxel grid.
 	var next := position
@@ -450,6 +455,8 @@ func _local_actions(delta: float) -> void:
 		else:
 			_highlight.visible = false
 
+	if downed:
+		return  # crawling: no digging, placing or shooting
 	var pick := input.slot_pick()
 	if pick != _prev_slot_pick and pick >= 0:
 		if pick < 8:
@@ -480,9 +487,15 @@ func _local_actions(delta: float) -> void:
 			_edit_cooldown = EDIT_REPEAT
 	elif wants_place:
 		var item := held()
+		if item.kind == "empty":
+			return
 		if item.kind == "weapon":
 			if int(item.id) == 11:
 				return  # Wings work by holding them, not clicking
+			if int(item.id) == 13:
+				_sword_swing()
+				_edit_cooldown = 0.4
+				return
 			world.orbs.shoot_local(self, int(item.id))
 			_edit_cooldown = float(Weapons.spec(int(item.id)).cooldown)
 		elif place_target != Vector3i(0, -99, 0):
@@ -498,6 +511,26 @@ func _local_actions(delta: float) -> void:
 			else:
 				world.send_edit(slot, place_target, selected_block())
 				_edit_cooldown = EDIT_REPEAT
+
+## Sword: a close swing that bonks enemies and chops soft blocks.
+func _sword_swing() -> void:
+	Sfx.play("whoosh", -8.0, 1.4)
+	var hit_someone := false
+	for child in world.players.get_children():
+		if child is Player and child.player_id != player_id:
+			var to_other: Vector3 = child.position - position
+			if to_other.length() < 3.2 and to_other.normalized().dot(heading) > 0.3:
+				world.sv_orb_hit.rpc_id(1, slot, child.player_id, child.position)
+				hit_someone = true
+	var monster: int = world.monster_view.nearest_to(position + heading * 2.0, 2.2)
+	if monster >= 0:
+		world.sv_zap.rpc_id(1, slot, monster)
+		world.monster_view.hit(monster, false)
+		hit_someone = true
+	if not hit_someone:
+		var target := _find_dig_target()
+		if target != NO_TARGET and Blocks.hardness(world.chunks.get_block(target)) <= 1:
+			world.send_edit(slot, target, Blocks.AIR)
 
 func _front_cell(dy: int) -> Vector3i:
 	var front := position + heading * 0.95

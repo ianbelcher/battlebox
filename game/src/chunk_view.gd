@@ -8,6 +8,8 @@ extends Node3D
 ## Chunks kept meshed around each local player; the split screen raises this
 ## when someone zooms far out so the horizon fills in.
 var view_radius := 5
+## During matches everything stays resident (prefetched in the lobby).
+var match_mode := false
 const MAX_INFLIGHT_MESHES := 3
 var light_cap := 10
 const REQUEST_BATCH := 40
@@ -79,6 +81,8 @@ func _refresh_interest() -> void:
 			if batch.size() >= REQUEST_BATCH:
 				break
 		world.request_chunks(batch)
+	if match_mode:
+		return
 	# Drop chunks far outside every focus.
 	var unload := view_radius + 2
 	for cpos: Vector2i in _data.keys().duplicate():
@@ -283,6 +287,18 @@ func nearest_teleporter(from: Vector3) -> Vector3:
 				best_dist = dist
 				best = pos
 	return best
+
+## Ask for every chunk in a radius right now (match-lobby prefetch).
+func prefetch(radius: int) -> void:
+	var wanted: Array = []
+	for dz in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			var cpos := Vector2i(dx, dz)
+			if dx * dx + dz * dz <= radius * radius + 2 and not _data.has(cpos):
+				wanted.append(cpos)
+				_pending[cpos] = Time.get_ticks_msec()
+	for i in range(0, wanted.size(), 38):
+		world.request_chunks(wanted.slice(i, i + 38))
 
 ## Drop everything (map reset) so the interest loop re-streams the world.
 func reset() -> void:
