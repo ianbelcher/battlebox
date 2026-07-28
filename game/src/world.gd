@@ -1126,7 +1126,9 @@ func _tick_revives() -> void:
 				mate_close = true
 		if mate_close:
 			_revive_progress[id] = float(_revive_progress.get(id, 0.0)) + 0.35
-			if _revive_progress[id] >= 3.0:
+			# Reviving is LOUD — everyone nearby hears the alarm.
+			cl_revive_noise.rpc(pos)
+			if _revive_progress[id] >= 6.0:
 				_downed_ids.erase(id)
 				_revive_progress.erase(id)
 				var state: Dictionary = _player_state.get(id, {})
@@ -1160,12 +1162,7 @@ func _match_hurt(id: String, amount: int, from_pos: Vector3) -> void:
 	if match_phase != "BATTLE" or not _match_alive.has(id):
 		return
 	if _downed_ids.has(id):
-		# Finishing blow on a downed enemy.
-		_downed_ids.erase(id)
-		_match_alive.erase(id)
-		cl_eliminated.rpc(id)
-		_check_match_win()
-		return
+		return  # ghosts are untouchable — revive or bleed out, nothing else
 	var state: Dictionary = _player_state.get(id, {})
 	if state.is_empty():
 		return
@@ -1218,8 +1215,18 @@ func cl_downed_state(id: String, is_down: bool) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id:
 			child.downed = is_down
+			child.set_ghost(is_down)
 			if child.is_local and is_down:
 				Sfx.play("drop")
+
+@rpc("authority", "unreliable")
+func cl_revive_noise(pos: Vector3) -> void:
+	var dist := 1e9
+	for child in players.get_children():
+		if child is Player and child.is_local:
+			dist = minf(dist, child.position.distance_to(pos))
+	if dist < 40.0:
+		Sfx.play("warp", -2.0 - dist * 0.4, 0.6)
 
 @rpc("authority", "reliable")
 func cl_eliminated(id: String) -> void:
@@ -1617,7 +1624,10 @@ func _client_setup() -> void:
 	wall_mesh.radial_segments = 96
 	_storm_wall.mesh = wall_mesh
 	var wall_mat := StandardMaterial3D.new()
-	wall_mat.albedo_color = Color(1.0, 0.2, 0.15, 0.16)
+	wall_mat.albedo_color = Color(1.0, 0.2, 0.15, 0.3)
+	wall_mat.emission_enabled = true
+	wall_mat.emission = Color(1.0, 0.25, 0.15)
+	wall_mat.emission_energy_multiplier = 1.4
 	wall_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	wall_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	wall_mat.cull_mode = BaseMaterial3D.CULL_DISABLED

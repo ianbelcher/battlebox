@@ -129,6 +129,15 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 		add_child(_highlight)
 	_apply_render_layer()
 
+## Ghost look while downed: the whole character fades to a shimmer.
+func set_ghost(ghost: bool) -> void:
+	for node in _avatar.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		var mat := mesh_instance.material_override as StandardMaterial3D
+		if mat != null:
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if ghost else BaseMaterial3D.TRANSPARENCY_DISABLED
+			mat.albedo_color.a = 0.3 if ghost else 1.0
+
 func refresh_from_roster(entry: Dictionary) -> void:
 	_tag.text = str(entry.name)
 	var team := int(entry.get("team", -1))
@@ -279,7 +288,7 @@ func _local_move(delta: float) -> void:
 	if fly_mode:
 		speed = 7.5
 	if downed:
-		speed *= 0.3
+		pass  # ghosts run free — they just can't touch anything
 	if carry_time > 0.0:
 		# Momentum rules: input only nudges while being flung.
 		velocity.x = velocity.x * 0.99 + dir.x * speed * 0.1

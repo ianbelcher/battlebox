@@ -46,6 +46,7 @@ var _preview_viewport: SubViewport
 var _preview_avatar: Node3D
 var _autoopened := false
 var _crosshair: Label
+var _storm_arrow: Label
 
 func _us(n: int) -> int:
 	return int(n * clampf(DisplayServer.window_get_size().x / 1100.0, 1.15, 3.0))
@@ -156,6 +157,17 @@ func _ready() -> void:
 	_tabs = TabContainer.new()
 	_tabs.add_theme_font_size_override("font_size", _us(20))
 	_menu.add_child(_tabs)
+	_storm_arrow = Label.new()
+	_storm_arrow.add_theme_font_size_override("font_size", _us(30))
+	_storm_arrow.add_theme_color_override("font_color", Color("ff5a4a"))
+	_storm_arrow.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_storm_arrow.add_theme_constant_override("outline_size", 8)
+	_storm_arrow.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_storm_arrow.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_storm_arrow.offset_top = _us(70)
+	_storm_arrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_storm_arrow.visible = false
+	add_child(_storm_arrow)
 	# First-person crosshair.
 	_crosshair = Label.new()
 	_crosshair.text = "+"
@@ -468,6 +480,21 @@ func _process(_delta: float) -> void:
 		_last_index = -1
 	if _chip != null:
 		_chip.visible = not _menu.visible
+	# Caught outside the storm: a big arrow home plus the distance.
+	if world != null and world.match_phase == "BATTLE":
+		var flat := Vector2(player.position.x, player.position.z)
+		var outside: float = flat.length() - world.storm_radius
+		if outside > 0.0:
+			var to_center := -flat
+			var angle := atan2(to_center.x, -to_center.y) - player.camera_yaw
+			var arrows := ["⬆", "⬈", "➡", "⬊", "⬇", "⬋", "⬅", "⬉"]
+			var arrow: String = arrows[posmod(int(round(angle / (PI / 4.0))), 8)]
+			_storm_arrow.text = "%s  STORM! run %dm  %s" % [arrow, int(outside), arrow]
+			_storm_arrow.visible = true
+		else:
+			_storm_arrow.visible = false
+	else:
+		_storm_arrow.visible = false
 	if _preview_avatar != null and _menu.visible:
 		_preview_avatar.rotation.y += _delta * 1.2
 	var held_now := str(player.held())
