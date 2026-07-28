@@ -503,6 +503,21 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 			return
 		11:  # Wings do their work while held; the trigger does nothing.
 			return
+		12:  # Digger: quietly bores a person-sized tunnel bite.
+			var bored: Array = []
+			for dy in range(-1, 2):
+				for dz in range(-1, 2):
+					for dx in range(-1, 2):
+						var pos: Vector3i = cell + Vector3i(dx, dy, dz)
+						var block := store.get_block(pos)
+						if block != Blocks.AIR and Blocks.is_breakable(block) \
+								and Blocks.hardness(block) <= 2 and not Blocks.is_liquid(block):
+							store.set_block(pos, Blocks.AIR)
+							bored.append(pos)
+			if not bored.is_empty():
+				cl_batch.rpc(bored, Blocks.AIR)
+				_disturb_water(bored)
+			return
 		10:  # Grump Whistle: a wild Grump, raid or not.
 			if _monsters.size() < 30:
 				_monsters[_next_monster_id] = {"pos": Vector3(cell) + Vector3(0.5, 1.0, 0.5),

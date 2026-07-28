@@ -67,6 +67,13 @@ func _ready() -> void:
 func set_clock(clock: float) -> void:
 	_clock = clock
 
+## Old-computer mode: drop the expensive post effects, keep the look.
+func set_low_fx(low: bool) -> void:
+	environment.ssao_enabled = not low
+	environment.glow_enabled = not low
+	sun.directional_shadow_max_distance = 60.0 if low else 120.0
+	moon.shadow_enabled = false if low else moon.shadow_enabled
+
 func _process(delta: float) -> void:
 	_clock = fposmod(_clock + delta / WorldNode.day_seconds(), 1.0)
 	_apply(_clock)

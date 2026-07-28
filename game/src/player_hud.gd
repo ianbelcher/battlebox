@@ -60,10 +60,11 @@ var _last_style := -1
 var _last_width := -1.0
 var _slots_dirty := true
 var _prev_slot_pick_menu := -1
+var _autoopened := false
 var _crosshair: Label
 
 func _us(n: int) -> int:
-	return int(n * clampf(DisplayServer.window_get_size().x / 1280.0, 1.0, 2.4))
+	return int(n * clampf(DisplayServer.window_get_size().x / 1100.0, 1.15, 3.0))
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -85,7 +86,7 @@ func _ready() -> void:
 	# Three swatches: skin tone, shirt, hat. Click to cycle that part.
 	for attr in ["body", "shirt", "hat"]:
 		var swatch := ColorRect.new()
-		swatch.custom_minimum_size = Vector2(22, 22)
+		swatch.custom_minimum_size = Vector2(_us(24), _us(24))
 		swatch.mouse_filter = Control.MOUSE_FILTER_STOP
 		swatch.tooltip_text = attr
 		var attr_name := str(attr)
@@ -116,8 +117,8 @@ func _ready() -> void:
 	# Bottom: hotbar.
 	var bar_holder := CenterContainer.new()
 	bar_holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	bar_holder.offset_top = -96
-	bar_holder.offset_bottom = -10
+	bar_holder.offset_top = -150
+	bar_holder.offset_bottom = -8
 	bar_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bar_holder)
 	var bar_panel := PanelContainer.new()
@@ -155,8 +156,8 @@ func _ready() -> void:
 	_selected_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
 	_selected_label.add_theme_constant_override("outline_size", 5)
 	_selected_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_selected_label.offset_top = -124
-	_selected_label.offset_bottom = -98
+	_selected_label.offset_top = -168
+	_selected_label.offset_bottom = -134
 	_selected_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_selected_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_selected_label)
@@ -181,6 +182,7 @@ func _ready() -> void:
 	_menu.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_menu)
 	_tabs = TabContainer.new()
+	_tabs.add_theme_font_size_override("font_size", _us(20))
 	_menu.add_child(_tabs)
 	var guide := Label.new()
 	guide.name = "How to Play"
@@ -206,8 +208,9 @@ func _ready() -> void:
 	_tabs.add_child(_picker)
 	_info = Label.new()
 	_info.name = "World"
-	_info.add_theme_font_size_override("font_size", _us(20))
+	_info.add_theme_font_size_override("font_size", _us(22))
 	_tabs.add_child(_info)
+	_build_character_tab()
 
 	if world != null:
 		world.treasures_changed.connect(_refresh_identity)
@@ -234,6 +237,52 @@ func _toggle_menu(player: Player, tab: int) -> void:
 	_info.text = "%d playing right now\nYour treasures: %d\nWorld source: %s\n\nThe world is saved all the time - whatever\nyou build is still here tomorrow.\nFly up high... some islands float.\nDig deep... some caves glow." % [
 		Game.roster.size(), int(world.treasures.get(id, 0)), str(world.source)]
 	Sfx.play("card" if Sfx._streams.has("card") else "tick", -8.0)
+
+## "Character" tab: big friendly buttons for name, skin, shirt and hat.
+func _build_character_tab() -> void:
+	var tab := VBoxContainer.new()
+	tab.name = "Character"
+	tab.add_theme_constant_override("separation", _us(14))
+	_tabs.add_child(tab)
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation", _us(10))
+	tab.add_child(name_row)
+	var name_label := Label.new()
+	name_label.text = "Name:"
+	name_label.add_theme_font_size_override("font_size", _us(22))
+	name_row.add_child(name_label)
+	var name_edit := LineEdit.new()
+	name_edit.max_length = 12
+	name_edit.custom_minimum_size = Vector2(_us(220), 0)
+	name_edit.add_theme_font_size_override("font_size", _us(22))
+	name_edit.text_submitted.connect(func(text: String) -> void:
+		Game.set_local_name(slot, text)
+		Sfx.play("pop", -4.0))
+	name_row.add_child(name_edit)
+	for attr in ["body", "shirt", "hat"]:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", _us(10))
+		tab.add_child(row)
+		var attr_label := Label.new()
+		attr_label.text = {"body": "Skin tone:", "shirt": "Shirt:", "hat": "Hat:"}[attr]
+		attr_label.custom_minimum_size = Vector2(_us(140), 0)
+		attr_label.add_theme_font_size_override("font_size", _us(22))
+		row.add_child(attr_label)
+		var attr_name := str(attr)
+		for direction in [-1, 1]:
+			var btn := Button.new()
+			btn.text = "  ◀  " if direction < 0 else "  ▶  "
+			btn.add_theme_font_size_override("font_size", _us(22))
+			var d: int = direction
+			btn.pressed.connect(func() -> void:
+				Game.cycle_local_style(slot, attr_name, d)
+				Sfx.play("pop", -6.0))
+			row.add_child(btn)
+	var hint := Label.new()
+	hint.text = "Changes save to this controller and follow you between sessions."
+	hint.add_theme_font_size_override("font_size", _us(16))
+	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
+	tab.add_child(hint)
 
 func _on_picked(entry: Dictionary) -> void:
 	var player := _player()
@@ -327,6 +376,10 @@ func _process(_delta: float) -> void:
 				_picker.poll(input, _delta)
 	if not _menu.visible and player.ui_locked:
 		player.ui_locked = false
+	if OS.get_environment("WORLD_AUTOTEST_MENU") == "1" and slot == 0 \
+			and not _autoopened and Time.get_ticks_msec() > 9000:
+		_autoopened = true
+		_toggle_menu(player, 1)
 
 	_crosshair.visible = player.fp_mode and not _menu.visible
 	_crosshair.add_theme_font_size_override("font_size", _us(int(30 * (1.0 + player.fp_zoom * 0.8))))
@@ -345,12 +398,12 @@ func _process(_delta: float) -> void:
 			_selected_label.text = str(Structures.spec(int(item.id)).name)
 		else:
 			_selected_label.text = Blocks.display_name(int(item.id))
-		var slot_px := clampf(size.x / 14.0, 40.0, 78.0)
+		var slot_px := clampf(size.x / 13.0, 44.0, 96.0)
 		for i in _chips.size():
 			var frame: Panel = _chips[i]
 			var entry: Dictionary = player.slots[i]
 			var selected := i == _last_index
-			frame.custom_minimum_size = Vector2(slot_px, slot_px)
+			frame.custom_minimum_size = Vector2(slot_px, slot_px) * (1.18 if selected else 1.0)
 			var style := StyleBoxFlat.new()
 			style.bg_color = Color(0.08, 0.09, 0.14, 0.85)
 			style.set_corner_radius_all(8)

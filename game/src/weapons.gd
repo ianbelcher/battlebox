@@ -24,6 +24,8 @@ const WEAPONS := [
 		"blurb": "Splats the landscape into random wool colors"},
 	{"id": 9, "name": "Napalm Rocket", "color": Color("f2e04a"), "cooldown": 0.7, "speed": 40.0,
 		"blurb": "Mid-size blast that leaves quick-burning fire"},
+	{"id": 12, "name": "Digger", "color": Color("b5975f"), "cooldown": 0.25, "speed": 44.0,
+		"blurb": "Bores a tunnel wherever it hits - undermine everything"},
 	{"id": 11, "name": "Wings", "color": Color("eceff4"), "cooldown": 9.0, "speed": 1.0,
 		"blurb": "Hold to glide from high places - but you can't shoot while soaring"},
 	{"id": 10, "name": "Grump Whistle", "color": Color("8a5fd0"), "cooldown": 2.0, "speed": 30.0,

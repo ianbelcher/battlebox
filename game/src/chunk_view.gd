@@ -9,7 +9,7 @@ extends Node3D
 ## when someone zooms far out so the horizon fills in.
 var view_radius := 5
 const MAX_INFLIGHT_MESHES := 3
-const MAX_LIGHTS_PER_CHUNK := 10
+var light_cap := 10
 const REQUEST_BATCH := 40
 const REQUEST_RETRY_SECONDS := 6.0
 
@@ -222,7 +222,7 @@ func _apply_surfaces(cpos: Vector2i, surfaces: Dictionary) -> void:
 	var lights: Array = surfaces.get("lights", [])
 	var count := 0
 	for spec: Dictionary in lights:
-		if count >= MAX_LIGHTS_PER_CHUNK:
+		if count >= light_cap:
 			break
 		count += 1
 		var light := OmniLight3D.new()

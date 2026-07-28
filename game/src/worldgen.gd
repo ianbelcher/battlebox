@@ -74,6 +74,10 @@ func height_at(wx: int, wz: int) -> int:
 	var hills := _hills.get_noise_2d(wx, wz) * 0.5 + 0.5
 	var detail := _detail.get_noise_2d(wx, wz)
 	# Ocean floor ~14, beaches just above sea, hills up to ~+30 over sea.
+	if theme == "desert":
+		# Flat rolling dunes well above the water table.
+		var dune := 14.0 + (base * 18.0 + hills * hills * 30.0) * falloff + detail * 1.8
+		return clampi(int(SEA_LEVEL + 4.0 + maxf(dune - SEA_LEVEL, 0.0) * 0.35), 2, CHUNK_H - 12)
 	if theme == "isles":
 		# Mostly ocean, steep little islands everywhere.
 		var bump := maxf(0.0, hills - 0.58) * 110.0
@@ -167,7 +171,11 @@ func _landmark_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 	if Vector2(cx, cz).length() > ISLAND_RADIUS - 30.0:
 		return
 	if theme == "desert" and roll < 0.65:
-		var base := SEA_LEVEL + 2
+		# Pyramids sit ON the dunes: base from the terrain at their center,
+		# and never in the water.
+		var base := height_at(cx, cz)
+		if base <= SEA_LEVEL + 1:
+			return
 		var size := 14 + int(hash01(ax, az, 901) * 6.0)
 		var m := maxi(absi(dx), absi(dz))
 		if m > size:

@@ -83,7 +83,7 @@ func _show_screen(screen: Control) -> void:
 			child.visible = child == screen
 
 static func ui_scale() -> float:
-	return clampf(DisplayServer.window_get_size().x / 1280.0, 1.0, 2.4)
+	return clampf(DisplayServer.window_get_size().x / 1100.0, 1.15, 3.0)
 
 func _make_label(text: String, size: int, color := Color.WHITE, outline := 0) -> Label:
 	var label := Label.new()
@@ -278,6 +278,16 @@ func _on_connected() -> void:
 	_show_screen(_game_screen)
 	_split.update_layout()
 	_maybe_start_autotest()
+	# Old machines: if we can't hold ~45fps after settling, drop the fancy
+	# effects and render scale automatically (WORLD_LOWFX=1/0 forces it).
+	var forced_fx := OS.get_environment("WORLD_LOWFX")
+	if forced_fx == "1":
+		_apply_low_fx()
+	elif forced_fx != "0":
+		get_tree().create_timer(14.0).timeout.connect(func() -> void:
+			if _in_world and Engine.get_frames_per_second() < 45.0:
+				_apply_low_fx()
+				_show_banner("Smoother mode on!"))
 
 ## WORLD_AUTOTEST=<n>: join n bot players who wander, dig and build — lets a
 ## headless client soak-test a full world session.
@@ -379,6 +389,17 @@ func _update_minimap() -> void:
 						for dx in range(-1, 2):
 							wide.set_pixel(px + dx, py + dy, dot)
 		_split.big_map.texture = ImageTexture.create_from_image(wide)
+
+func _apply_low_fx() -> void:
+	if Game.world == null:
+		return
+	if Game.world.sky != null:
+		Game.world.sky.set_low_fx(true)
+	if Game.world.chunks != null:
+		Game.world.chunks.light_cap = 4
+	if _split != null:
+		_split.set_low_fx(true)
+	print("Low-FX mode enabled (fps was %d)" % Engine.get_frames_per_second())
 
 func _refresh_survival() -> void:
 	if _survival_button == null or Game.world == null:

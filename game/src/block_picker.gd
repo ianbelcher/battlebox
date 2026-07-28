@@ -47,6 +47,8 @@ func _init() -> void:
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_title)
 	var grid := GridContainer.new()
+	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	grid.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_SHRINK_CENTER
 	grid.columns = COLUMNS
 	grid.add_theme_constant_override("h_separation", 5)
 	grid.add_theme_constant_override("v_separation", 5)
@@ -88,7 +90,7 @@ func _init() -> void:
 		_chips.append(chip)
 	var hint := Label.new()
 	hint.text = "Click / Space / A puts it in the highlighted slot — press 1-8 to fill other slots — E closes"
-	hint.add_theme_font_size_override("font_size", 20)
+	hint.add_theme_font_size_override("font_size", int(20 * clampf(DisplayServer.window_get_size().x / 1100.0, 1.15, 3.0)))
 	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(hint)
@@ -142,7 +144,6 @@ func poll(input: InputSlot, delta: float) -> void:
 func _select() -> void:
 	Sfx.play("pop", -4.0)
 	picked.emit(entries[focus_index])
-	close()
 
 func _refresh() -> void:
 	_title.text = "%s   →  slot %d" % [entries[focus_index].name, _slot_label]

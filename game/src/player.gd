@@ -276,11 +276,11 @@ func _local_move(delta: float) -> void:
 			velocity.y = minf(velocity.y + 30.0 * delta, 4.0)
 		# Buoyancy beats gravity so kids bob back up to the surface.
 		velocity.y = minf(velocity.y + 8.0 * delta, 2.5)
-	elif held().kind == "weapon" and int(held().id) == 11 and velocity.y < 0.0:
-		# Wings held: glide. Slow fall, extra reach — and no shooting hand.
-		velocity.y = maxf(velocity.y - GRAVITY * delta * 0.15, -2.4)
-		velocity.x *= 1.35
-		velocity.z *= 1.35
+	elif held().kind == "weapon" and int(held().id) == 11 and velocity.y < 0.5 and not on_floor:
+		# Wings held: glide. Gentle fall, big reach — and no shooting hand.
+		velocity.y = maxf(velocity.y - GRAVITY * delta * 0.12, -1.6)
+		velocity.x *= 1.5
+		velocity.z *= 1.5
 		anim = Anim.FLY
 	else:
 		velocity.y -= GRAVITY * delta
@@ -450,6 +450,8 @@ func _local_actions(delta: float) -> void:
 	elif wants_place:
 		var item := held()
 		if item.kind == "weapon":
+			if int(item.id) == 11:
+				return  # Wings work by holding them, not clicking
 			world.orbs.shoot_local(self, int(item.id))
 			_edit_cooldown = float(Weapons.spec(int(item.id)).cooldown)
 		elif place_target != Vector3i(0, -99, 0):

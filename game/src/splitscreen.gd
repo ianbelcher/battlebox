@@ -19,6 +19,16 @@ const DEFAULT_ZOOM := 3
 
 var world: Node = null
 var big_map: TextureRect = null
+var low_fx := false
+
+## Render cheaper: fewer pixels, no MSAA. Applied to current and future cells.
+func set_low_fx(low: bool) -> void:
+	low_fx = low
+	for cell: Dictionary in _cells:
+		if cell.viewport != null:
+			var viewport: SubViewport = cell.viewport
+			viewport.msaa_3d = Viewport.MSAA_DISABLED if low else Viewport.MSAA_2X
+			viewport.scaling_3d_scale = 0.7 if low else 1.0
 var _cells: Array = []   # [{slot:int(-1=spectator), container, viewport, rig, cam, hud,
                          #   yaw_index, yaw, zoom_index, size, prev_rot, prev_zoom}]
 var _orbit_angle := 0.0
@@ -76,7 +86,8 @@ func _add_cell(slot: int, frac: Rect2) -> void:
 	add_child(container)
 	var viewport := SubViewport.new()
 	viewport.world_3d = get_tree().root.find_world_3d()
-	viewport.msaa_3d = Viewport.MSAA_2X
+	viewport.msaa_3d = Viewport.MSAA_DISABLED if low_fx else Viewport.MSAA_2X
+	viewport.scaling_3d_scale = 0.7 if low_fx else 1.0
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	container.add_child(viewport)
 	var rig := Node3D.new()
