@@ -18,7 +18,7 @@ func spawn(shooter_id: String, origin: Vector3, dir: Vector3, kind: int) -> void
 
 func shoot_local(player: Player, kind: int) -> void:
 	var world: Node = get_parent()
-	var origin: Vector3 = player.position + Vector3(0, 1.2, 0)
+	var origin: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT - 0.15, 0)
 	var dir: Vector3
 	if player.fp_mode:
 		dir = player.look_dir()

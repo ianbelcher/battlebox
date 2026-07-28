@@ -579,7 +579,7 @@ func sv_dig_tunnel(slot: int, origin: Vector3, dir: Vector3) -> void:
 		return
 	var id := Game.player_id(multiplayer.get_remote_sender_id(), slot)
 	var state: Dictionary = _player_state.get(id, {})
-	if state.is_empty() or origin.distance_to(state.pos) > 6.0:
+	if state.is_empty() or origin.distance_to(state.pos) > 14.0:
 		return
 	dir = dir.normalized()
 	var bored: Array = []

@@ -368,8 +368,6 @@ func _on_picked(entry: Dictionary) -> void:
 		return
 	player.slots[player.selected_slot] = {"kind": entry.kind, "id": entry.id}
 	_slots_dirty = true
-	# Stays open, and the target hops to the next slot: pick, pick, pick.
-	player.selected_slot = mini(player.selected_slot + 1, 7)
 
 func _entry() -> Dictionary:
 	return Game.roster.get(Game.player_id(multiplayer.get_unique_id(), slot), {})
