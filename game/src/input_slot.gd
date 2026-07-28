@@ -208,7 +208,7 @@ func rotate_direction() -> int:
 		Kind.KEYBOARD_WASD:
 			if Input.is_physical_key_pressed(KEY_Z):
 				return -1
-			if Input.is_physical_key_pressed(KEY_C):
+			if Input.is_physical_key_pressed(KEY_X):
 				return 1
 		Kind.KEYBOARD_ARROWS:
 			if Input.is_physical_key_pressed(KEY_SEMICOLON):
@@ -227,7 +227,7 @@ func rotate_direction() -> int:
 func zoom_direction() -> int:
 	match kind:
 		Kind.KEYBOARD_WASD:
-			if Input.is_physical_key_pressed(KEY_X):
+			if Input.is_physical_key_pressed(KEY_C):
 				return -1
 			if Input.is_physical_key_pressed(KEY_V):
 				return 1

@@ -36,6 +36,18 @@ strike items when shipped, add new asks immediately.
 
 ## Done this round
 
+- [x] Radar rotates with facing (forward = up) + 128px detail pass
+- [x] Storm wall roof removed (cylinder caps) — no more red ceiling
+- [x] Sword now hits players you LOOK at (was using stale walk heading)
+- [x] Drop glide fixed (stale on_floor canceled it instantly)
+- [x] Chunk mesh bursts (4/frame) during matches/backlogs + prefetch 15 —
+      arena actually preloaded
+- [x] Team-colored glow light on every player during matches
+- [x] Top-down 5th camera state reachable again (rotate wrapped at 4)
+- [x] Keys: Z/X rotate, C/V zoom (were interleaved)
+- [x] City v2: parks with flowers/bushes, varied building footprints and
+      heights, real floors every 5 levels, ivy walls, rooftop gardens
+
 - [x] Storm rework: wall is now a solid-looking 12-block-high red wall (no
       emission, no sky-wide red wash); 12-block warning band outside it
       before damage kicks in (then hits every 1.6s); the storm CHEWS the

@@ -264,23 +264,50 @@ func _city_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: 
 	var bx := floori(wx / 22.0)
 	var bz := floori(wz / 22.0)
 	var build_roll := hash01(bx, bz, 800)
-	if build_roll < 0.2:
-		return  # park lot: leave nature
-	var height := 6 + int(hash01(bx, bz, 801) * 18.0)
-	if street_x < 6 or street_z < 6 or street_x > 19 or street_z > 19:
+	if build_roll < 0.3:
+		# Park lot: grass, flowers and little bushes break up the blocks.
+		var proll := hash01(wx, wz, 806)
+		if h + 2 < CHUNK_H:
+			if proll < 0.012:
+				data[idx(lx, h + 1, lz)] = Blocks.LEAVES
+				data[idx(lx, h + 2, lz)] = Blocks.LEAVES
+			elif proll < 0.06:
+				data[idx(lx, h + 1, lz)] = Blocks.TALL_GRASS
+			elif proll < 0.09:
+				data[idx(lx, h + 1, lz)] = [Blocks.FLOWER_RED,
+					Blocks.FLOWER_YELLOW, Blocks.FLOWER_PINK][int(proll * 100.0) % 3]
+		return
+	# Every building gets its own footprint and height.
+	var inset := 5 + int(hash01(bx, bz, 804) * 4.0)
+	var height := 5 + int(hash01(bx, bz, 801) * 22.0)
+	if street_x < inset or street_z < inset \
+			or street_x > 25 - inset or street_z > 25 - inset:
 		return  # sidewalk margin
-	var wall: bool = street_x == 6 or street_z == 6 or street_x == 19 or street_z == 19
+	var wall: bool = street_x == inset or street_z == inset \
+		or street_x == 25 - inset or street_z == 25 - inset
 	var material: int = [Blocks.BRICK, Blocks.MARBLE, Blocks.SLATE, Blocks.SANDSTONE][int(hash01(bx, bz, 802) * 4.0)]
 	for k in range(1, height + 1):
 		var y := h + k
 		if y >= CHUNK_H - 2:
 			break
 		if wall:
-			# Window bands.
+			# Window bands, with the odd ivy patch creeping up the side.
 			var window: bool = k % 3 != 1 and posmod(wx + wz, 3) != 0
-			data[idx(lx, y, lz)] = Blocks.GLASS if window else material
+			if not window and hash01(wx, wz + k, 805) < 0.07:
+				data[idx(lx, y, lz)] = Blocks.LEAVES
+			else:
+				data[idx(lx, y, lz)] = Blocks.GLASS if window else material
 		elif k == height:
 			data[idx(lx, y, lz)] = material
+			# Rooftop gardens on some buildings.
+			if y + 1 < CHUNK_H - 1 and hash01(bx, bz, 808) < 0.35 \
+					and hash01(wx, wz, 809) < 0.2:
+				data[idx(lx, y + 1, lz)] = Blocks.TALL_GRASS
+		elif k % 5 == 0:
+			# Real floors every five levels, lit here and there.
+			data[idx(lx, y, lz)] = Blocks.PLANKS
+		elif k % 5 == 1 and hash01(wx, wz, 810) < 0.02:
+			data[idx(lx, y, lz)] = Blocks.GLOWSTONE
 		else:
 			data[idx(lx, y, lz)] = Blocks.AIR
 	# Rooftop lantern sometimes.

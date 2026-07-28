@@ -65,6 +65,31 @@ var _launch_latched := false
 var _shoot_hold := 0.0
 ## Sky-drop at match start: fall gently until touching down.
 var drop_glide := false
+var _glide_grace := 0.0
+
+## Match drop: glide down. The grace period stops the glide from being
+## canceled by the stale on_floor flag from before the teleport.
+func start_drop_glide() -> void:
+	drop_glide = true
+	_glide_grace = 1.2
+
+var _team_light: OmniLight3D = null
+
+## A soft glow in your team's color so squads read at a glance.
+func set_team_glow(team: int) -> void:
+	if team < 0:
+		if _team_light != null:
+			_team_light.queue_free()
+			_team_light = null
+		return
+	if _team_light == null:
+		_team_light = OmniLight3D.new()
+		_team_light.omni_range = 5.0
+		_team_light.light_energy = 1.1
+		_team_light.shadow_enabled = false
+		_team_light.position = Vector3(0, 1.6, 0)
+		add_child(_team_light)
+	_team_light.light_color = WorldNode.TEAM_COLORS[team]
 var downed := false
 ## Riding a dragon (critter id) — grapple one to mount, jump to dismount.
 var riding := -1
@@ -141,6 +166,7 @@ func set_ghost(ghost: bool) -> void:
 			mat.albedo_color.a = 0.3 if ghost else 1.0
 
 func refresh_from_roster(entry: Dictionary) -> void:
+	set_team_glow(int(entry.get("team", -1)))
 	_tag.text = str(entry.name)
 	var team := int(entry.get("team", -1))
 	_tag.modulate = WorldNode.TEAM_COLORS[team] if team >= 0 else Color.WHITE
@@ -414,7 +440,8 @@ func _local_move(delta: float) -> void:
 		velocity.x *= 1.2
 		velocity.z *= 1.2
 		anim = Anim.FLY
-		if on_floor:
+		_glide_grace = maxf(0.0, _glide_grace - delta)
+		if on_floor and _glide_grace <= 0.0:
 			drop_glide = false
 	else:
 		velocity.y -= GRAVITY * delta
@@ -613,10 +640,17 @@ func _local_actions(delta: float) -> void:
 func _sword_swing() -> void:
 	Sfx.play("whoosh", -8.0, 1.4)
 	var hit_someone := false
+	# Swing direction: where you LOOK, not where you last walked — and very
+	# close targets count regardless of angle.
+	var face3: Vector3 = look_dir() if fp_mode else heading
+	var face := Vector2(face3.x, face3.z)
+	face = face.normalized() if face.length() > 0.05 else Vector2(0, -1).rotated(camera_yaw)
 	for child in world.players.get_children():
 		if child is Player and child.player_id != player_id:
 			var to_other: Vector3 = child.position - position
-			if to_other.length() < 3.2 and to_other.normalized().dot(heading) > 0.3:
+			var flat_to := Vector2(to_other.x, to_other.z)
+			if to_other.length() < 4.2 \
+					and (flat_to.length() < 1.4 or flat_to.normalized().dot(face) > 0.25):
 				world.sv_orb_hit.rpc_id(1, slot, child.player_id, child.position)
 				hit_someone = true
 	var monster: int = world.monster_view.nearest_to(position + heading * 2.0, 2.2)

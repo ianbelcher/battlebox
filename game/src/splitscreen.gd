@@ -267,7 +267,7 @@ func _process(delta: float) -> void:
 		if input != null:
 			var rot := input.rotate_direction()
 			if rot != 0 and cell.prev_rot == 0:
-				cell.yaw_index = posmod(cell.yaw_index + rot, 4)
+				cell.yaw_index = posmod(cell.yaw_index + rot, 5)
 				Sfx.play("tick", -12.0)
 			cell.prev_rot = rot
 			var zoom := input.zoom_direction()

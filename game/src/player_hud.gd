@@ -170,7 +170,7 @@ func _ready() -> void:
 	_radar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_radar)
 	var radar_timer := Timer.new()
-	radar_timer.wait_time = 1.0
+	radar_timer.wait_time = 0.6
 	radar_timer.timeout.connect(_update_radar)
 	add_child(radar_timer)
 	radar_timer.start()
@@ -432,39 +432,49 @@ func _update_radar() -> void:
 		return
 	_radar.visible = true
 	var center := player.position
-	var image := Image.create(96, 96, false, Image.FORMAT_RGB8)
-	for py in 96:
-		for px in 96:
-			var block: int = world.chunks.top_block(int(center.x) + (px - 48) * 2,
-				int(center.z) + (py - 48) * 2)
-			image.set_pixel(px, py,
-				Blocks.top_color_of(block) if block > 0 else Color(0.06, 0.07, 0.1))
+	# Radar convention: whatever you're facing is UP on the map.
+	var yaw: float = player.camera_yaw
+	var image := Image.create(128, 128, false, Image.FORMAT_RGB8)
+	for py in 128:
+		for px in 128:
+			var off := Vector2(px - 64, py - 64).rotated(yaw) * 1.5
+			var wx := int(center.x + off.x)
+			var wz := int(center.z + off.y)
+			var block: int = world.chunks.top_block(wx, wz)
+			var color := Color(0.06, 0.07, 0.1)
+			if block > 0:
+				color = Blocks.top_color_of(block).darkened(
+					WorldGen.hash01(wx, wz, 9) * 0.22)
+			image.set_pixel(px, py, color)
 	if world.match_phase == "BATTLE":
 		var ring: float = world.storm_radius
-		for angle_i in 140:
-			var a := angle_i * TAU / 140.0
-			var rx := 48 + int((cos(a) * ring - center.x) / 2.0)
-			var ry := 48 + int((sin(a) * ring - center.z) / 2.0)
-			if rx >= 0 and rx < 96 and ry >= 0 and ry < 96:
+		for angle_i in 200:
+			var a := angle_i * TAU / 200.0
+			var rs := Vector2(cos(a) * ring - center.x,
+				sin(a) * ring - center.z).rotated(-yaw) / 1.5
+			var rx := 64 + int(rs.x)
+			var ry := 64 + int(rs.y)
+			if rx >= 0 and rx < 128 and ry >= 0 and ry < 128:
 				image.set_pixel(rx, ry, Color(1.0, 0.25, 0.2))
 	if world.crates != null:
 		for crate in world.crates.get_children():
 			if crate is Node3D:
-				_blip(image, center, crate.position, Color("ffd166"))
+				_blip(image, center, yaw, crate.position, Color("ffd166"))
 	for child in world.players.get_children():
 		if child is Player and child != player:
 			var team := int(Game.roster.get(child.player_id, {}).get("team", -1))
-			_blip(image, center, child.position,
+			_blip(image, center, yaw, child.position,
 				WorldNode.TEAM_COLORS[team] if team >= 0 else Color("ff4426"))
-	_blip(image, center, player.position, Color.WHITE)
+	_blip(image, center, yaw, player.position, Color.WHITE)
 	_radar.texture = ImageTexture.create_from_image(image)
 
-func _blip(image: Image, center: Vector3, pos: Vector3, color: Color) -> void:
-	var px := 48 + int((pos.x - center.x) / 2.0)
-	var py := 48 + int((pos.z - center.z) / 2.0)
+func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color) -> void:
+	var s := Vector2(pos.x - center.x, pos.z - center.z).rotated(-yaw) / 1.5
+	var px := 64 + int(s.x)
+	var py := 64 + int(s.y)
 	for dy in range(-1, 2):
 		for dx in range(-1, 2):
-			if px + dx >= 0 and px + dx < 96 and py + dy >= 0 and py + dy < 96:
+			if px + dx >= 0 and px + dx < 128 and py + dy >= 0 and py + dy < 128:
 				image.set_pixel(px + dx, py + dy, color)
 
 func _close_menu() -> void:

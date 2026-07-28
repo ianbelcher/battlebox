@@ -1229,7 +1229,7 @@ func cl_match(phase: String, seconds: float) -> void:
 	if chunks != null:
 		chunks.match_mode = phase != "IDLE"
 		if phase == "LOBBY":
-			chunks.prefetch(10)  # whole arena in RAM before the drop
+			chunks.prefetch(15)  # whole arena in RAM before the drop
 	match_changed.emit()
 	if phase == "DROP":
 		Sfx.play("whoosh")
@@ -1246,7 +1246,7 @@ func cl_drop(id: String, pos: Vector3, loot := false) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id and child.is_local:
 			child.teleport(pos)
-			child.drop_glide = true
+			child.start_drop_glide()
 			child.fly_mode = false
 			# PUBG rules: everyone drops with just a sword — the rest is loot.
 			child.slots = [{"kind": "weapon", "id": 13}]
@@ -1671,6 +1671,9 @@ func _client_setup() -> void:
 	var wall_mesh := CylinderMesh.new()
 	wall_mesh.top_radius = 1.0
 	wall_mesh.bottom_radius = 1.0
+	# Tube only — caps would draw a red roof over the whole arena.
+	wall_mesh.cap_top = false
+	wall_mesh.cap_bottom = false
 	# A 12-block wall you can see marching in, not a full-sky red curtain.
 	wall_mesh.height = 12.0
 	wall_mesh.radial_segments = 96
