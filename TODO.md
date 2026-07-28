@@ -35,6 +35,16 @@ strike items when shipped, add new asks immediately.
       height band) rather than reusing the persistent island
 
 ## Done this round
+
+- [x] Weapon feel pass: viewmodel re-centered + Doom-style parabolic run
+      bob, long weapons pushed forward, gun hides when zoomed, shots leave
+      the right-hand muzzle and converge on the crosshair, hand item no
+      longer doubles in first person
+- [x] Shots explode/break blocks at ANY distance (server capped at 34m)
+- [x] Menu reopens on the last-used tab (was always the same one)
+- [x] Character tab: preview large + on the right, style changes keep the
+      spin instead of restarting it
+- [x] Sprint footsteps audible <30m (walking silent)
 - [x] Population One ghosts + loud 6s revives; storm arrow + glowing wall
 - [x] Sword-only night drops, empty slots, labeled crates, arena prefetch,
       no disk writes mid-match, full-roster lobby with bot teaming
