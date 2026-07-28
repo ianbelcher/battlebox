@@ -29,7 +29,7 @@ const GUIDE_TEXT := """Move: WASD / left stick        Jump: Space / A
 Double-tap jump = FLY (hold jump to rise, Shift / LT to sink, land to stop)
 
 Break block: LEFT CLICK / B         Place block: RIGHT CLICK / F / X
-Your 8 hotbar slots hold blocks, kits AND weapons - press E to
+Glowing SUPPLY CRATES dot the world - walk into one to grab its\nweapon! Your 8 hotbar slots hold blocks, kits AND weapons - press E to
 fill the current slot, switch with 1-8 (bumpers / D-pad on pads).
 Hold a weapon and RIGHT-CLICK (X / F) to fire: BLASTER sprays,
 BAZOOKA booms. During a raid: NO FLYING, and Grumps climb walls!

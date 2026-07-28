@@ -36,7 +36,7 @@ var heading := Vector3(0, 0, -1)
 ## Minecraft-style loadout: 8 slots holding blocks, structure kits or
 ## weapons; the held item decides what right-click does.
 var slots: Array = [
-	{"kind": "weapon", "id": 0}, {"kind": "weapon", "id": 1},
+	{"kind": "weapon", "id": 0}, {"kind": "weapon", "id": 12},
 	{"kind": "block", "id": Blocks.PLANKS}, {"kind": "block", "id": Blocks.COBBLE},
 	{"kind": "block", "id": Blocks.GLASS}, {"kind": "block", "id": Blocks.LANTERN},
 	{"kind": "block", "id": Blocks.BOOM}, {"kind": "block", "id": Blocks.TELEPORT},

@@ -53,6 +53,7 @@ var players: Node3D = null
 var critter_view: CritterView = null
 var monster_view: MonsterView = null
 var orbs: OrbView = null
+var crates: CrateView = null
 var sky: DayNight = null
 var _ready_announced := false
 
@@ -197,6 +198,10 @@ func sv_hello() -> void:
 		return
 	var peer := multiplayer.get_remote_sender_id()
 	cl_world_info.rpc_id(peer, spawn_pos, clock, source)
+	var payload: Array = []
+	for crate_id: int in _crates.keys():
+		payload.append([crate_id, _crates[crate_id].weapon, _crates[crate_id].pos])
+	cl_crates.rpc_id(peer, payload)
 
 @rpc("any_peer", "reliable")
 func sv_request_chunks(list: Array) -> void:
@@ -1072,8 +1077,76 @@ func _spawn_monster(alive: Array) -> void:
 		"next_bonk_ms": 0}
 	_next_monster_id += 1
 
+## Supply crates: keep ~14 scattered on land near-ish players; touching one
+## hands over its weapon and it respawns somewhere else.
+var _crates: Dictionary = {}
+var _next_crate_id := 1
+
+func _server_tick_crates() -> void:
+	var positions: Array = []
+	for state: Dictionary in _player_state.values():
+		positions.append(state.pos)
+	if positions.is_empty():
+		return
+	if _crates.size() < 14:
+		var anchor: Vector3 = positions[randi() % positions.size()]
+		var angle := randf() * TAU
+		var dist := randf_range(14.0, 60.0)
+		var wx := int(anchor.x + cos(angle) * dist)
+		var wz := int(anchor.z + sin(angle) * dist)
+		var y := store.surface_y(wx, wz)
+		if y > 2 and y < WorldGen.CHUNK_H - 6 \
+				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER:
+			# Rarer weapons show up less often.
+			var pool := [1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 11, 12, 12]
+			_crates[_next_crate_id] = {"weapon": pool[randi() % pool.size()],
+				"pos": Vector3(wx + 0.5, y + 1.0, wz + 0.5)}
+			_next_crate_id += 1
+			_broadcast_crates()
+	# Pickup by touch.
+	for id: String in _player_state.keys():
+		var ppos: Vector3 = _player_state[id].pos
+		for crate_id: int in _crates.keys():
+			if ppos.distance_to(_crates[crate_id].pos) < 1.6:
+				var weapon: int = _crates[crate_id].weapon
+				_crates.erase(crate_id)
+				cl_crate_taken.rpc(id, weapon)
+				_broadcast_crates()
+				break
+
+func _broadcast_crates() -> void:
+	var payload: Array = []
+	for crate_id: int in _crates.keys():
+		payload.append([crate_id, _crates[crate_id].weapon, _crates[crate_id].pos])
+	cl_crates.rpc(payload)
+
+@rpc("authority", "reliable")
+func cl_crates(payload: Array) -> void:
+	if crates != null:
+		crates.update_crates(payload)
+
+@rpc("authority", "reliable")
+func cl_crate_taken(id: String, weapon: int) -> void:
+	for child in players.get_children():
+		if child is Player and child.player_id == id and child.is_local:
+			# Into the first non-weapon slot (or replace the last slot).
+			var target := 7
+			for i in 8:
+				if child.slots[i].kind != "weapon":
+					target = i
+					break
+			child.slots[target] = {"kind": "weapon", "id": weapon}
+			child.selected_slot = target
+			Sfx.play("collect")
+	if crates != null:
+		update_crates_after_take()
+
+func update_crates_after_take() -> void:
+	pass  # server broadcast handles the visual removal
+
 func _server_tick_critters() -> void:
 	_server_tick_survival()
+	_server_tick_crates()
 	var player_positions: Array = []
 	for state: Dictionary in _player_state.values():
 		player_positions.append(state.pos)
@@ -1212,6 +1285,9 @@ func _client_setup() -> void:
 	orbs = OrbView.new()
 	orbs.name = "Orbs"
 	add_child(orbs)
+	crates = CrateView.new()
+	crates.name = "Crates"
+	add_child(crates)
 	sky = DayNight.new()
 	sky.name = "Sky"
 	add_child(sky)
