@@ -297,7 +297,7 @@ func _process(delta: float) -> void:
 		for cell: Dictionary in _cells:
 			if cell.cam != null and not cell.get("fp", false):
 				max_size = maxf(max_size, float(cell.size))
-		world.chunks.view_radius = clampi(4 + int(max_size / 7.0), 5, 10)
+		world.chunks.view_radius = clampi(6 + int(max_size / 7.0), 7, 13)
 	# The mouse belongs to the keyboard player while they're in first person.
 	var want_capture := false
 	for cell: Dictionary in _cells:

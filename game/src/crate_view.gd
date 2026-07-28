@@ -48,6 +48,8 @@ func update_crates(payload: Array) -> void:
 		tag.outline_size = 12
 		tag.position = Vector3(0, 1.9, 0)
 		node.add_child(tag)
+		for part in node.find_children("*", "GeometryInstance3D", true, false):
+			(part as GeometryInstance3D).visibility_range_end = 140.0
 		add_child(node)
 		_nodes[id] = {"node": node, "weapon": weapon}
 	for id: int in _nodes.keys().duplicate():

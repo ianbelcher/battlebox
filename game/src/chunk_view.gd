@@ -118,6 +118,8 @@ func receive_chunk(cx: int, cz: int, blob: PackedByteArray) -> void:
 ## Applies a replicated edit. Returns the previous block id (or -1 if the
 ## chunk isn't resident here).
 func apply_edit(pos: Vector3i, block: int) -> int:
+	if pos.y < 0 or pos.y >= WorldGen.CHUNK_H:
+		return -1
 	var cpos := Vector2i(floori(pos.x / 16.0), floori(pos.z / 16.0))
 	if not _data.has(cpos):
 		return -1

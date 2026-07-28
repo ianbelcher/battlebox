@@ -36,6 +36,16 @@ strike items when shipped, add new asks immediately.
 
 ## Done this round
 
+- [x] RADAR MATH FIXED: screen-to-world used +yaw instead of -yaw, so the
+      map was mirrored/inverted — now rotates correctly against you
+- [x] Wider streaming ring (7-13 chunks) so travel doesn't pop in
+- [x] Crates fade beyond 140m (no more loot floating past the terrain)
+- [x] City v3: 26-block grid with wide sandstone-edged roads, traffic
+      lights at intersections, car parks with parked cars, staircases
+      inside every building (stairwell holes in slabs), open lift shafts
+      in towers for grappling, glowstone floor markers
+- [x] Client crash guard: block edits above the world ceiling ignored
+
 - [x] Radar rotates with facing (forward = up) + 128px detail pass
 - [x] Storm wall roof removed (cylinder caps) — no more red ceiling
 - [x] Sword now hits players you LOOK at (was using stale walk heading)

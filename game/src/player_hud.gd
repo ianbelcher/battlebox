@@ -437,7 +437,7 @@ func _update_radar() -> void:
 	var image := Image.create(128, 128, false, Image.FORMAT_RGB8)
 	for py in 128:
 		for px in 128:
-			var off := Vector2(px - 64, py - 64).rotated(yaw) * 1.5
+			var off := Vector2(px - 64, py - 64).rotated(-yaw) * 1.5
 			var wx := int(center.x + off.x)
 			var wz := int(center.z + off.y)
 			var block: int = world.chunks.top_block(wx, wz)
@@ -451,7 +451,7 @@ func _update_radar() -> void:
 		for angle_i in 200:
 			var a := angle_i * TAU / 200.0
 			var rs := Vector2(cos(a) * ring - center.x,
-				sin(a) * ring - center.z).rotated(-yaw) / 1.5
+				sin(a) * ring - center.z).rotated(yaw) / 1.5
 			var rx := 64 + int(rs.x)
 			var ry := 64 + int(rs.y)
 			if rx >= 0 and rx < 128 and ry >= 0 and ry < 128:
@@ -469,7 +469,7 @@ func _update_radar() -> void:
 	_radar.texture = ImageTexture.create_from_image(image)
 
 func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color) -> void:
-	var s := Vector2(pos.x - center.x, pos.z - center.z).rotated(-yaw) / 1.5
+	var s := Vector2(pos.x - center.x, pos.z - center.z).rotated(yaw) / 1.5
 	var px := 64 + int(s.x)
 	var py := 64 + int(s.y)
 	for dy in range(-1, 2):

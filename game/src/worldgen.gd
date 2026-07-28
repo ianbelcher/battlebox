@@ -246,24 +246,52 @@ func _landmark_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 func _city_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: int) -> void:
 	if Vector2(wx, wz).length() > ISLAND_RADIUS - 40.0 or h <= SEA_LEVEL:
 		return
-	var street_x := posmod(wx, 22)
-	var street_z := posmod(wz, 22)
-	# Roads every 22 blocks.
-	if street_x < 4 or street_z < 4:
-		data[idx(lx, h, lz)] = Blocks.PATH
-		if data[idx(lx, h + 1, lz)] != Blocks.AIR and not Blocks.is_cross(data[idx(lx, h + 1, lz)]):
-			pass
+	var street_x := posmod(wx, 26)
+	var street_z := posmod(wz, 26)
+	# Wide roads every 26 blocks, with a paler sidewalk strip on the edges.
+	if street_x < 6 or street_z < 6:
+		var sidewalk: bool = street_x == 5 or street_z == 5 \
+			or street_x == 0 or street_z == 0
+		data[idx(lx, h, lz)] = Blocks.SANDSTONE if sidewalk else Blocks.PATH
 		for y in range(h + 1, mini(h + 8, CHUNK_H)):
 			data[idx(lx, y, lz)] = Blocks.AIR
-		# Street lamps on corners.
-		if street_x == 2 and street_z == 2:
+		# Traffic lights at every intersection corner.
+		if street_x == 1 and street_z == 1:
+			for k in range(1, 4):
+				data[idx(lx, h + k, lz)] = Blocks.SLATE
+			if h + 6 < CHUNK_H:
+				data[idx(lx, h + 4, lz)] = Blocks.WOOL_GREEN
+				data[idx(lx, h + 5, lz)] = Blocks.WOOL_YELLOW
+				data[idx(lx, h + 6, lz)] = Blocks.WOOL_RED
+		# Street lamps midway along blocks.
+		elif street_x == 2 and street_z == 13:
 			for k in range(1, 5):
 				data[idx(lx, h + k, lz)] = Blocks.SLATE if k < 4 else Blocks.LANTERN
 		return
 	# City lot: one building per 22-grid cell, inset 2 from streets.
-	var bx := floori(wx / 22.0)
-	var bz := floori(wz / 22.0)
+	var bx := floori(wx / 26.0)
+	var bz := floori(wz / 26.0)
 	var build_roll := hash01(bx, bz, 800)
+	if build_roll < 0.42 and build_roll >= 0.3:
+		# Car park: striped lot with chunky parked cars.
+		if h + 2 >= CHUNK_H:
+			return
+		data[idx(lx, h, lz)] = Blocks.PATH
+		if posmod(street_z, 4) == 0 and street_x > 7 and street_x < 24:
+			data[idx(lx, h, lz)] = Blocks.SANDSTONE  # painted stripe
+		# Cars: 2x3 colored boxes with a glass cabin, in neat rows.
+		var carx := posmod(street_x - 8, 5)
+		var carz := posmod(street_z - 8, 4)
+		if street_x >= 8 and street_x <= 22 and street_z >= 8 and street_z <= 22 \
+				and carx < 2 and carz < 3 \
+				and hash01(bx * 40 + (street_x - 8) / 5, bz * 40 + (street_z - 8) / 4, 812) < 0.6:
+			var paint: int = [Blocks.WOOL_RED, Blocks.WOOL_BLUE, Blocks.WOOL_YELLOW,
+				Blocks.WOOL_GREEN][int(hash01(bx * 40 + (street_x - 8) / 5,
+				bz * 40 + (street_z - 8) / 4, 813) * 4.0)]
+			data[idx(lx, h + 1, lz)] = paint
+			if carz == 1:
+				data[idx(lx, h + 2, lz)] = Blocks.GLASS  # cabin
+		return
 	if build_roll < 0.3:
 		# Park lot: grass, flowers and little bushes break up the blocks.
 		var proll := hash01(wx, wz, 806)
@@ -278,13 +306,24 @@ func _city_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: 
 					Blocks.FLOWER_YELLOW, Blocks.FLOWER_PINK][int(proll * 100.0) % 3]
 		return
 	# Every building gets its own footprint and height.
-	var inset := 5 + int(hash01(bx, bz, 804) * 4.0)
+	var inset := 7 + int(hash01(bx, bz, 804) * 4.0)
 	var height := 5 + int(hash01(bx, bz, 801) * 22.0)
 	if street_x < inset or street_z < inset \
-			or street_x > 25 - inset or street_z > 25 - inset:
+			or street_x > 31 - inset or street_z > 31 - inset:
 		return  # sidewalk margin
 	var wall: bool = street_x == inset or street_z == inset \
-		or street_x == 25 - inset or street_z == 25 - inset
+		or street_x == 31 - inset or street_z == 31 - inset
+	# Interior features: a staircase lane along one wall (climb a block per
+	# step, hole in each slab above the top step) and, in towers, an open
+	# lift shaft in the far corner — grapple straight up it.
+	var stair: int = -1
+	if street_x == inset + 1 and street_z > inset and street_z <= inset + 5:
+		stair = street_z - inset  # step 1..5
+	var stair_hole: bool = street_x == inset + 1 \
+		and street_z >= inset + 4 and street_z <= inset + 6
+	var shaft: bool = height > 16 \
+		and street_x >= 29 - inset and street_x <= 30 - inset \
+		and street_z >= 29 - inset and street_z <= 30 - inset
 	var material: int = [Blocks.BRICK, Blocks.MARBLE, Blocks.SLATE, Blocks.SANDSTONE][int(hash01(bx, bz, 802) * 4.0)]
 	for k in range(1, height + 1):
 		var y := h + k
@@ -298,14 +337,25 @@ func _city_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: 
 			else:
 				data[idx(lx, y, lz)] = Blocks.GLASS if window else material
 		elif k == height:
-			data[idx(lx, y, lz)] = material
-			# Rooftop gardens on some buildings.
-			if y + 1 < CHUNK_H - 1 and hash01(bx, bz, 808) < 0.35 \
-					and hash01(wx, wz, 809) < 0.2:
-				data[idx(lx, y + 1, lz)] = Blocks.TALL_GRASS
-		elif k % 5 == 0:
-			# Real floors every five levels, lit here and there.
+			# Roof — the lift shaft stays open so you can grapple out the top.
+			if shaft:
+				data[idx(lx, y, lz)] = Blocks.AIR
+			else:
+				data[idx(lx, y, lz)] = material
+				# Rooftop gardens on some buildings.
+				if y + 1 < CHUNK_H - 1 and hash01(bx, bz, 808) < 0.35 \
+						and hash01(wx, wz, 809) < 0.2:
+					data[idx(lx, y + 1, lz)] = Blocks.TALL_GRASS
+		elif shaft:
+			# Open shaft all the way up, glowstone marking each floor.
+			data[idx(lx, y, lz)] = Blocks.GLOWSTONE if k % 5 == 0 \
+				and street_x == 29 - inset and street_z == 29 - inset else Blocks.AIR
+		elif stair >= 0 and k % 5 == stair:
+			# Staircase: one step per level, repeating every floor.
 			data[idx(lx, y, lz)] = Blocks.PLANKS
+		elif k % 5 == 0:
+			# Real floors every five levels, with stairwell holes.
+			data[idx(lx, y, lz)] = Blocks.AIR if stair_hole else Blocks.PLANKS
 		elif k % 5 == 1 and hash01(wx, wz, 810) < 0.02:
 			data[idx(lx, y, lz)] = Blocks.GLOWSTONE
 		else:
