@@ -44,6 +44,8 @@ var _prev_slot_pick_menu := -1
 var _menu_tab_latch := false
 var _preview_viewport: SubViewport
 var _preview_avatar: Node3D
+var _preview_angle := PI
+var _last_tab := 1
 var _autoopened := false
 var _crosshair: Label
 var _storm_arrow: Label
@@ -157,6 +159,7 @@ func _ready() -> void:
 	_tabs = TabContainer.new()
 	_tabs.add_theme_font_size_override("font_size", _us(20))
 	_menu.add_child(_tabs)
+	_tabs.tab_changed.connect(func(tab: int) -> void: _last_tab = tab)
 	_storm_arrow = Label.new()
 	_storm_arrow.add_theme_font_size_override("font_size", _us(30))
 	_storm_arrow.add_theme_color_override("font_color", Color("ff5a4a"))
@@ -234,13 +237,14 @@ func _ready() -> void:
 func is_ui_open() -> bool:
 	return _menu != null and _menu.visible
 
-func _toggle_menu(player: Player, tab: int) -> void:
+func _toggle_menu(player: Player, _tab: int) -> void:
 	if _menu.visible:
 		_close_menu()
 		return
 	_menu.visible = true
-	_tabs.current_tab = tab
 	_tabs.set_tab_disabled(0, world != null and world.match_phase != "IDLE")
+	# Reopen on whatever tab was last used (falling back to Blocks).
+	_tabs.current_tab = 1 if _tabs.is_tab_disabled(_last_tab) else _last_tab
 	_refresh_preview()
 	player.ui_locked = true
 	for picker: BlockPicker in _pickers:
@@ -253,10 +257,13 @@ func _toggle_menu(player: Player, tab: int) -> void:
 
 ## "Character" tab: big friendly buttons for name, skin, shirt and hat.
 func _build_character_tab() -> void:
+	var split := HBoxContainer.new()
+	split.name = "Character"
+	split.add_theme_constant_override("separation", _us(36))
+	_tabs.add_child(split)
 	var tab := VBoxContainer.new()
-	tab.name = "Character"
 	tab.add_theme_constant_override("separation", _us(14))
-	_tabs.add_child(tab)
+	split.add_child(tab)
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", _us(10))
 	tab.add_child(name_row)
@@ -295,11 +302,11 @@ func _build_character_tab() -> void:
 	_preview_viewport = SubViewport.new()
 	_preview_viewport.own_world_3d = true
 	_preview_viewport.transparent_bg = true
-	_preview_viewport.size = Vector2i(_us(190), _us(230))
+	_preview_viewport.size = Vector2i(_us(330), _us(430))
 	var holder := SubViewportContainer.new()
 	holder.stretch = false
 	holder.add_child(_preview_viewport)
-	tab.add_child(holder)
+	split.add_child(holder)
 	var cam := Camera3D.new()
 	cam.position = Vector3(0, 0.9, 2.6)
 	_preview_viewport.add_child(cam)
@@ -354,6 +361,7 @@ func _refresh_preview() -> void:
 	var entry := _entry()
 	_preview_avatar = AvatarFactory.build_character(entry.get("style", {}))
 	_preview_avatar.position = Vector3(0, 0, 0)
+	_preview_avatar.rotation.y = _preview_angle
 	_preview_viewport.add_child(_preview_avatar)
 
 func _close_menu() -> void:
@@ -468,6 +476,8 @@ func _process(_delta: float) -> void:
 			and not _autoopened and Time.get_ticks_msec() > 9000:
 		_autoopened = true
 		_toggle_menu(player, 1)
+	if _autoopened and _menu.visible and not OS.get_environment("WORLD_AUTOTEST_TAB").is_empty():
+		_tabs.current_tab = int(OS.get_environment("WORLD_AUTOTEST_TAB"))
 
 	_crosshair.visible = player.fp_mode and not _menu.visible
 	_crosshair.add_theme_font_size_override("font_size", _us(int(30 * (1.0 + player.fp_zoom * 0.8))))
@@ -494,7 +504,8 @@ func _process(_delta: float) -> void:
 	else:
 		_storm_arrow.visible = false
 	if _preview_avatar != null and _menu.visible:
-		_preview_avatar.rotation.y += _delta * 1.2
+		_preview_angle = fposmod(_preview_angle + _delta * 1.2, TAU)
+		_preview_avatar.rotation.y = _preview_angle
 	var held_now := str(player.held())
 	if player.selected_slot != _last_index or _slots_dirty or held_now != _last_held:
 		_last_index = player.selected_slot

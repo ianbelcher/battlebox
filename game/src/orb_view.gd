@@ -18,12 +18,18 @@ func spawn(shooter_id: String, origin: Vector3, dir: Vector3, kind: int) -> void
 
 func shoot_local(player: Player, kind: int) -> void:
 	var world: Node = get_parent()
-	var origin: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT - 0.15, 0)
 	var dir: Vector3
 	if player.fp_mode:
 		dir = player.look_dir()
 	else:
 		dir = player.heading.normalized()
+	# Shots leave from the right-hand muzzle, then converge on the point the
+	# crosshair actually looks at (so aim stays true at range).
+	var eye: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT, 0)
+	var side := dir.cross(Vector3.UP)
+	side = side.normalized() if side.length() > 0.01 else Vector3.ZERO
+	var origin: Vector3 = eye + Vector3(0, -0.34, 0) + side * 0.3 + dir * 0.3
+	dir = (eye + dir * 40.0 - origin).normalized()
 	_add_orb(player.player_id, origin, dir, true, player.slot, kind)
 	world.sv_shoot.rpc_id(1, player.slot, origin, dir, kind)
 	if kind == 12:

@@ -409,7 +409,7 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 		return
 	var id := Game.player_id(multiplayer.get_remote_sender_id(), slot)
 	var state: Dictionary = _player_state.get(id, {})
-	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 34.0:
+	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 300.0:
 		return
 	match kind:
 		1:  # Bazooka

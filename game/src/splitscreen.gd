@@ -172,9 +172,14 @@ func _update_viewmodel(cell: Dictionary, player: Player) -> void:
 			for node in model.find_children("*", "VisualInstance3D", true, false):
 				(node as VisualInstance3D).layers = vm_layer
 			cam.add_child(model)
-			model.position = Vector3(0.42, -0.38, -0.7)
+			var base := Vector3(0.3, -0.42, -0.72)
+			# Long weapons sit further out so you never see their back end.
+			if item.kind == "weapon" and int(item.id) in [1, 9]:
+				base += Vector3(0.04, -0.04, -0.4)
+			model.position = base
 			model.rotation_degrees = Vector3(0, 6, 0)
 			cell.vm = model
+			cell.vm_base = base
 	# camera masks: see own viewmodel layer, never others'
 	var all_vm := 0
 	for i in 4:
@@ -233,6 +238,19 @@ func _process(delta: float) -> void:
 			var eye: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT, 0)
 			cam.look_at_from_position(eye, eye + player.look_dir(), Vector3.UP)
 			_update_viewmodel(cell, player)
+			var vm: Node3D = cell.get("vm")
+			if vm != null and is_instance_valid(vm):
+				# Tuck the gun away while zoomed in (aiming down sights).
+				vm.visible = int(cell.get("fp_zoom", 0)) == 0
+				# Doom-style bob: the gun sweeps a parabolic arc while running.
+				var run := Vector2(player.velocity.x, player.velocity.z).length()
+				if not player.on_floor:
+					run = 0.0
+				cell.bob_amp = lerpf(float(cell.get("bob_amp", 0.0)), clampf(run / 7.0, 0.0, 1.0), minf(1.0, delta * 6.0))
+				cell.bob_phase = float(cell.get("bob_phase", 0.0)) + delta * (4.0 + run * 0.9)
+				var amp: float = 0.055 * float(cell.bob_amp)
+				vm.position = Vector3(cell.get("vm_base", Vector3(0.3, -0.42, -0.72))) \
+					+ Vector3(cos(float(cell.bob_phase)) * amp, -absf(sin(float(cell.bob_phase))) * amp * 1.3, 0)
 			continue
 		cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 		cam.near = 0.5

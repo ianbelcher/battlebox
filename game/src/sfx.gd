@@ -57,6 +57,7 @@ func _ready() -> void:
 	_ambient_player.volume_db = -16.0
 	add_child(_ambient_player)
 	_ambients = {
+		"step": _step(),
 		"crickets": _crickets(8),
 	}
 	for i in 4:
@@ -67,6 +68,20 @@ func _ready() -> void:
 	add_child(_bird_timer)
 
 const STABLE_PITCH := ["join", "collect", "pet", "cheer", "warp"]
+
+## Soft running footstep: a short low thud with a whisper of noise.
+func _step() -> AudioStreamWAV:
+	var seconds := 0.09
+	var count := int(seconds * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(count)
+	var smooth := 0.0
+	for i in count:
+		var t := float(i) / RATE
+		smooth = smooth * 0.9 + (randf() * 2.0 - 1.0) * 0.1
+		var env := exp(-t * 42.0) * minf(1.0, i / (0.002 * RATE))
+		buf[i] = (sin(TAU * 92.0 * t) * 0.55 + smooth * 0.6) * env
+	return _to_wav(buf, 0.5)
 
 ## Deep rumble + noise burst for the boom blocks.
 func _thoomp() -> AudioStreamWAV:

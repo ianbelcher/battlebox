@@ -244,6 +244,8 @@ func _refresh_hand() -> void:
 	_hand_item = ItemFactory.build(str(item.kind), int(item.id))
 	_hand_item.position = Vector3(0, -0.42, -0.05)
 	arm.add_child(_hand_item)
+	for node in _hand_item.find_children("*", "VisualInstance3D", true, false):
+		(node as VisualInstance3D).layers = render_layer_bit()
 
 func selected_block() -> int:
 	return int(held().id) if held().kind == "block" else -1
@@ -259,7 +261,35 @@ func _physics_process(delta: float) -> void:
 		position = position.lerp(_remote_target, minf(1.0, delta * 10.0))
 		rotation.y = lerp_angle(rotation.y, _remote_yaw, minf(1.0, delta * 10.0))
 	_refresh_hand()
+	_footsteps(delta)
 	_animate(delta)
+
+var _step_prev := Vector3.ZERO
+var _step_accum := 0.0
+
+## Sprinting is loud — a soft thud every couple of meters that nearby
+## players hear too, so nobody sneaks up at full speed. Walking is silent.
+func _footsteps(delta: float) -> void:
+	var flat := Vector2(position.x - _step_prev.x, position.z - _step_prev.z).length()
+	var vertical := absf(position.y - _step_prev.y) > 0.15
+	_step_prev = position
+	if delta <= 0.0 or flat > 3.0:
+		return
+	if flat / delta < 6.0 or vertical or downed or fly_mode:
+		_step_accum = 0.0
+		return
+	_step_accum += flat
+	if _step_accum < 2.1:
+		return
+	_step_accum = 0.0
+	var dist := 6.0
+	if not is_local:
+		dist = 1e9
+		for child in get_parent().get_children():
+			if child is Player and child.is_local:
+				dist = minf(dist, child.position.distance_to(position))
+	if dist < 30.0:
+		Sfx.play("step", -8.0 - dist * 0.8, 0.9 + randf() * 0.25)
 
 # ------------------------------------------------------------------
 # Local physics
