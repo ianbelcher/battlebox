@@ -57,6 +57,9 @@ func _add_orb(shooter_id: String, origin: Vector3, dir: Vector3, mine: bool, slo
 	node.position = origin
 	add_child(node)
 	var speed: float = Weapons.spec(kind).speed
+	if kind == 14:
+		# Flares launch mostly upward no matter where you aim.
+		dir = (dir * 0.35 + Vector3.UP).normalized()
 	_orbs.append({"node": node, "vel": dir.normalized() * speed,
 		"shooter_id": shooter_id, "age": 0.0, "mine": mine, "slot": slot,
 		"kind": kind})
@@ -70,6 +73,12 @@ func _physics_process(delta: float) -> void:
 		orb.age += delta
 		var node: Node3D = orb.node
 		node.position += orb.vel * delta
+		if orb.kind == 14:
+			if orb.age > 1.1:
+				_spawn_flare(node.position)
+				node.queue_free()
+				_orbs.remove_at(i)
+			continue
 		var cell := Vector3i(floori(node.position.x), floori(node.position.y), floori(node.position.z))
 		# Shots never fizzle mid-air: they fly until they hit something (or
 		# leave the world), and heavy shells still detonate wherever they end.
@@ -155,3 +164,36 @@ func _poof(at: Vector3) -> void:
 	get_tree().create_timer(0.8).timeout.connect(func() -> void:
 		if is_instance_valid(puff):
 			puff.queue_free())
+
+
+## A drifting sky light: bright star + real light that sinks slowly.
+func _spawn_flare(pos: Vector3) -> void:
+	var flare := Node3D.new()
+	flare.position = pos
+	var star := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.32
+	mesh.height = 0.64
+	star.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color("fff0f6")
+	mat.emission_enabled = true
+	mat.emission = Color("ff9ac0")
+	mat.emission_energy_multiplier = 6.0
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	star.material_override = mat
+	flare.add_child(star)
+	var light := OmniLight3D.new()
+	light.omni_range = 55.0
+	light.light_energy = 4.5
+	light.light_color = Color("ffd6e6")
+	light.shadow_enabled = false
+	flare.add_child(light)
+	add_child(flare)
+	Sfx.play("collect", -4.0)
+	var tween := create_tween()
+	tween.tween_property(flare, "position", pos + Vector3(0, -9.0, 0), 8.0)
+	tween.parallel().tween_property(light, "light_energy", 0.0, 8.0)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(flare):
+			flare.queue_free())

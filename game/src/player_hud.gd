@@ -47,6 +47,7 @@ var _preview_avatar: Node3D
 var _preview_angle := PI
 var _last_tab := 1
 var _tab_guard := false
+var _radar: TextureRect
 var _autoopened := false
 var _crosshair: Label
 var _storm_arrow: Label
@@ -163,6 +164,16 @@ func _ready() -> void:
 	_tabs.tab_changed.connect(func(tab: int) -> void:
 		if not _tab_guard:
 			_last_tab = tab)
+	_radar = TextureRect.new()
+	_radar.stretch_mode = TextureRect.STRETCH_SCALE
+	_radar.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_radar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_radar)
+	var radar_timer := Timer.new()
+	radar_timer.wait_time = 1.0
+	radar_timer.timeout.connect(_update_radar)
+	add_child(radar_timer)
+	radar_timer.start()
 	_storm_arrow = Label.new()
 	_storm_arrow.add_theme_font_size_override("font_size", _us(30))
 	_storm_arrow.add_theme_color_override("font_color", Color("ff5a4a"))
@@ -272,6 +283,30 @@ func _build_character_tab() -> void:
 	var tab := VBoxContainer.new()
 	tab.add_theme_constant_override("separation", _us(14))
 	split.add_child(tab)
+	var prof_row := HBoxContainer.new()
+	prof_row.add_theme_constant_override("separation", _us(10))
+	tab.add_child(prof_row)
+	var prof_label := Label.new()
+	prof_label.text = "Character:"
+	prof_label.custom_minimum_size = Vector2(_us(140), 0)
+	prof_label.add_theme_font_size_override("font_size", _us(22))
+	prof_row.add_child(prof_label)
+	for direction in [-1, 1]:
+		var pbtn := Button.new()
+		pbtn.focus_mode = Control.FOCUS_NONE
+		pbtn.text = "  ◀  " if direction < 0 else "  ▶  "
+		pbtn.add_theme_font_size_override("font_size", _us(22))
+		var pd: int = direction
+		pbtn.pressed.connect(func() -> void:
+			var profiles: Array = Game.list_profiles()
+			if profiles.is_empty():
+				return
+			var current := str(Game.profile_keys.get(slot, ""))
+			var index := profiles.find(current)
+			index = posmod(index + pd, profiles.size())
+			Game.select_profile(slot, str(profiles[index]))
+			Sfx.play("pop", -6.0))
+		prof_row.add_child(pbtn)
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", _us(10))
 	tab.add_child(name_row)
@@ -294,7 +329,8 @@ func _build_character_tab() -> void:
 		tab.add_child(row)
 		var attr_label := Label.new()
 		attr_label.text = {"body": "Skin tone:", "face": "Face:", "hair": "Hair:",
-			"hat": "Hat:", "shirt": "Shirt:", "pants": "Pants:", "shoes": "Shoes:"}[attr]
+			"hat": "Hat:", "shirt": "Shirt:", "pants": "Pants:", "shoes": "Shoes:",
+			"gear": "Gear:"}[attr]
 		attr_label.custom_minimum_size = Vector2(_us(140), 0)
 		attr_label.add_theme_font_size_override("font_size", _us(22))
 		row.add_child(attr_label)
@@ -322,11 +358,7 @@ func _build_character_tab() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-40, 30, 0)
 	_preview_viewport.add_child(sun)
-	var hint := Label.new()
-	hint.text = "Changes save to this controller and follow you between sessions."
-	hint.add_theme_font_size_override("font_size", _us(16))
-	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
-	tab.add_child(hint)
+
 
 ## "Game" tab: match controls and computer players.
 func _build_game_tab() -> void:
@@ -351,6 +383,20 @@ func _build_game_tab() -> void:
 		Game.join_local(BotSlot.new(randi() % 1000))
 		Sfx.play("join"))
 	tab.add_child(bot_btn)
+	var bot_off := Button.new()
+	bot_off.focus_mode = Control.FOCUS_NONE
+	bot_off.text = "➖  Remove computer player"
+	bot_off.add_theme_font_size_override("font_size", _us(24))
+	bot_off.pressed.connect(func() -> void:
+		var slots: Array = Game.local_inputs.keys()
+		slots.sort()
+		slots.reverse()
+		for bot_slot: int in slots:
+			if Game.local_inputs[bot_slot] is BotSlot:
+				Game.leave_local(bot_slot)
+				Sfx.play("pop")
+				return)
+	tab.add_child(bot_off)
 	var reset := Button.new()
 	reset.focus_mode = Control.FOCUS_NONE
 	reset.text = "↺  New map (everyone votes)"
@@ -368,10 +414,58 @@ func _refresh_preview() -> void:
 	if _preview_avatar != null:
 		_preview_avatar.queue_free()
 	var entry := _entry()
+	_preview_viewport.size = Vector2i(
+		maxi(140, mini(_us(330), int(size.x * 0.28))),
+		maxi(180, mini(_us(430), int(size.y * 0.52))))
 	_preview_avatar = AvatarFactory.build_character(entry.get("style", {}))
 	_preview_avatar.position = Vector3(0, 0, 0)
 	_preview_avatar.rotation.y = _preview_angle
 	_preview_viewport.add_child(_preview_avatar)
+
+## Personal radar: terrain around YOU, plus blips — crates gold, other
+## players team-colored, yourself white. One per player, centered on them.
+func _update_radar() -> void:
+	var player := _player()
+	if player == null or world == null or world.chunks == null or world.players == null:
+		if _radar != null:
+			_radar.visible = false
+		return
+	_radar.visible = true
+	var center := player.position
+	var image := Image.create(96, 96, false, Image.FORMAT_RGB8)
+	for py in 96:
+		for px in 96:
+			var block: int = world.chunks.top_block(int(center.x) + (px - 48) * 2,
+				int(center.z) + (py - 48) * 2)
+			image.set_pixel(px, py,
+				Blocks.top_color_of(block) if block > 0 else Color(0.06, 0.07, 0.1))
+	if world.match_phase == "BATTLE":
+		var ring: float = world.storm_radius
+		for angle_i in 140:
+			var a := angle_i * TAU / 140.0
+			var rx := 48 + int((cos(a) * ring - center.x) / 2.0)
+			var ry := 48 + int((sin(a) * ring - center.z) / 2.0)
+			if rx >= 0 and rx < 96 and ry >= 0 and ry < 96:
+				image.set_pixel(rx, ry, Color(1.0, 0.25, 0.2))
+	if world.crates != null:
+		for crate in world.crates.get_children():
+			if crate is Node3D:
+				_blip(image, center, crate.position, Color("ffd166"))
+	for child in world.players.get_children():
+		if child is Player and child != player:
+			var team := int(Game.roster.get(child.player_id, {}).get("team", -1))
+			_blip(image, center, child.position,
+				WorldNode.TEAM_COLORS[team] if team >= 0 else Color("ff4426"))
+	_blip(image, center, player.position, Color.WHITE)
+	_radar.texture = ImageTexture.create_from_image(image)
+
+func _blip(image: Image, center: Vector3, pos: Vector3, color: Color) -> void:
+	var px := 48 + int((pos.x - center.x) / 2.0)
+	var py := 48 + int((pos.z - center.z) / 2.0)
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			if px + dx >= 0 and px + dx < 96 and py + dy >= 0 and py + dy < 96:
+				image.set_pixel(px + dx, py + dy, color)
 
 func _close_menu() -> void:
 	_menu.visible = false
@@ -492,6 +586,9 @@ func _process(_delta: float) -> void:
 	_crosshair.add_theme_font_size_override("font_size", _us(int(30 * (1.0 + player.fp_zoom * 0.8))))
 	if size.x != _last_width:
 		_last_width = size.x
+		var map_px := clampf(size.y * 0.24, 110.0, 380.0)
+		_radar.position = Vector2(size.x - map_px - 10, 10)
+		_radar.size = Vector2(map_px, map_px)
 		_selected_label.add_theme_font_size_override("font_size",
 			int(clampf(size.x / 45.0, 16.0, 34.0)))
 		_last_index = -1

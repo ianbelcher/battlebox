@@ -62,6 +62,9 @@ static func build(kind: String, id: int) -> Node3D:
 		12:  # Digger: drill
 			root.add_child(_box(Vector3(0.12, 0.14, 0.2), Color("8a6a42"), Vector3(0, 0.05, 0.02)))
 			root.add_child(_cyl(0.0, 0.09, 0.3, Color("b5975f"), Vector3(0, 0.08, -0.24), Vector3(90, 0, 0)))
+		14:  # Flare gun: stubby wide-mouth pistol
+			root.add_child(_box(Vector3(0.1, 0.14, 0.1), Color("c94f4f"), Vector3(0, -0.04, 0.1)))
+			root.add_child(_cyl(0.09, 0.11, 0.2, Color("ff8ac2"), Vector3(0, 0.05, -0.06), Vector3(90, 0, 0)))
 		13:  # Sword
 			root.add_child(_box(Vector3(0.05, 0.05, 0.16), Color("6e523a"), Vector3(0, 0, 0.08)))
 			root.add_child(_box(Vector3(0.16, 0.04, 0.05), Color("9a9da6"), Vector3(0, 0, -0.02)))

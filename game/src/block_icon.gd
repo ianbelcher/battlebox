@@ -86,6 +86,12 @@ func _draw() -> void:
 				draw_line(mid + Vector2(-w * 0.12, -w * 0.18), mid + Vector2(w * 0.04, w * 0.02), ink, w * 0.055)
 				draw_colored_polygon(PackedVector2Array([mid + Vector2(w * 0.0, -w * 0.02),
 					mid + Vector2(w * 0.2, w * 0.08), mid + Vector2(w * 0.06, w * 0.2)]), ink)
+			14:  # Flare gun: rising star.
+				draw_line(mid + Vector2(0, w * 0.2), mid + Vector2(0, -w * 0.08), ink, w * 0.06)
+				for star_i in 4:
+					var sa := star_i * TAU / 4.0 + 0.4
+					draw_line(mid + Vector2(0, -w * 0.14),
+						mid + Vector2(0, -w * 0.14) + Vector2(cos(sa), sin(sa)) * w * 0.12, ink, w * 0.04)
 			_:
 				draw_circle(mid, w * 0.1, ink)
 		return

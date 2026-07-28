@@ -167,6 +167,9 @@ func _build_game_screen() -> void:
 	_minimap.stretch_mode = TextureRect.STRETCH_SCALE
 	_minimap.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Retired in favor of the per-player radar in each PlayerHud; the node
+	# stays so the layout math and 3-player big map keep working.
+	_minimap.visible = false
 	_game_screen.add_child(_minimap)
 	_clock_label = _make_label("", 20, Color.WHITE, 4)
 	_game_screen.add_child(_clock_label)
@@ -450,6 +453,7 @@ func _layout_topright() -> void:
 		return
 	var window := Vector2(DisplayServer.window_get_size())
 	var map_px := clampf(window.y * 0.24, 150.0, 460.0)
+	var clock_y := 6.0
 	_minimap.custom_minimum_size = Vector2(map_px, map_px)
 	_minimap.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_minimap.position = Vector2(window.x - map_px - 12, 12)
@@ -457,11 +461,12 @@ func _layout_topright() -> void:
 	_clock_label.add_theme_font_size_override("font_size", int(22 * ui_scale()))
 	_players_label.add_theme_font_size_override("font_size", int(16 * ui_scale()))
 	_wave_label.add_theme_font_size_override("font_size", int(22 * ui_scale()))
-	_clock_label.position = Vector2(window.x - map_px - 12, map_px + 18)
+	# Clock sits under each hud's radar (radar is ~24% of cell height).
+	_clock_label.position = Vector2(window.x - map_px - 12, clock_y)
 	_clock_label.size.x = map_px
-	_players_label.position = Vector2(window.x - map_px - 12, map_px + 18 + 30 * ui_scale())
+	_players_label.position = Vector2(window.x - map_px - 12, clock_y + 30 * ui_scale())
 	_players_label.size.x = map_px
-	_wave_label.position = Vector2(window.x - map_px - 12, map_px + 18 + 56 * ui_scale())
+	_wave_label.position = Vector2(window.x - map_px - 12, clock_y + 56 * ui_scale())
 	_wave_label.size.x = map_px
 
 func _refresh_match() -> void:

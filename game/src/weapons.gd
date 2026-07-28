@@ -24,6 +24,8 @@ const WEAPONS := [
 		"blurb": "Splats the landscape into random wool colors"},
 	{"id": 9, "name": "Napalm Rocket", "color": Color("f2e04a"), "cooldown": 0.7, "speed": 40.0,
 		"blurb": "Mid-size blast that leaves quick-burning fire"},
+	{"id": 14, "name": "Flare Gun", "color": Color("ff8ac2"), "cooldown": 3.0, "speed": 26.0,
+		"blurb": "Fires a bright star that floats down and lights the night"},
 	{"id": 13, "name": "Sword", "color": Color("dfe4ea"), "cooldown": 0.4, "speed": 1.0,
 		"blurb": "Trusty melee: swing at enemies and soft blocks up close"},
 	{"id": 12, "name": "Digger", "color": Color("b5975f"), "cooldown": 1.2, "speed": 44.0,

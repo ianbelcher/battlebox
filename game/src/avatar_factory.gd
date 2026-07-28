@@ -7,7 +7,8 @@ class_name AvatarFactory
 ## Limb pivots are named LegL/LegR/ArmL/ArmR so the player animation can
 ## swing them while walking.
 
-const ATTRS: Array[String] = ["body", "face", "hair", "hat", "shirt", "pants", "shoes"]
+const ATTRS: Array[String] = ["body", "face", "hair", "hat", "shirt", "pants", "shoes", "gear"]
+const GEAR_COUNT := 8
 
 const SKIN_COLORS: Array[Color] = [
 	Color("f5cfa8"), Color("e0ac7e"), Color("a9714b"), Color("6f4a2f"),
@@ -63,6 +64,7 @@ static func random_style() -> Dictionary:
 		"shirt": randi() % SHIRTS.size(),
 		"pants": randi() % PANTS_COLORS.size(),
 		"shoes": randi() % SHOE_COLORS.size(),
+		"gear": randi() % GEAR_COUNT,
 	}
 
 static func normalize_style(style) -> Dictionary:
@@ -76,6 +78,7 @@ static func normalize_style(style) -> Dictionary:
 		"shirt": posmod(int(style.get("shirt", 0)), SHIRTS.size()),
 		"pants": posmod(int(style.get("pants", 0)), PANTS_COLORS.size()),
 		"shoes": posmod(int(style.get("shoes", 0)), SHOE_COLORS.size()),
+		"gear": posmod(int(style.get("gear", 0)), GEAR_COUNT),
 	}
 
 static func skin_color(style: Dictionary) -> Color:
@@ -186,6 +189,7 @@ static func build_character(style: Dictionary) -> Node3D:
 	root.add_child(head)
 	_attach_face(root, style, skin)
 	_attach_hair(root, style)
+	_attach_gear(root, style)
 	attach_hat(root, style)
 	root.set_meta("style", str(style))
 	return root
@@ -321,6 +325,50 @@ static func _attach_hair(root: Node3D, style: Dictionary) -> void:
 				curl.position = offset
 				hair.add_child(curl)
 	root.add_child(hair)
+
+## Wearable extras layered over the shirt: armor, capes, a backpack.
+static func _attach_gear(root: Node3D, style: Dictionary) -> void:
+	var gear := Node3D.new()
+	gear.name = "Gear"
+	match posmod(int(style.get("gear", 0)), GEAR_COUNT):
+		0:
+			pass
+		1:  # Steel chestplate.
+			var plate := _box(Vector3(0.56, 0.4, 0.36), Color("aab4c4"))
+			plate.material_override.roughness = 0.3
+			plate.position = Vector3(0, 0.72, 0)
+			gear.add_child(plate)
+		2:  # Gold chestplate.
+			var plate := _box(Vector3(0.56, 0.4, 0.36), Color("ffd166"))
+			plate.material_override.roughness = 0.25
+			plate.position = Vector3(0, 0.72, 0)
+			gear.add_child(plate)
+		3:  # Shoulder pads.
+			for side in [-1.0, 1.0]:
+				var pad := _box(Vector3(0.22, 0.12, 0.26), Color("aab4c4"))
+				pad.position = Vector3(side * 0.34, 0.94, 0)
+				gear.add_child(pad)
+		4:  # Red hero cape.
+			var cape := _box(Vector3(0.5, 0.74, 0.05), Color("d4553a"))
+			cape.position = Vector3(0, 0.6, 0.2)
+			gear.add_child(cape)
+		5:  # Blue hero cape.
+			var cape := _box(Vector3(0.5, 0.74, 0.05), Color("4a9df8"))
+			cape.position = Vector3(0, 0.6, 0.2)
+			gear.add_child(cape)
+		6:  # Backpack.
+			var pack := _box(Vector3(0.34, 0.4, 0.18), Color("6b4a2f"))
+			pack.position = Vector3(0, 0.72, 0.26)
+			gear.add_child(pack)
+			var flap := _box(Vector3(0.34, 0.12, 0.2), Color("8a6a42"))
+			flap.position = Vector3(0, 0.88, 0.26)
+			gear.add_child(flap)
+		7:  # Glowing star badge.
+			var badge := _sphere(0.06, Color("ffd166"))
+			badge.material_override = material(Color("ffd166"), true)
+			badge.position = Vector3(0.14, 0.8, -0.17)
+			gear.add_child(badge)
+	root.add_child(gear)
 
 ## Every hat sits on the head top (y ~1.33). Hats are a Node3D so they can
 ## be made of several parts (helmets, horns, headphones...).

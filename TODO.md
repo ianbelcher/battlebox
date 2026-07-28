@@ -36,6 +36,25 @@ strike items when shipped, add new asks immediately.
 
 ## Done this round
 
+- [x] Storm rework: wall is now a solid-looking 12-block-high red wall (no
+      emission, no sky-wide red wash); 12-block warning band outside it
+      before damage kicks in (then hits every 1.6s); the storm CHEWS the
+      terrain — surface blocks just outside the wall pop away with booms
+- [x] Battle royale start repopulates loot: 40 fresh crates scattered
+      across the island every match (plus richer ambient pool)
+- [x] Per-player radar: every player has their own map centered on them —
+      terrain, storm ring, crates (gold), other players (team colors), you
+      (white). Shared minimap retired
+- [x] Flare Gun: fires a bright star skyward that floats down lighting a
+      huge area for ~8s
+- [x] Gear slot: chestplates (steel/gold), shoulder pads, capes, backpack,
+      glowing badge — accessories over the shirt
+- [x] Characters no longer welded to a controller: Character tab has a
+      "Character: ◀ ▶" picker to switch between all saved characters
+- [x] Remove-computer-player button in the Game tab
+- [x] Character tab fits in split-screen (hint text removed, preview
+      scales to the cell)
+
 - [x] FIXED the "menu always opens on Kits" bug for real: BlockPicker.open()
       flips tab-child visibility which yanks TabContainer to the last picker
       (Kits) — pickers now open before the tab is set, guarded from

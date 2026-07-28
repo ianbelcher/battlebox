@@ -412,6 +412,8 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 300.0:
 		return
 	match kind:
+		14:  # Flare: a sky light, nothing to break.
+			return
 		1:  # Bazooka
 			_blast(cell, 3.4, [], cell)
 			if match_phase == "BATTLE":
@@ -1018,6 +1020,7 @@ func _server_tick_match(delta: float) -> void:
 			storm_radius = lerpf(STORM_START, STORM_END, frac)
 			cl_storm.rpc(storm_radius)
 			_storm_damage()
+			_storm_bite()
 			_tick_revives()
 			_check_match_win()
 			if _match_timer <= 0.0:
@@ -1060,6 +1063,21 @@ func _server_match_drop() -> void:
 		var drop := Vector3(cos(angle) * dist, WorldGen.CHUNK_H - 4, sin(angle) * dist)
 		cl_drop.rpc(id, drop, loot_only)
 		i += 1
+	# Fresh loot everywhere so late matches aren't scavenged dry.
+	_crates.clear()
+	for n in 40:
+		var langle := randf() * TAU
+		var ldist := sqrt(randf()) * (STORM_START * 0.85)
+		var lx := int(cos(langle) * ldist)
+		var lz := int(sin(langle) * ldist)
+		var ly := store.surface_y(lx, lz)
+		if ly > 2 and ly < WorldGen.CHUNK_H - 6 \
+				and store.get_block(Vector3i(lx, ly, lz)) != Blocks.WATER:
+			var lpool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 14]
+			_crates[_next_crate_id] = {"weapon": lpool[randi() % lpool.size()],
+				"pos": Vector3(lx + 0.5, ly + 1.0, lz + 0.5)}
+			_next_crate_id += 1
+	_broadcast_crates()
 	Game.cl_roster.rpc(Game.roster)
 	storm_radius = STORM_START
 	clock = 0.79  # dusk falls as the match starts: hunt loot in the dark
@@ -1074,13 +1092,40 @@ func _storm_damage() -> void:
 		if state.is_empty() or now < int(_storm_hurt_ms.get(id, 0)):
 			continue
 		var pos: Vector3 = state.pos
-		if Vector2(pos.x, pos.z).length() > storm_radius:
-			_storm_hurt_ms[id] = now + 3000
+		# The first dozen blocks outside the wall are a warning zone; deeper
+		# than that the storm hits hard.
+		if Vector2(pos.x, pos.z).length() > storm_radius + 12.0:
+			_storm_hurt_ms[id] = now + 1600
 			state.hp = int(state.get("hp", 5)) - 1
 			cl_hearts.rpc(id, state.hp)
 			cl_bonk.rpc(id, pos + Vector3(1, -1, 1))
 			if state.hp <= 0:
 				_match_eliminate(id)
+
+var _next_bite_ms := 0
+
+## The storm chews the world: surface blocks just outside the wall pop
+## away, so the losing ground visibly crumbles.
+func _storm_bite() -> void:
+	var now := Time.get_ticks_msec()
+	if now < _next_bite_ms:
+		return
+	_next_bite_ms = now + 500
+	for n in 6:
+		var a := randf() * TAU
+		var r := storm_radius + randf_range(2.0, 14.0)
+		var wx := int(cos(a) * r)
+		var wz := int(sin(a) * r)
+		var y := store.surface_y(wx, wz)
+		if y <= WorldGen.SEA_LEVEL or y >= WorldGen.CHUNK_H - 2:
+			continue
+		var pos := Vector3i(wx, y, wz)
+		if store.get_block(pos) == Blocks.AIR:
+			continue
+		store.set_block(pos, Blocks.AIR)
+		cl_edit.rpc(pos, Blocks.AIR, "storm")
+		if randf() < 0.12:
+			cl_boom_fx.rpc(pos)
 
 var _downed_ids: Dictionary = {}   # id -> downed_at_msec
 var _revive_progress: Dictionary = {}
@@ -1421,7 +1466,7 @@ func _server_tick_crates() -> void:
 		if y > 2 and y < WorldGen.CHUNK_H - 6 \
 				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER:
 			# Rarer weapons show up less often.
-			var pool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12]
+			var pool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14]
 			_crates[_next_crate_id] = {"weapon": pool[randi() % pool.size()],
 				"pos": Vector3(wx + 0.5, y + 1.0, wz + 0.5)}
 			_next_crate_id += 1
@@ -1626,14 +1671,12 @@ func _client_setup() -> void:
 	var wall_mesh := CylinderMesh.new()
 	wall_mesh.top_radius = 1.0
 	wall_mesh.bottom_radius = 1.0
-	wall_mesh.height = 160.0
+	# A 12-block wall you can see marching in, not a full-sky red curtain.
+	wall_mesh.height = 12.0
 	wall_mesh.radial_segments = 96
 	_storm_wall.mesh = wall_mesh
 	var wall_mat := StandardMaterial3D.new()
-	wall_mat.albedo_color = Color(1.0, 0.2, 0.15, 0.3)
-	wall_mat.emission_enabled = true
-	wall_mat.emission = Color(1.0, 0.25, 0.15)
-	wall_mat.emission_energy_multiplier = 1.4
+	wall_mat.albedo_color = Color(0.75, 0.12, 0.1, 0.82)
 	wall_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	wall_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	wall_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -1643,7 +1686,7 @@ func _client_setup() -> void:
 	storm_changed.connect(func() -> void:
 		_storm_wall.visible = match_phase == "BATTLE"
 		_storm_wall.scale = Vector3(storm_radius, 1.0, storm_radius)
-		_storm_wall.position = Vector3(0, 40, 0))
+		_storm_wall.position = Vector3(0, float(WorldGen.SEA_LEVEL) + 8.0, 0))
 	match_changed.connect(func() -> void:
 		if match_phase != "BATTLE":
 			_storm_wall.visible = false)

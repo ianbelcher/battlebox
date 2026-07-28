@@ -20,6 +20,8 @@ var roster: Dictionary = {}
 ## This machine's local players: slot int -> InputSlot.
 var local_inputs: Dictionary = {}
 var world: Node = null
+## Which saved character (characters.cfg section) each local slot is using.
+var profile_keys: Dictionary = {}
 
 func _ready() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)
@@ -55,6 +57,7 @@ func join_local(input: InputSlot) -> void:
 	local_inputs[slot] = input
 	# Each physical device remembers its character between sessions, so every
 	# kid's character comes back when they grab "their" controller.
+	profile_keys[slot] = input.claim_key()
 	var profile := _load_profile(input.claim_key())
 	sv_register_player.rpc_id(1, slot, profile.name, profile.style, input is BotSlot)
 
@@ -148,6 +151,15 @@ func sv_set_name(slot: int, pname: String) -> void:
 	_broadcast_roster()
 
 @rpc("any_peer", "call_local", "reliable")
+func sv_set_style(slot: int, style: Dictionary) -> void:
+	if not multiplayer.is_server():
+		return
+	var id := player_id(_sender_id(), slot)
+	if roster.has(id):
+		roster[id].style = AvatarFactory.normalize_style(style)
+		_broadcast_roster()
+
+@rpc("any_peer", "call_local", "reliable")
 func sv_cycle_style(slot: int, attr: String, direction: int) -> void:
 	if not multiplayer.is_server():
 		return
@@ -196,7 +208,8 @@ func _save_local_profiles() -> void:
 	for entry: Dictionary in roster.values():
 		if entry.peer != me or not local_inputs.has(entry.slot):
 			continue
-		var device_key: String = local_inputs[entry.slot].claim_key()
+		var device_key: String = str(profile_keys.get(entry.slot,
+			local_inputs[entry.slot].claim_key()))
 		var style: Dictionary = AvatarFactory.normalize_style(entry.get("style"))
 		for attr in AvatarFactory.ATTRS:
 			if int(config.get_value(device_key, attr, -1)) != int(style[attr]):
@@ -231,6 +244,23 @@ func _on_peer_disconnected(peer: int) -> void:
 		if roster[id].peer == peer:
 			roster.erase(id)
 	_broadcast_roster()
+
+## All saved characters (sections in characters.cfg), for the picker.
+func list_profiles() -> Array:
+	var config := ConfigFile.new()
+	config.load(PROFILE_PATH)
+	var sections: Array = Array(config.get_sections())
+	sections.sort()
+	return sections
+
+## Switch a local slot to a different saved character — characters are no
+## longer welded to one controller.
+func select_profile(slot: int, key: String) -> void:
+	profile_keys[slot] = key
+	var profile := _load_profile(key)
+	if not str(profile.name).is_empty():
+		sv_set_name.rpc_id(1, slot, str(profile.name))
+	sv_set_style.rpc_id(1, slot, profile.style)
 
 ## Called by main.gd when this client loses its connection.
 func reset_to_disconnected() -> void:
