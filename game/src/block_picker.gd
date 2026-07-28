@@ -15,7 +15,10 @@ var _title: Label
 var _chips: Array = []
 var _nav_cooldown := 0.0
 
-func _init() -> void:
+var category := "blocks"
+
+func _init(p_category := "blocks") -> void:
+	category = p_category
 	visible = false
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.05, 0.06, 0.1, 0.92)
@@ -28,15 +31,24 @@ func _init() -> void:
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
 
-	for w in Weapons.WEAPONS:
-		entries.append({"kind": "weapon", "id": w.id, "name": w.name, "color": w.color})
-	for block: int in Blocks.HOTBAR:
-		entries.append({"kind": "block", "id": block,
-			"name": Blocks.display_name(block), "color": Blocks.color_of(block)})
-	for i in Structures.count():
-		var spec := Structures.spec(i)
-		entries.append({"kind": "structure", "id": i,
-			"name": spec.name, "color": spec.color})
+	match category:
+		"tools":
+			for w in Weapons.WEAPONS:
+				if not w.get("hidden", false):
+					entries.append({"kind": "weapon", "id": w.id, "name": w.name, "color": w.color})
+		"blocks":
+			for block in Blocks.family_blocks():
+				entries.append({"kind": "block", "id": block,
+					"name": Blocks.display_name(block), "color": Blocks.color_of(block)})
+		"special":
+			for block in Blocks.SPECIAL_BLOCKS:
+				entries.append({"kind": "block", "id": block,
+					"name": Blocks.display_name(block), "color": Blocks.color_of(block)})
+		"kits":
+			for i in Structures.count():
+				var spec := Structures.spec(i)
+				entries.append({"kind": "structure", "id": i,
+					"name": spec.name, "color": spec.color})
 
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
@@ -88,12 +100,7 @@ func _init() -> void:
 					_refresh())
 		grid.add_child(chip)
 		_chips.append(chip)
-	var hint := Label.new()
-	hint.text = "Click / Space / A puts it in the highlighted slot — press 1-8 to fill other slots — E closes"
-	hint.add_theme_font_size_override("font_size", int(20 * clampf(DisplayServer.window_get_size().x / 1100.0, 1.15, 3.0)))
-	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(hint)
+
 
 ## Scale chips and text so the grid uses the space it's given — tiny
 ## quarter-screen cells and huge fullscreen windows both read well.
@@ -146,7 +153,7 @@ func _select() -> void:
 	picked.emit(entries[focus_index])
 
 func _refresh() -> void:
-	_title.text = "%s   →  slot %d" % [entries[focus_index].name, _slot_label]
+	_title.text = str(entries[focus_index].name)
 	for i in _chips.size():
 		var chip: Panel = _chips[i]
 		var entry: Dictionary = _chips[i].get_meta("entry", entries[i])

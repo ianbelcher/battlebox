@@ -26,6 +26,8 @@ func shoot_local(player: Player, kind: int) -> void:
 		dir = player.heading.normalized()
 	_add_orb(player.player_id, origin, dir, true, player.slot, kind)
 	world.sv_shoot.rpc_id(1, player.slot, origin, dir, kind)
+	if kind == 12:
+		world.sv_dig_tunnel.rpc_id(1, player.slot, origin, dir)
 	if kind == 0:
 		Sfx.play("click", -6.0)
 	elif kind == 1 or kind == 9:
@@ -83,6 +85,7 @@ func _physics_process(delta: float) -> void:
 							var vy := sqrt(2.0 * 22.0 * rise)
 							var flight := vy / 22.0 + 0.25
 							child.velocity = Vector3(delta_v.x / flight, vy, delta_v.z / flight)
+							child.carry_time = flight + 0.3
 							child.on_floor = false
 							Sfx.play("warp", -4.0)
 		if not died and orb.mine:

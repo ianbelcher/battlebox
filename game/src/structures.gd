@@ -28,10 +28,25 @@ static func count() -> int:
 static func spec(index: int) -> Dictionary:
 	return STRUCTURES[posmod(index, STRUCTURES.size())]
 
-## The block list for a structure, expanded 2x (blocks are half a meter, so
-## every prefab cell becomes a 2x2x2 cube to keep real-world proportions).
-static func cells(index: int, roll: int) -> Array:
-	return _cells_raw(index, roll)
+## The block list for a structure, rotated to face the builder (facing is a
+## quadrant 0-3: -Z, +X, +Z, -X).
+static func cells(index: int, roll: int, facing := 0) -> Array:
+	var raw := _cells_raw(index, roll)
+	if facing == 0:
+		return raw
+	var out: Array = []
+	for entry: Array in raw:
+		var off: Vector3i = entry[0]
+		var rotated := off
+		match facing:
+			1:
+				rotated = Vector3i(-off.z, off.y, off.x)
+			2:
+				rotated = Vector3i(-off.x, off.y, -off.z)
+			3:
+				rotated = Vector3i(off.z, off.y, -off.x)
+		out.append([rotated, entry[1]])
+	return out
 
 static func _cells_raw(index: int, roll: int) -> Array:
 	match spec(index).id:

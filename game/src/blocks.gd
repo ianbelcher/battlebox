@@ -67,8 +67,37 @@ enum {
 	STEEL = 60,
 	FIRE = 61,
 	CHARRED = 62,
-	MAX_BLOCK = 63,
+	# 63..102: the battle-block families — 4 materials x 10 colors, generated
+	# in _static_init (M_* are the row starts).
+	M_STEEL = 63,
+	M_STONE = 73,
+	M_SOIL = 83,
+	M_SNOW = 93,
+	MAX_BLOCK = 103,
 }
+
+## Family colors: the rainbow six plus black/dark gray/light gray/white.
+const FAMILY_COLORS := [
+	["Red", Color("c94a3d")], ["Orange", Color("d98a3d")], ["Yellow", Color("d9c44a")],
+	["Green", Color("58a850")], ["Blue", Color("4a7dc9")], ["Purple", Color("8f5fc2")],
+	["Black", Color("35363c")], ["Dark Gray", Color("5c5e66")],
+	["Light Gray", Color("9a9da6")], ["White", Color("e8e8ea")],
+]
+static var EXTRA: Dictionary = {}
+
+static func _static_init() -> void:
+	for i in FAMILY_COLORS.size():
+		var cname: String = FAMILY_COLORS[i][0]
+		var base: Color = FAMILY_COLORS[i][1]
+		EXTRA[M_STEEL + i] = {"name": cname + " Steel", "color": base.lerp(Color("dfe4ea"), 0.45),
+			"top": base.lerp(Color.WHITE, 0.6), "solid": true, "opaque": true, "emit": 0.12}
+		EXTRA[M_STONE + i] = {"name": cname + " Stone", "color": base.lerp(Color("8d9296"), 0.5),
+			"solid": true, "opaque": true}
+		EXTRA[M_SOIL + i] = {"name": cname + " Soil", "color": base.lerp(Color("8a6242"), 0.35),
+			"solid": true, "opaque": true}
+		# Snow is soft: you sink through it, and it puffs away to anything.
+		EXTRA[M_SNOW + i] = {"name": cname + " Snow", "color": base.lerp(Color("f2f6fa"), 0.65),
+			"solid": false, "opaque": true}
 
 ## Per-block info, indexed by block id:
 ##   color: base albedo
@@ -160,6 +189,12 @@ const INFO := {
 const WOOD := [LOG, PLANKS, BIRCH_PLANKS, DARK_PLANKS, CHERRY_PLANKS]
 const STONY := [STONE, COBBLE, MOSSY_COBBLE, BRICK, MARBLE, SLATE, SANDSTONE, GOLD, PATH, CHARRED]
 static func hardness(id: int) -> int:
+	if id >= M_STEEL and id < M_STEEL + 10:
+		return 3
+	if id >= M_STONE and id < M_STONE + 10:
+		return 2
+	if id >= M_SOIL and id < MAX_BLOCK:
+		return 0
 	if id == DIAMOND:
 		return 4
 	if id == STEEL:
@@ -189,10 +224,27 @@ const HOTBAR: Array[int] = [
 	WOOL_PURPLE, WOOL_PINK, WOOL_BROWN, WOOL_WHITE, WOOL_BLACK,
 	LANTERN, CAMPFIRE, GLOWSTONE, CRYSTAL_PINK, CRYSTAL_BLUE, CRYSTAL_GREEN, LAVA,
 	STEEL, CHARRED, BOOM, FIREWORK, BOUNCY, LAUNCHER, NOTE, SPONGE, TELEPORT, CONFETTI,
-	FLOWER_RED, FLOWER_YELLOW, SAPLING, PUMPKIN,
+	FLOWER_RED, FLOWER_YELLOW, SAPLING,
+	M_STEEL, M_STEEL + 1, M_STEEL + 2, M_STEEL + 3, M_STEEL + 4, M_STEEL + 5, M_STEEL + 6, M_STEEL + 7, M_STEEL + 8, M_STEEL + 9,
+	M_STONE, M_STONE + 1, M_STONE + 2, M_STONE + 3, M_STONE + 4, M_STONE + 5, M_STONE + 6, M_STONE + 7, M_STONE + 8, M_STONE + 9,
+	M_SOIL, M_SOIL + 1, M_SOIL + 2, M_SOIL + 3, M_SOIL + 4, M_SOIL + 5, M_SOIL + 6, M_SOIL + 7, M_SOIL + 8, M_SOIL + 9,
+	M_SNOW, M_SNOW + 1, M_SNOW + 2, M_SNOW + 3, M_SNOW + 4, M_SNOW + 5, M_SNOW + 6, M_SNOW + 7, M_SNOW + 8, M_SNOW + 9,
 ]
 
+## Picker categories (what each tab shows).
+static func family_blocks() -> Array:
+	var out: Array = []
+	for row in [M_STEEL, M_STONE, M_SOIL, M_SNOW]:
+		for i in 10:
+			out.append(row + i)
+	return out
+
+const SPECIAL_BLOCKS := [GLASS, ICE, LAVA, GLOWSTONE, LANTERN, CAMPFIRE,
+	BOOM, BOUNCY, LAUNCHER, NOTE, SPONGE, TELEPORT, CONFETTI]
+
 static func info(id: int) -> Dictionary:
+	if id >= M_STEEL:
+		return EXTRA.get(id, INFO[AIR])
 	return INFO.get(id, INFO[AIR])
 
 static func color_of(id: int) -> Color:

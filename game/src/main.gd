@@ -137,6 +137,7 @@ func _build_connect_screen() -> void:
 	_address_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_address_edit)
 	var button := Button.new()
+	button.focus_mode = Control.FOCUS_NONE
 	button.text = "  Connect  "
 	button.add_theme_font_size_override("font_size", 30)
 	button.pressed.connect(_on_connect_pressed)
@@ -160,52 +161,28 @@ func _build_game_screen() -> void:
 	_loading_label.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_game_screen.add_child(_loading_label)
 
-	# Thin shared overlay: world clock + player count, top center.
-	var top := PanelContainer.new()
-	top.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	top.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	top.offset_top = 6
+	# Top-right cluster: the minimap with the clock and player count under
+	# it, all sized from the window (rebuilt on resize).
+	_minimap = TextureRect.new()
+	_minimap.stretch_mode = TextureRect.STRETCH_SCALE
+	_minimap.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_game_screen.add_child(_minimap)
+	_clock_label = _make_label("", 20, Color.WHITE, 4)
+	_game_screen.add_child(_clock_label)
+	_players_label = _make_label("", 16, Color(1, 1, 1, 0.75), 4)
+	_game_screen.add_child(_players_label)
+	_wave_label = _make_label("", 20, Color("ff6b6b"), 4)
+	_game_screen.add_child(_wave_label)
+	_layout_topright()
+	get_viewport().size_changed.connect(func() -> void:
+		_layout_topright()
+		if _split != null and _in_world:
+			_split.update_layout())
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.05, 0.08, 0.6)
-	style.set_corner_radius_all(10)
-	style.content_margin_left = 14.0
-	style.content_margin_right = 14.0
-	style.content_margin_top = 4.0
-	style.content_margin_bottom = 4.0
-	top.add_theme_stylebox_override("panel", style)
-	_game_screen.add_child(top)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
-	top.add_child(row)
-	_clock_label = _make_label("", 17, Color.WHITE)
-	row.add_child(_clock_label)
-	_players_label = _make_label("", 17, Color(1, 1, 1, 0.7))
-	row.add_child(_players_label)
-	_survival_button = Button.new()
-	_survival_button.text = "⚔ Grumps"
-	_survival_button.add_theme_font_size_override("font_size", int(20 * ui_scale()))
-	_survival_button.tooltip_text = "Start a Grump attack — defend yourselves!"
-	_survival_button.pressed.connect(func() -> void:
-		if Game.world != null and not Game.world.survival_active:
-			Game.world.sv_survival_start.rpc_id(1, 0))
-	row.add_child(_survival_button)
-	_wave_label = _make_label("", 17, Color("ff6b6b"))
-	row.add_child(_wave_label)
-	_battle_button = Button.new()
-	_battle_button.text = "🏆 Battle Royale"
-	_battle_button.add_theme_font_size_override("font_size", int(20 * ui_scale()))
-	_battle_button.pressed.connect(func() -> void:
-		if Game.world != null:
-			Game.world.sv_match_start.rpc_id(1, 0))
-	row.add_child(_battle_button)
-	var reset_button := Button.new()
-	reset_button.text = "↺ New map"
-	reset_button.add_theme_font_size_override("font_size", int(20 * ui_scale()))
-	reset_button.tooltip_text = "Ask everyone to regenerate the world with a new seed"
-	reset_button.pressed.connect(func() -> void:
-		if Game.world != null:
-			Game.world.sv_reset_request.rpc_id(1, 0))
-	row.add_child(reset_button)
+	style.bg_color = Color(0.04, 0.05, 0.08, 0.85)
+	style.set_corner_radius_all(12)
+	style.set_content_margin_all(int(14 * ui_scale()))
 	# Reset vote panel.
 	_vote_panel = PanelContainer.new()
 	_vote_panel.add_theme_stylebox_override("panel", style.duplicate())
@@ -219,28 +196,19 @@ func _build_game_screen() -> void:
 	_vote_panel.add_child(vote_row)
 	vote_row.add_child(_make_label("Reset the world with a NEW map?", 16, GOLD))
 	var yes := Button.new()
+	yes.focus_mode = Control.FOCUS_NONE
 	yes.text = "Yes!"
 	yes.pressed.connect(func() -> void:
 		Game.world.sv_reset_answer.rpc_id(1, true)
 		_vote_panel.visible = false)
 	vote_row.add_child(yes)
 	var no := Button.new()
+	no.focus_mode = Control.FOCUS_NONE
 	no.text = "No"
 	no.pressed.connect(func() -> void:
 		Game.world.sv_reset_answer.rpc_id(1, false)
 		_vote_panel.visible = false)
 	vote_row.add_child(no)
-	# Minimap, top right.
-	_minimap = TextureRect.new()
-	_minimap.custom_minimum_size = Vector2(170, 170) * ui_scale()
-	_minimap.stretch_mode = TextureRect.STRETCH_SCALE
-	_minimap.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_minimap.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	_minimap.offset_left = -10 - 170 * ui_scale()
-	_minimap.offset_top = 10
-	_minimap.offset_right = -10
-	_minimap.offset_bottom = 10 + 170 * ui_scale()
-	_minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_game_screen.add_child(_minimap)
 	var map_timer := Timer.new()
 	map_timer.wait_time = 1.5
@@ -261,6 +229,29 @@ func _build_game_screen() -> void:
 	_lobby_label = _make_label("BATTLE ROYALE", 34, GOLD, 6)
 	lobby_box.add_child(_lobby_label)
 	lobby_box.add_child(_make_label("Pick your team!", 20, Color.WHITE))
+	var presets := HBoxContainer.new()
+	presets.add_theme_constant_override("separation", int(8 * ui_scale()))
+	lobby_box.add_child(presets)
+	presets.add_child(_make_label("Storm:", 18, Color(1, 1, 1, 0.7)))
+	for minutes in [3, 5, 8]:
+		var preset_btn := Button.new()
+		preset_btn.focus_mode = Control.FOCUS_NONE
+		preset_btn.focus_mode = Control.FOCUS_NONE
+		preset_btn.text = "%d min" % minutes
+		preset_btn.add_theme_font_size_override("font_size", int(18 * ui_scale()))
+		var m: int = minutes
+		preset_btn.pressed.connect(func() -> void:
+			Game.world.sv_match_config.rpc_id(1, m, -1))
+		presets.add_child(preset_btn)
+	var loot_btn := Button.new()
+	loot_btn.focus_mode = Control.FOCUS_NONE
+	loot_btn.focus_mode = Control.FOCUS_NONE
+	loot_btn.text = "Loot only"
+	loot_btn.toggle_mode = true
+	loot_btn.add_theme_font_size_override("font_size", int(18 * ui_scale()))
+	loot_btn.toggled.connect(func(on: bool) -> void:
+		Game.world.sv_match_config.rpc_id(1, -1, 1 if on else 0))
+	presets.add_child(loot_btn)
 	_team_rows = VBoxContainer.new()
 	_team_rows.add_theme_constant_override("separation", int(8 * ui_scale()))
 	lobby_box.add_child(_team_rows)
@@ -454,13 +445,32 @@ func _apply_low_fx() -> void:
 		_split.set_low_fx(true)
 	print("Low-FX mode enabled (fps was %d)" % Engine.get_frames_per_second())
 
+## Everything top-right scales with the window: map ~24% of height.
+func _layout_topright() -> void:
+	if _minimap == null:
+		return
+	var window := Vector2(DisplayServer.window_get_size())
+	var map_px := clampf(window.y * 0.24, 150.0, 460.0)
+	_minimap.custom_minimum_size = Vector2(map_px, map_px)
+	_minimap.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_minimap.position = Vector2(window.x - map_px - 12, 12)
+	_minimap.size = Vector2(map_px, map_px)
+	_clock_label.add_theme_font_size_override("font_size", int(22 * ui_scale()))
+	_players_label.add_theme_font_size_override("font_size", int(16 * ui_scale()))
+	_wave_label.add_theme_font_size_override("font_size", int(22 * ui_scale()))
+	_clock_label.position = Vector2(window.x - map_px - 12, map_px + 18)
+	_clock_label.size.x = map_px
+	_players_label.position = Vector2(window.x - map_px - 12, map_px + 18 + 30 * ui_scale())
+	_players_label.size.x = map_px
+	_wave_label.position = Vector2(window.x - map_px - 12, map_px + 18 + 56 * ui_scale())
+	_wave_label.size.x = map_px
+
 func _refresh_match() -> void:
 	var world := Game.world
 	if world == null:
 		return
 	var phase: String = world.match_phase
 	_lobby_panel.visible = phase == "LOBBY"
-	_battle_button.visible = phase == "IDLE"
 	if phase == "LOBBY":
 		_rebuild_team_rows()
 	elif phase == "DROP":
@@ -484,6 +494,7 @@ func _rebuild_team_rows() -> void:
 		row.add_child(who)
 		for t in 4:
 			var btn := Button.new()
+			btn.focus_mode = Control.FOCUS_NONE
 			btn.text = WorldNode.TEAM_NAMES[t]
 			btn.add_theme_font_size_override("font_size", int(18 * ui_scale()))
 			var col: Color = WorldNode.TEAM_COLORS[t]
@@ -513,10 +524,16 @@ func _show_banner(text: String) -> void:
 	tween.tween_property(_banner, "modulate:a", 0.0, 1.0)
 	tween.tween_callback(func() -> void: _banner.visible = false)
 
+var _last_local_sig := ""
+
 func _on_roster_changed() -> void:
 	if _lobby_panel != null and _lobby_panel.visible:
 		_rebuild_team_rows()
-	if _split != null:
+	# Only rebuild the split screen when the set of local players actually
+	# changed - name/style/team edits must not tear down open menus.
+	var sig := str(Game.local_inputs.keys())
+	if _split != null and sig != _last_local_sig:
+		_last_local_sig = sig
 		_split.update_layout()
 	if _players_label != null:
 		_players_label.text = "%d playing" % Game.roster.size()

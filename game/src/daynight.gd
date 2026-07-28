@@ -112,4 +112,4 @@ func _apply(clock: float) -> void:
 	sky_material.sky_horizon_color = horizon
 	sky_material.ground_bottom_color = horizon.darkened(0.5)
 	sky_material.ground_horizon_color = horizon
-	environment.ambient_light_energy = 0.5 + daylight * 0.5
+	environment.ambient_light_energy = 0.72 + daylight * 0.28

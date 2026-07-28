@@ -11,9 +11,9 @@ const WEAPONS := [
 	{"id": 2, "name": "Grapple", "color": Color("c9b3ff"), "cooldown": 0.9, "speed": 50.0,
 		"blurb": "Hit a wall, get zipped to it. Great escapes"},
 	{"id": 3, "name": "Freeze Ray", "color": Color("aef7f0"), "cooldown": 0.8, "speed": 44.0,
-		"blurb": "Turns water to ice and freezes Grumps solid"},
+		"blurb": "Turns water to ice and freezes Grumps solid", "hidden": true},
 	{"id": 4, "name": "Block Sucker", "color": Color("62a851"), "cooldown": 0.5, "speed": 44.0,
-		"blurb": "Vacuums the hit block into your next slot"},
+		"blurb": "Vacuums the hit block into your next slot", "hidden": true},
 	{"id": 5, "name": "Bridge Gun", "color": Color("d6c396"), "cooldown": 0.8, "speed": 40.0,
 		"blurb": "Shoots a plank walkway toward where it lands"},
 	{"id": 6, "name": "Party Popper", "color": Color("ef9fc8"), "cooldown": 1.0, "speed": 36.0,
@@ -25,15 +25,22 @@ const WEAPONS := [
 	{"id": 9, "name": "Napalm Rocket", "color": Color("f2e04a"), "cooldown": 0.7, "speed": 40.0,
 		"blurb": "Mid-size blast that leaves quick-burning fire"},
 	{"id": 12, "name": "Digger", "color": Color("b5975f"), "cooldown": 0.25, "speed": 44.0,
-		"blurb": "Bores a tunnel wherever it hits - undermine everything"},
+		"blurb": "Drills a 3x3 tunnel 15 blocks through anything soft"},
 	{"id": 11, "name": "Wings", "color": Color("eceff4"), "cooldown": 9.0, "speed": 1.0,
 		"blurb": "Hold to glide from high places - but you can't shoot while soaring"},
 	{"id": 10, "name": "Grump Whistle", "color": Color("8a5fd0"), "cooldown": 2.0, "speed": 30.0,
-		"blurb": "Summons a wild Grump right there. You asked for this"},
+		"blurb": "Summons a wild Grump right there", "hidden": true},
 ]
 
 static func count() -> int:
 	return WEAPONS.size()
+
+static func visible_ids() -> Array:
+	var out: Array = []
+	for w in WEAPONS:
+		if not w.get("hidden", false):
+			out.append(int(w.id))
+	return out
 
 static func spec(id: int) -> Dictionary:
 	return WEAPONS[clampi(id, 0, WEAPONS.size() - 1)]

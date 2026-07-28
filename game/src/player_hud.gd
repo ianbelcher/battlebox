@@ -15,17 +15,24 @@ const HAT_CHIP_COLORS: Array[Color] = [
 ]
 
 var _name_label: Label
+var _name_edit: LineEdit
 var _treasure_label: Label
 var _hearts_label: Label
 var _selected_label: Label
 var _picker: BlockPicker
+var _pickers: Array = []
+var _menu_slots_row: HBoxContainer
+var _menu_slot_buttons: Array = []
+
+func _uscale() -> float:
+	return clampf(DisplayServer.window_get_size().x / 1100.0, 1.15, 3.0)
 var _menu: PanelContainer
 var _tabs: TabContainer
 var _prev_picker := false
 var _prev_menu := false
 
 
-var _swatches: Dictionary = {}   # attr -> ColorRect
+var _chip: PanelContainer
 var _hotbar: HBoxContainer
 var _chips: Array = []
 var _last_index := -1
@@ -52,25 +59,13 @@ func _ready() -> void:
 	style.set_corner_radius_all(10)
 	style.set_content_margin_all(8)
 	chip.add_theme_stylebox_override("panel", style)
-	chip.position = Vector2(10, _us(58))
+	chip.position = Vector2(10, 10)
+	_chip = chip
 	add_child(chip)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	chip.add_child(row)
-	# Three swatches: skin tone, shirt, hat. Click to cycle that part.
-	for attr in ["body", "shirt", "hat"]:
-		var swatch := ColorRect.new()
-		swatch.custom_minimum_size = Vector2(_us(24), _us(24))
-		swatch.mouse_filter = Control.MOUSE_FILTER_STOP
-		swatch.tooltip_text = attr
-		var attr_name := str(attr)
-		swatch.gui_input.connect(func(event: InputEvent) -> void:
-			if event is InputEventMouseButton and event.pressed \
-					and event.button_index == MOUSE_BUTTON_LEFT:
-				Game.cycle_local_style(slot, attr_name, 1)
-				Sfx.play("pop", -4.0))
-		row.add_child(swatch)
-		_swatches[attr_name] = swatch
+
 	_name_label = Label.new()
 	_name_label.add_theme_font_size_override("font_size", _us(22))
 	_name_label.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -171,11 +166,48 @@ func _ready() -> void:
 	_crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_crosshair)
 
-	_picker = BlockPicker.new()
-	_picker.name = "Blocks & Kits"
-	_picker.picked.connect(_on_picked)
-	_tabs.add_child(_picker)
+	_pickers = []
+	for spec in [["Blocks", "blocks"], ["Tools", "tools"], ["Special", "special"], ["Kits", "kits"]]:
+		var picker := BlockPicker.new(spec[1])
+		picker.name = spec[0]
+		picker.picked.connect(_on_picked)
+		_tabs.add_child(picker)
+		_pickers.append(picker)
+	_picker = _pickers[0]
 	_build_character_tab()
+	_build_game_tab()
+	# The 8 slots live inside the menu too: click a slot, then click items.
+	_menu_slots_row = HBoxContainer.new()
+	_menu_slots_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_menu_slots_row.add_theme_constant_override("separation", int(6 * _uscale()))
+	var menu_box := _menu.get_child(0)
+	_menu.remove_child(menu_box)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", int(8 * _uscale()))
+	_menu.add_child(outer)
+	outer.add_child(menu_box)
+	menu_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_child(_menu_slots_row)
+	for i in 8:
+		var slot_btn := Button.new()
+		slot_btn.focus_mode = Control.FOCUS_NONE
+		slot_btn.custom_minimum_size = Vector2(_us(46), _us(46))
+		var icon := BlockIcon.new(0)
+		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		icon.offset_left = 6
+		icon.offset_top = 6
+		icon.offset_right = -6
+		icon.offset_bottom = -6
+		slot_btn.add_child(icon)
+		var index := i
+		slot_btn.pressed.connect(func() -> void:
+			var player := _player()
+			if player != null:
+				player.selected_slot = index
+				_slots_dirty = true
+				Sfx.play("tick", -10.0))
+		_menu_slots_row.add_child(slot_btn)
+		_menu_slot_buttons.append(slot_btn)
 
 	if world != null:
 		world.treasures_changed.connect(_refresh_identity)
@@ -195,9 +227,12 @@ func _toggle_menu(player: Player, tab: int) -> void:
 	_menu.visible = true
 	_tabs.current_tab = tab
 	player.ui_locked = true
-	_picker.fit(size * Vector2(0.8, 0.78))
-	_picker.set_slot_label(player.selected_slot + 1)
-	_picker.open()
+	for picker: BlockPicker in _pickers:
+		picker.fit(size * Vector2(0.75, 0.66))
+		picker.open()
+	var entry := _entry()
+	if _name_edit != null and not entry.is_empty():
+		_name_edit.text = str(entry.name)
 	Sfx.play("tick", -8.0)
 
 ## "Character" tab: big friendly buttons for name, skin, shirt and hat.
@@ -213,7 +248,8 @@ func _build_character_tab() -> void:
 	name_label.text = "Name:"
 	name_label.add_theme_font_size_override("font_size", _us(22))
 	name_row.add_child(name_label)
-	var name_edit := LineEdit.new()
+	_name_edit = LineEdit.new()
+	var name_edit := _name_edit
 	name_edit.max_length = 12
 	name_edit.custom_minimum_size = Vector2(_us(220), 0)
 	name_edit.add_theme_font_size_override("font_size", _us(22))
@@ -246,6 +282,45 @@ func _build_character_tab() -> void:
 	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
 	tab.add_child(hint)
 
+## "Game" tab: match controls and computer players.
+func _build_game_tab() -> void:
+	var tab := VBoxContainer.new()
+	tab.name = "Game"
+	tab.add_theme_constant_override("separation", _us(12))
+	_tabs.add_child(tab)
+	var br := Button.new()
+	br.focus_mode = Control.FOCUS_NONE
+	br.text = "🏆  Start Battle Royale"
+	br.add_theme_font_size_override("font_size", _us(24))
+	br.pressed.connect(func() -> void:
+		if Game.world != null:
+			Game.world.sv_match_start.rpc_id(1, 0)
+			_close_menu())
+	tab.add_child(br)
+	var bot_btn := Button.new()
+	bot_btn.focus_mode = Control.FOCUS_NONE
+	bot_btn.text = "➕  Add computer player"
+	bot_btn.add_theme_font_size_override("font_size", _us(24))
+	bot_btn.pressed.connect(func() -> void:
+		Game.join_local(BotSlot.new(randi() % 1000))
+		Sfx.play("join"))
+	tab.add_child(bot_btn)
+	var reset := Button.new()
+	reset.focus_mode = Control.FOCUS_NONE
+	reset.text = "↺  New map (everyone votes)"
+	reset.add_theme_font_size_override("font_size", _us(24))
+	reset.pressed.connect(func() -> void:
+		if Game.world != null:
+			Game.world.sv_reset_request.rpc_id(1, 0)
+			_close_menu())
+	tab.add_child(reset)
+
+func _close_menu() -> void:
+	_menu.visible = false
+	var player := _player()
+	if player != null:
+		player.ui_locked = false
+
 func _on_picked(entry: Dictionary) -> void:
 	var player := _player()
 	if player == null:
@@ -271,14 +346,12 @@ func _refresh_identity() -> void:
 	if entry.is_empty():
 		return
 	_name_label.text = str(entry.name)
-	var style: Dictionary = AvatarFactory.normalize_style(entry.get("style"))
-	_swatches["body"].color = AvatarFactory.skin_color(style)
-	_swatches["shirt"].color = AvatarFactory.shirt_color(style)
-	_swatches["hat"].color = HAT_CHIP_COLORS[int(style.hat) % HAT_CHIP_COLORS.size()]
+	var team := int(entry.get("team", -1))
+	_name_label.add_theme_color_override("font_color",
+		WorldNode.TEAM_COLORS[team] if team >= 0 else Color.WHITE)
+	_treasure_label.text = ""
 	var id := Game.player_id(multiplayer.get_unique_id(), slot)
-	var count: int = world.treasures.get(id, 0) if world != null else 0
-	_treasure_label.text = "✦ %d" % count
-	if world != null and world.survival_active:
+	if world != null and (world.survival_active or world.match_phase == "BATTLE"):
 		var hp: int = world.hearts.get(id, 5)
 		_hearts_label.text = "♥".repeat(maxi(hp, 0))
 		_hearts_label.visible = true
@@ -334,8 +407,8 @@ func _process(_delta: float) -> void:
 				_picker.set_slot_label(pick + 1)
 				Sfx.play("tick", -10.0)
 			_prev_slot_pick_menu = pick
-			if _tabs.current_tab == 0:
-				_picker.poll(input, _delta)
+			if _tabs.current_tab < 4:
+				_pickers[_tabs.current_tab].poll(input, _delta)
 	if not _menu.visible and player.ui_locked:
 		player.ui_locked = false
 	if OS.get_environment("WORLD_AUTOTEST_MENU") == "1" and slot == 0 \
@@ -350,18 +423,14 @@ func _process(_delta: float) -> void:
 		_selected_label.add_theme_font_size_override("font_size",
 			int(clampf(size.x / 45.0, 16.0, 34.0)))
 		_last_index = -1
+	if _chip != null:
+		_chip.visible = not _menu.visible
 	var held_now := str(player.held())
 	if player.selected_slot != _last_index or _slots_dirty or held_now != _last_held:
 		_last_index = player.selected_slot
 		_last_held = held_now
 		_slots_dirty = false
-		var item: Dictionary = player.held()
-		if item.kind == "weapon":
-			_selected_label.text = "Blaster" if int(item.id) == 0 else "Bazooka"
-		elif item.kind == "structure":
-			_selected_label.text = str(Structures.spec(int(item.id)).name)
-		else:
-			_selected_label.text = Blocks.display_name(int(item.id))
+		_selected_label.text = ""
 		var slot_px := clampf(size.x / 13.0, 44.0, 96.0)
 		for i in _chips.size():
 			var frame: Panel = _chips[i]
@@ -379,3 +448,11 @@ func _process(_delta: float) -> void:
 			icon.kind = str(entry.kind)
 			icon.dimmed = not selected
 			icon.queue_redraw()
+			if i < _menu_slot_buttons.size():
+				var menu_btn: Button = _menu_slot_buttons[i]
+				var menu_icon: BlockIcon = menu_btn.get_child(0)
+				menu_icon.block_id = int(entry.id)
+				menu_icon.kind = str(entry.kind)
+				menu_icon.dimmed = not selected
+				menu_icon.queue_redraw()
+				menu_btn.modulate = Color(1, 1, 1, 1.0) if selected else Color(1, 1, 1, 0.6)

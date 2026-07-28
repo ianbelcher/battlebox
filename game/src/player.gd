@@ -65,6 +65,9 @@ var _launch_latched := false
 var _shoot_hold := 0.0
 ## Sky-drop at match start: fall gently until touching down.
 var drop_glide := false
+## While > 0, horizontal velocity is carried (grapple zips, knockbacks)
+## instead of being overwritten by stick input every frame.
+var carry_time := 0.0
 var _prev_slot_pick := -1
 var _last_note_cell := Vector3i(0, -99, 0)
 var _warp_cooldown := 0.0
@@ -101,6 +104,14 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	_tag.position = Vector3(0, 1.85, 0)
 	add_child(_tag)
 	if is_local:
+		# A faint personal glow so caves and midnight are never a black void.
+		var glow := OmniLight3D.new()
+		glow.light_energy = 0.55
+		glow.omni_range = 9.0
+		glow.light_color = Color(1.0, 0.95, 0.85)
+		glow.shadow_enabled = false
+		glow.position = Vector3(0, 1.4, 0)
+		add_child(glow)
 		_highlight = MeshInstance3D.new()
 		var box := BoxMesh.new()
 		box.size = Vector3(1.04, 1.04, 1.04)
@@ -256,11 +267,20 @@ func _local_move(delta: float) -> void:
 		_last_jump_ms = now
 	_prev_jump = jump_now
 
+	carry_time = maxf(0.0, carry_time - delta)
 	var speed := SWIM_SPEED if in_water else WALK_SPEED
+	var feet_soft := _chunks().get_block(feet)
+	if feet_soft >= Blocks.M_SNOW and feet_soft < Blocks.MAX_BLOCK:
+		speed *= 0.45  # wading through soft snow
 	if fly_mode:
 		speed = 7.5
-	velocity.x = dir.x * speed
-	velocity.z = dir.z * speed
+	if carry_time > 0.0:
+		# Momentum rules: input only nudges while being flung.
+		velocity.x = velocity.x * 0.99 + dir.x * speed * 0.1
+		velocity.z = velocity.z * 0.99 + dir.z * speed * 0.1
+	else:
+		velocity.x = dir.x * speed
+		velocity.z = dir.z * speed
 	if dir.length_squared() > 0.01:
 		heading = dir.normalized()
 
@@ -467,8 +487,13 @@ func _local_actions(delta: float) -> void:
 			_edit_cooldown = float(Weapons.spec(int(item.id)).cooldown)
 		elif place_target != Vector3i(0, -99, 0):
 			if item.kind == "structure":
+				var facing := 0
+				if absf(heading.x) > absf(heading.z):
+					facing = 1 if heading.x > 0 else 3
+				elif heading.z > 0:
+					facing = 2
 				world.sv_structure.rpc_id(1, slot, place_target, int(item.id),
-					randi() % 1000)
+					randi() % 1000, facing)
 				_edit_cooldown = 1.0
 			else:
 				world.send_edit(slot, place_target, selected_block())

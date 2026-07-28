@@ -364,7 +364,7 @@ func sv_edit(slot: int, pos: Vector3i, block: int) -> void:
 ## Stamp a prefab structure: only air, liquids and plants are overwritten,
 ## so stamps can't wreck existing builds.
 @rpc("any_peer", "reliable")
-func sv_structure(slot: int, base: Vector3i, index: int, roll: int) -> void:
+func sv_structure(slot: int, base: Vector3i, index: int, roll: int, facing := 0) -> void:
 	if not multiplayer.is_server():
 		return
 	var id := Game.player_id(multiplayer.get_remote_sender_id(), slot)
@@ -372,7 +372,7 @@ func sv_structure(slot: int, base: Vector3i, index: int, roll: int) -> void:
 	if state.is_empty() or Vector3(base).distance_to(state.pos) > 12.0:
 		return
 	var pairs: Array = []
-	for entry: Array in Structures.cells(index, roll):
+	for entry: Array in Structures.cells(index, roll, facing):
 		var pos: Vector3i = base + (entry[0] as Vector3i)
 		if pos.y <= 0 or pos.y >= WorldGen.CHUNK_H:
 			continue
@@ -509,8 +509,8 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 			if not pairs.is_empty():
 				cl_edits.rpc(pairs)
 			return
-		9:  # Napalm Rocket: mid blast plus short-lived fire.
-			_blast(cell, 2.2, [], cell)
+		9:  # Napalm Rocket: no crater — it just sets the impact ablaze.
+			cl_boom_fx.rpc(cell)
 			var splashed: Array = []
 			for off in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1),
 					Vector3i(0, 0, -1), Vector3i(0, 1, 0), Vector3i(0, 0, 0)]:
@@ -525,20 +525,9 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 			return
 		11:  # Wings do their work while held; the trigger does nothing.
 			return
-		12:  # Digger: quietly bores a person-sized tunnel bite.
-			var bored: Array = []
-			for dy in range(-1, 2):
-				for dz in range(-1, 2):
-					for dx in range(-1, 2):
-						var pos: Vector3i = cell + Vector3i(dx, dy, dz)
-						var block := store.get_block(pos)
-						if block != Blocks.AIR and Blocks.is_breakable(block) \
-								and Blocks.hardness(block) <= 2 and not Blocks.is_liquid(block):
-							store.set_block(pos, Blocks.AIR)
-							bored.append(pos)
-			if not bored.is_empty():
-				cl_batch.rpc(bored, Blocks.AIR)
-				_disturb_water(bored)
+		12:  # (impact does nothing extra — the tunnel was carved at fire time)
+			if false:
+				pass
 			return
 		10:  # Grump Whistle: a wild Grump, raid or not.
 			if _monsters.size() < 30:
@@ -580,6 +569,32 @@ func sv_orb_hit(slot: int, target_id: String, hit_pos: Vector3) -> void:
 		_match_hurt(target_id, 1, hit_pos)
 		return
 	cl_bonk.rpc(target_id, hit_pos)
+
+## Digger: carve a 3x3 tunnel 15 blocks along the aim line, at fire time.
+@rpc("any_peer", "reliable")
+func sv_dig_tunnel(slot: int, origin: Vector3, dir: Vector3) -> void:
+	if not multiplayer.is_server():
+		return
+	var id := Game.player_id(multiplayer.get_remote_sender_id(), slot)
+	var state: Dictionary = _player_state.get(id, {})
+	if state.is_empty() or origin.distance_to(state.pos) > 6.0:
+		return
+	dir = dir.normalized()
+	var bored: Array = []
+	for step in range(1, 16):
+		var center := Vector3i((origin + dir * step).round())
+		for dy in range(-1, 2):
+			for dz in range(-1, 2):
+				for dx in range(-1, 2):
+					var pos := center + Vector3i(dx, dy, dz)
+					var block := store.get_block(pos)
+					if block != Blocks.AIR and Blocks.is_breakable(block) \
+							and Blocks.hardness(block) <= 2 and not Blocks.is_liquid(block):
+						store.set_block(pos, Blocks.AIR)
+						bored.append(pos)
+	if not bored.is_empty():
+		cl_batch.rpc(bored, Blocks.AIR)
+		_disturb_water(bored)
 
 @rpc("any_peer", "reliable")
 func sv_shoot_critter(_slot: int, critter_id: int) -> void:
@@ -949,11 +964,21 @@ func _do_world_reset() -> void:
 const LOBBY_SECONDS := 25.0
 const STORM_START := 360.0
 const STORM_END := 16.0
-const STORM_MINUTES := 5.0
+var storm_minutes := 5.0
+var loot_only := false
 
 var _match_timer := 0.0
 var _match_alive: Dictionary = {}   # id -> true while still fighting
 var _storm_hurt_ms: Dictionary = {}
+
+@rpc("any_peer", "reliable")
+func sv_match_config(minutes: int, loot: int) -> void:
+	if not multiplayer.is_server() or match_phase != "LOBBY":
+		return
+	if minutes > 0:
+		storm_minutes = clampf(float(minutes), 2.0, 10.0)
+	if loot >= 0:
+		loot_only = loot == 1
 
 @rpc("any_peer", "reliable")
 func sv_match_start(_slot: int) -> void:
@@ -975,10 +1000,10 @@ func _server_tick_match(delta: float) -> void:
 		"DROP":
 			if _match_timer <= 0.0:
 				match_phase = "BATTLE"
-				_match_timer = STORM_MINUTES * 60.0
+				_match_timer = storm_minutes * 60.0
 				cl_match.rpc("BATTLE", _match_timer)
 		"BATTLE":
-			var frac := 1.0 - clampf(_match_timer / (STORM_MINUTES * 60.0), 0.0, 1.0)
+			var frac := 1.0 - clampf(_match_timer / (storm_minutes * 60.0), 0.0, 1.0)
 			storm_radius = lerpf(STORM_START, STORM_END, frac)
 			cl_storm.rpc(storm_radius)
 			_storm_damage()
@@ -1019,7 +1044,7 @@ func _server_match_drop() -> void:
 		var angle := float(i) * TAU / maxf(Game.roster.size(), 1.0) + randf() * 0.3
 		var dist := randf_range(90.0, 150.0)
 		var drop := Vector3(cos(angle) * dist, WorldGen.CHUNK_H - 4, sin(angle) * dist)
-		cl_drop.rpc(id, drop)
+		cl_drop.rpc(id, drop, loot_only)
 		i += 1
 	Game.cl_roster.rpc(Game.roster)
 	storm_radius = STORM_START
@@ -1099,12 +1124,21 @@ func cl_storm(radius: float) -> void:
 	storm_changed.emit()
 
 @rpc("authority", "reliable")
-func cl_drop(id: String, pos: Vector3) -> void:
+func cl_drop(id: String, pos: Vector3, loot := false) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id and child.is_local:
 			child.teleport(pos)
 			child.drop_glide = true
 			child.fly_mode = false
+			if loot:
+				# Loot-only: basics in hand, everything else found in crates.
+				child.slots = [
+					{"kind": "weapon", "id": 0}, {"kind": "weapon", "id": 12},
+					{"kind": "block", "id": Blocks.M_SOIL + 3}, {"kind": "block", "id": Blocks.M_STONE + 8},
+					{"kind": "block", "id": Blocks.M_STEEL + 9}, {"kind": "block", "id": Blocks.GLASS},
+					{"kind": "block", "id": Blocks.LANTERN}, {"kind": "block", "id": Blocks.TELEPORT},
+				]
+				child.selected_slot = 0
 
 @rpc("authority", "reliable")
 func cl_eliminated(id: String) -> void:
@@ -1299,7 +1333,7 @@ func _server_tick_crates() -> void:
 		if y > 2 and y < WorldGen.CHUNK_H - 6 \
 				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER:
 			# Rarer weapons show up less often.
-			var pool := [1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 11, 12, 12]
+			var pool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12]
 			_crates[_next_crate_id] = {"weapon": pool[randi() % pool.size()],
 				"pos": Vector3(wx + 0.5, y + 1.0, wz + 0.5)}
 			_next_crate_id += 1
@@ -1699,6 +1733,7 @@ func cl_fling(id: String) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id and child.is_local:
 			child.velocity.y += 22.0
+			child.carry_time = 0.5
 			child.on_floor = false
 			Sfx.play("whoosh")
 
@@ -1721,6 +1756,7 @@ func cl_bonk(id: String, monster_pos: Vector3) -> void:
 			var away: Vector3 = child.position - monster_pos
 			away.y = 0
 			child.velocity += away.normalized() * 8.0 + Vector3.UP * 7.0
+			child.carry_time = 0.6
 			child.on_floor = false
 			Sfx.play("bonk")
 
@@ -1789,6 +1825,7 @@ func cl_boom_fx(pos: Vector3i) -> void:
 				away.y = 0
 				var push := (7.0 - dist) / 7.0
 				child.velocity += away.normalized() * 10.0 * push + Vector3.UP * 9.0 * push
+				child.carry_time = 0.6
 				child.on_floor = false
 
 @rpc("authority", "reliable")
