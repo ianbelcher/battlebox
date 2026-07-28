@@ -36,6 +36,17 @@ strike items when shipped, add new asks immediately.
 
 ## Done this round
 
+- [x] FIXED the "menu always opens on Kits" bug for real: BlockPicker.open()
+      flips tab-child visibility which yanks TabContainer to the last picker
+      (Kits) — pickers now open before the tab is set, guarded from
+      polluting the last-tab memory
+- [x] FULL character customization: 7 parts (skin, face, hair, hat, shirt,
+      pants, shoes) — 8 faces (glasses/sunglasses/freckles/sleepy...),
+      12 hairs (spiky/long/ponytail/afro/mohawk...), 13 hats incl. knight
+      helmet, viking horns, wizard hat, top hat, headphones, chef hat,
+      12 shirts with stripe/band patterns, pants + shoes colors. All saved
+      per controller as before
+
 - [x] Weapon feel pass: viewmodel re-centered + Doom-style parabolic run
       bob, long weapons pushed forward, gun hides when zoomed, shots leave
       the right-hand muzzle and converge on the crosshair, hand item no

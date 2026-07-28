@@ -46,6 +46,7 @@ var _preview_viewport: SubViewport
 var _preview_avatar: Node3D
 var _preview_angle := PI
 var _last_tab := 1
+var _tab_guard := false
 var _autoopened := false
 var _crosshair: Label
 var _storm_arrow: Label
@@ -159,7 +160,9 @@ func _ready() -> void:
 	_tabs = TabContainer.new()
 	_tabs.add_theme_font_size_override("font_size", _us(20))
 	_menu.add_child(_tabs)
-	_tabs.tab_changed.connect(func(tab: int) -> void: _last_tab = tab)
+	_tabs.tab_changed.connect(func(tab: int) -> void:
+		if not _tab_guard:
+			_last_tab = tab)
 	_storm_arrow = Label.new()
 	_storm_arrow.add_theme_font_size_override("font_size", _us(30))
 	_storm_arrow.add_theme_color_override("font_color", Color("ff5a4a"))
@@ -243,13 +246,18 @@ func _toggle_menu(player: Player, _tab: int) -> void:
 		return
 	_menu.visible = true
 	_tabs.set_tab_disabled(0, world != null and world.match_phase != "IDLE")
-	# Reopen on whatever tab was last used (falling back to Blocks).
-	_tabs.current_tab = 1 if _tabs.is_tab_disabled(_last_tab) else _last_tab
 	_refresh_preview()
 	player.ui_locked = true
+	# picker.open() flips child visibility, which yanks the TabContainer onto
+	# whichever picker was shown last (the "always opens on Kits" bug) — so
+	# the pickers open FIRST and the real tab is set after, guarded so the
+	# churn doesn't pollute _last_tab.
+	_tab_guard = true
 	for picker: BlockPicker in _pickers:
 		picker.fit(size * Vector2(0.75, 0.66))
 		picker.open()
+	_tabs.current_tab = 1 if _tabs.is_tab_disabled(_last_tab) else _last_tab
+	_tab_guard = false
 	var entry := _entry()
 	if _name_edit != null and not entry.is_empty():
 		_name_edit.text = str(entry.name)
@@ -280,12 +288,13 @@ func _build_character_tab() -> void:
 		Game.set_local_name(slot, text)
 		Sfx.play("pop", -4.0))
 	name_row.add_child(name_edit)
-	for attr in ["body", "shirt", "hat"]:
+	for attr in AvatarFactory.ATTRS:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", _us(10))
 		tab.add_child(row)
 		var attr_label := Label.new()
-		attr_label.text = {"body": "Skin tone:", "shirt": "Shirt:", "hat": "Hat:"}[attr]
+		attr_label.text = {"body": "Skin tone:", "face": "Face:", "hair": "Hair:",
+			"hat": "Hat:", "shirt": "Shirt:", "pants": "Pants:", "shoes": "Shoes:"}[attr]
 		attr_label.custom_minimum_size = Vector2(_us(140), 0)
 		attr_label.add_theme_font_size_override("font_size", _us(22))
 		row.add_child(attr_label)

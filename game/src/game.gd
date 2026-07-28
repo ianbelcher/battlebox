@@ -152,7 +152,7 @@ func sv_cycle_style(slot: int, attr: String, direction: int) -> void:
 	if not multiplayer.is_server():
 		return
 	var id := player_id(_sender_id(), slot)
-	if not roster.has(id) or not (attr in ["body", "shirt", "hat"]):
+	if not roster.has(id) or not (attr in AvatarFactory.ATTRS):
 		return
 	var style: Dictionary = AvatarFactory.normalize_style(roster[id].style)
 	style[attr] = int(style[attr]) + signi(direction)
@@ -177,11 +177,10 @@ func _load_profile(device_key: String) -> Dictionary:
 	config.load(PROFILE_PATH)
 	var style := AvatarFactory.random_style()
 	if config.has_section_key(device_key, "body"):
-		style = AvatarFactory.normalize_style({
-			"body": int(config.get_value(device_key, "body", 0)),
-			"shirt": int(config.get_value(device_key, "shirt", 0)),
-			"hat": int(config.get_value(device_key, "hat", 0)),
-		})
+		var saved := {}
+		for attr in AvatarFactory.ATTRS:
+			saved[attr] = int(config.get_value(device_key, attr, 0))
+		style = AvatarFactory.normalize_style(saved)
 	return {
 		"name": str(config.get_value(device_key, "name", "")),
 		"style": style,
@@ -199,7 +198,7 @@ func _save_local_profiles() -> void:
 			continue
 		var device_key: String = local_inputs[entry.slot].claim_key()
 		var style: Dictionary = AvatarFactory.normalize_style(entry.get("style"))
-		for attr in ["body", "shirt", "hat"]:
+		for attr in AvatarFactory.ATTRS:
 			if int(config.get_value(device_key, attr, -1)) != int(style[attr]):
 				config.set_value(device_key, attr, int(style[attr]))
 				dirty = true
