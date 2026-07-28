@@ -182,7 +182,7 @@ func _ready() -> void:
 	add_child(_crosshair)
 
 	_pickers = []
-	for spec in [["Blocks", "blocks"], ["Tools", "tools"], ["Special", "special"], ["Kits", "kits"]]:
+	for spec in [["Tools", "tools"], ["Blocks", "blocks"], ["Special", "special"], ["Kits", "kits"]]:
 		var picker := BlockPicker.new(spec[1])
 		picker.name = spec[0]
 		picker.picked.connect(_on_picked)
@@ -240,7 +240,7 @@ func _toggle_menu(player: Player, tab: int) -> void:
 		return
 	_menu.visible = true
 	_tabs.current_tab = tab
-	_tabs.set_tab_disabled(1, world != null and world.match_phase != "IDLE")
+	_tabs.set_tab_disabled(0, world != null and world.match_phase != "IDLE")
 	_refresh_preview()
 	player.ui_locked = true
 	for picker: BlockPicker in _pickers:

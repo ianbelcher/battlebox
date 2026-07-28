@@ -154,6 +154,33 @@ func _add_join_hint(frac: Rect2) -> void:
 	_cells.append({"slot": -2, "container": panel, "viewport": null,
 		"rig": null, "cam": null, "hud": null})
 
+## First-person hand: the held item bottom-right of your own camera, on a
+## render layer only your own camera draws.
+func _update_viewmodel(cell: Dictionary, player: Player) -> void:
+	var cam: Camera3D = cell.cam
+	var sig := str(player.held())
+	if cell.get("vm_sig", "") != sig:
+		cell.vm_sig = sig
+		if cell.get("vm") != null and is_instance_valid(cell.vm):
+			cell.vm.queue_free()
+			cell.vm = null
+		var item: Dictionary = player.held()
+		if item.kind != "empty":
+			var model := ItemFactory.build(str(item.kind), int(item.id))
+			model.scale = Vector3(0.9, 0.9, 0.9)
+			var vm_layer := 1 << (10 + player.slot)
+			for node in model.find_children("*", "VisualInstance3D", true, false):
+				(node as VisualInstance3D).layers = vm_layer
+			cam.add_child(model)
+			model.position = Vector3(0.42, -0.38, -0.7)
+			model.rotation_degrees = Vector3(0, 6, 0)
+			cell.vm = model
+	# camera masks: see own viewmodel layer, never others'
+	var all_vm := 0
+	for i in 4:
+		all_vm |= 1 << (10 + i)
+	cam.cull_mask = (((1 << 20) - 1) & ~player.render_layer_bit() & ~all_vm) | (1 << (10 + player.slot))
+
 func _find_player(slot: int) -> Player:
 	if world == null or world.players == null:
 		return null
@@ -205,10 +232,18 @@ func _process(delta: float) -> void:
 			cam.cull_mask = ((1 << 20) - 1) & ~player.render_layer_bit()
 			var eye: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT, 0)
 			cam.look_at_from_position(eye, eye + player.look_dir(), Vector3.UP)
+			_update_viewmodel(cell, player)
 			continue
 		cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 		cam.near = 0.5
-		cam.cull_mask = (1 << 20) - 1
+		var all_vm := 0
+		for i in 4:
+			all_vm |= 1 << (10 + i)
+		cam.cull_mask = ((1 << 20) - 1) & ~all_vm
+		if cell.get("vm") != null and is_instance_valid(cell.vm):
+			cell.vm.queue_free()
+			cell.vm = null
+			cell.vm_sig = ""
 		# Poll this player's spin/zoom controls (edge-latched so one press or
 		# stick flick = one step).
 		if input != null:

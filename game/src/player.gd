@@ -198,10 +198,50 @@ func teleport(pos: Vector3) -> void:
 func remote_update(pos: Vector3, yaw: float, p_anim: int) -> void:
 	_remote_target = pos
 	_remote_yaw = yaw
-	anim = p_anim
+	anim = p_anim % 16
+	apply_remote_held(p_anim / 16)
 	if not _spawned:
 		position = pos
 		_spawned = true
+
+var _hand_item: Node3D = null
+var _hand_sig := ""
+
+## Show what's in hand on the right arm — yours and everyone else's.
+func _held_code() -> int:
+	var item := held()
+	if item.kind == "weapon":
+		return 1 + int(item.id)
+	if item.kind == "block":
+		return 100
+	return 0
+
+func apply_remote_held(code: int) -> void:
+	var wanted: Dictionary
+	if code == 0:
+		wanted = {"kind": "empty", "id": 0}
+	elif code == 100:
+		wanted = {"kind": "block", "id": Blocks.M_STONE}
+	else:
+		wanted = {"kind": "weapon", "id": code - 1}
+	if str(slots[selected_slot]) != str(wanted) and not is_local:
+		slots[selected_slot] = wanted
+
+func _refresh_hand() -> void:
+	var item := held()
+	var sig := str(item)
+	if sig == _hand_sig:
+		return
+	_hand_sig = sig
+	if _hand_item != null:
+		_hand_item.queue_free()
+		_hand_item = null
+	var arm: Node3D = _avatar.get_node_or_null("ArmR")
+	if arm == null or item.kind == "empty":
+		return
+	_hand_item = ItemFactory.build(str(item.kind), int(item.id))
+	_hand_item.position = Vector3(0, -0.42, -0.05)
+	arm.add_child(_hand_item)
 
 func selected_block() -> int:
 	return int(held().id) if held().kind == "block" else -1
@@ -216,6 +256,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		position = position.lerp(_remote_target, minf(1.0, delta * 10.0))
 		rotation.y = lerp_angle(rotation.y, _remote_yaw, minf(1.0, delta * 10.0))
+	_refresh_hand()
 	_animate(delta)
 
 # ------------------------------------------------------------------
@@ -282,6 +323,8 @@ func _local_move(delta: float) -> void:
 
 	carry_time = maxf(0.0, carry_time - delta)
 	var speed := SWIM_SPEED if in_water else WALK_SPEED
+	if input.is_sprint_pressed() and on_floor and not downed:
+		speed *= 1.55
 	var feet_soft := _chunks().get_block(feet)
 	if feet_soft >= Blocks.M_SNOW and feet_soft < Blocks.MAX_BLOCK:
 		speed *= 0.45  # wading through soft snow
@@ -629,7 +672,7 @@ func _send_state(delta: float) -> void:
 	if _send_accum < 1.0 / SEND_HZ:
 		return
 	_send_accum = 0.0
-	world.send_pos(slot, position, rotation.y, anim)
+	world.send_pos(slot, position, rotation.y, anim + _held_code() * 16)
 	if OS.get_environment("WORLD_DEBUG") == "1":
 		_debug_ticks += 1
 		if _debug_ticks % 24 == 0:

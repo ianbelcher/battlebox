@@ -155,7 +155,7 @@ func _build_game_screen() -> void:
 	add_child(_game_screen)
 	_split = SplitScreen.new()
 	_game_screen.add_child(_split)
-	_loading_label = _make_label("Flying in...", 34, GOLD, 6)
+	_loading_label = _make_label("Flying in...", 26, GOLD, 6)
 	_loading_label.set_anchors_preset(Control.PRESET_CENTER)
 	_loading_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_loading_label.grow_vertical = Control.GROW_DIRECTION_BOTH
@@ -522,6 +522,7 @@ func _refresh_survival() -> void:
 		if Game.world.survival_active else ""
 
 func _show_banner(text: String) -> void:
+	_loading_label.visible = false
 	_banner.text = text
 	_banner.visible = true
 	_banner.modulate.a = 1.0

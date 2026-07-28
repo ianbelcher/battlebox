@@ -27,18 +27,9 @@ func update_crates(payload: Array) -> void:
 		box.material_override = mat
 		box.position = Vector3(0, 0.5, 0)
 		node.add_child(box)
-		var gem := MeshInstance3D.new()
-		var gem_mesh := SphereMesh.new()
-		gem_mesh.radius = 0.22
-		gem_mesh.height = 0.44
-		gem.mesh = gem_mesh
-		var gem_mat := StandardMaterial3D.new()
 		var color: Color = Weapons.spec(weapon).color
-		gem_mat.albedo_color = color
-		gem_mat.emission_enabled = true
-		gem_mat.emission = color
-		gem_mat.emission_energy_multiplier = 2.2
-		gem.material_override = gem_mat
+		var gem := ItemFactory.build("weapon", weapon)
+		gem.scale = Vector3(1.6, 1.6, 1.6)
 		gem.position = Vector3(0, 1.25, 0)
 		node.add_child(gem)
 		var light := OmniLight3D.new()

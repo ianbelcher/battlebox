@@ -144,6 +144,19 @@ func _draw() -> void:
 				var a := i * TAU / 6.0 + 0.4
 				draw_circle(mid + Vector2(cos(a), sin(a)) * w * 0.22, w * 0.06,
 					[Color("ff6b6b"), Color("ffd166"), Color("4a9df8")][i % 3])
+		Blocks.LANTERN, Blocks.GLOWSTONE:
+			for i in 6:
+				var a := i * TAU / 6.0
+				draw_line(mid + Vector2(cos(a), sin(a)) * w * 0.14,
+					mid + Vector2(cos(a), sin(a)) * w * 0.26, Color(1, 1, 0.8, 0.9), w * 0.04)
+			draw_circle(mid, w * 0.1, Color(1, 0.95, 0.7))
+		Blocks.CAMPFIRE, Blocks.LAVA:
+			draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -w * 0.2),
+				mid + Vector2(w * 0.12, w * 0.08), mid + Vector2(0, w * 0.16),
+				mid + Vector2(-w * 0.12, w * 0.08)]), Color(1, 0.5, 0.15, 0.95))
+		Blocks.GLASS, Blocks.ICE:
+			draw_line(mid + Vector2(-w * 0.16, w * 0.12), mid + Vector2(w * 0.04, -w * 0.16), Color(1, 1, 1, 0.8), w * 0.05)
+			draw_line(mid + Vector2(-w * 0.02, w * 0.16), mid + Vector2(w * 0.14, -w * 0.06), Color(1, 1, 1, 0.6), w * 0.04)
 		Blocks.FIREWORK:
 			draw_line(Vector2(w * 0.35, h * 0.65), Vector2(w * 0.62, h * 0.3), overlay, w * 0.05)
 			for i in 5:
