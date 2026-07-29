@@ -8,10 +8,6 @@ A live list of OPEN work only. Items leave the list when they are done
       move, rise/fall, jump to dismount), fire breath while riding —
       Medium-Shooter-like shots with big ORANGE fireball explosions, no
       lingering fire spread
-- [ ] Character tab rework: smaller ◀ ▶ buttons; name field at the top of
-      the RIGHT column above the preview; separator lines between
-      sections; preview as large as possible, NO auto-rotation — drag on
-      the preview to turn the character
 - [ ] Sky islands: less grid-like (jitter positions), big + small island
       mix, wider height range, vertical connections between stacked islands
 - [ ] Castle interior is still a mess — proper rooms/halls redesign

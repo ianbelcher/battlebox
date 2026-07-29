@@ -342,6 +342,9 @@ func _build_character_tab() -> void:
 	split.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	split.add_theme_constant_override("separation", _us(36))
 	char_scroll.add_child(split)
+	var char_right := VBoxContainer.new()
+	char_right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	char_right.add_theme_constant_override("separation", _us(10))
 	var tab := VBoxContainer.new()
 	tab.add_theme_constant_override("separation", _us(14))
 	split.add_child(tab)
@@ -356,8 +359,8 @@ func _build_character_tab() -> void:
 	for direction in [-1, 1]:
 		var pbtn := Button.new()
 		pbtn.focus_mode = Control.FOCUS_NONE
-		pbtn.text = "  ◀  " if direction < 0 else "  ▶  "
-		pbtn.add_theme_font_size_override("font_size", _us(22))
+		pbtn.text = "◀" if direction < 0 else "▶"
+		pbtn.add_theme_font_size_override("font_size", _us(15))
 		var pd: int = direction
 		pbtn.pressed.connect(func() -> void:
 			var profiles: Array = Game.list_profiles()
@@ -369,9 +372,10 @@ func _build_character_tab() -> void:
 			Game.select_profile(slot, str(profiles[index]))
 			Sfx.play("pop", -6.0))
 		prof_row.add_child(pbtn)
+	tab.add_child(HSeparator.new())
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", _us(10))
-	tab.add_child(name_row)
+	char_right.add_child(name_row)
 	var name_label := Label.new()
 	name_label.text = "Name:"
 	name_label.add_theme_font_size_override("font_size", _us(22))
@@ -399,8 +403,8 @@ func _build_character_tab() -> void:
 		var attr_name := str(attr)
 		for direction in [-1, 1]:
 			var btn := Button.new()
-			btn.text = "  ◀  " if direction < 0 else "  ▶  "
-			btn.add_theme_font_size_override("font_size", _us(22))
+			btn.text = "◀" if direction < 0 else "▶"
+			btn.add_theme_font_size_override("font_size", _us(15))
 			var d: int = direction
 			btn.pressed.connect(func() -> void:
 				Game.cycle_local_style(slot, attr_name, d)
@@ -413,7 +417,15 @@ func _build_character_tab() -> void:
 	var holder := SubViewportContainer.new()
 	holder.stretch = false
 	holder.add_child(_preview_viewport)
-	split.add_child(holder)
+	holder.mouse_filter = Control.MOUSE_FILTER_STOP
+	holder.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseMotion \
+				and event.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			_preview_angle = fposmod(_preview_angle + event.relative.x * 0.012, TAU)
+			if _preview_avatar != null and is_instance_valid(_preview_avatar):
+				_preview_avatar.rotation.y = _preview_angle)
+	char_right.add_child(holder)
+	split.add_child(char_right)
 	var cam := Camera3D.new()
 	cam.position = Vector3(0, 0.9, 2.6)
 	_preview_viewport.add_child(cam)
@@ -563,8 +575,8 @@ func _refresh_preview() -> void:
 		_preview_avatar.queue_free()
 	var entry := _entry()
 	_preview_viewport.size = Vector2i(
-		maxi(150, mini(_us(430), int(size.x * 0.36))),
-		maxi(200, mini(_us(560), int(size.y * 0.62))))
+		maxi(150, mini(_us(520), int(size.x * 0.42))),
+		maxi(200, mini(_us(660), int(size.y * 0.72))))
 	_preview_avatar = AvatarFactory.build_character(entry.get("style", {}))
 	_preview_avatar.position = Vector3(0, 0, 0)
 	_preview_avatar.rotation.y = _preview_angle
@@ -947,9 +959,6 @@ func _process(_delta: float) -> void:
 			_storm_arrow.visible = false
 	else:
 		_storm_arrow.visible = false
-	if _preview_avatar != null and _menu.visible:
-		_preview_angle = fposmod(_preview_angle + _delta * 1.2, TAU)
-		_preview_avatar.rotation.y = _preview_angle
 	var held_now := str(player.held())
 	if player.selected_slot != _last_index or _slots_dirty or held_now != _last_held:
 		_last_index = player.selected_slot
