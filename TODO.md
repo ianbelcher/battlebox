@@ -22,8 +22,8 @@ DONE this overnight run:
       underwater blue tint; sword held up + sweeping swing
 
 STILL OPEN (next session — do these first):
-- [x] Menu theme pass 1-2: uniform rounded button style with hover/press
-      states across every tab (screenshot-verified). More passes welcome
+- [x] Menu theme passes 1-3: uniform rounded buttons with hover/press
+      states + styled tab bar (gold underline on the active tab)
 - [x] Unlimited is truly unlimited: storm never closes, match ends only
       when one team stands
 - [x] Kit chips show real per-structure preview icons (house, tower,
@@ -32,7 +32,9 @@ STILL OPEN (next session — do these first):
 - [x] X-Ray Goggles crate pickup: while held, every player glows through
       the walls (private per-player render layer). Wireframe stays as a
       video toggle for now per Ian
-- [ ] Verify wireframe + video toggles in the EXPORTED build
+- [x] Wireframe requires a debug build (clients export release), so the
+      toggle now only appears in dev builds — a true developer tool. The
+      other video toggles use runtime settings that work everywhere
 - [ ] Multi-server lobby flow; dedicated compact arena map; open-source
       Minecraft map library (download, document centers)
 

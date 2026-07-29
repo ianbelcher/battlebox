@@ -167,6 +167,24 @@ func _ready() -> void:
 	menu_theme.set_stylebox("hover", "Button", btn_hover)
 	menu_theme.set_stylebox("pressed", "Button", btn_pressed)
 	menu_theme.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	var tab_sel := StyleBoxFlat.new()
+	tab_sel.bg_color = Color(0.2, 0.23, 0.33)
+	tab_sel.set_corner_radius_all(8)
+	tab_sel.corner_radius_bottom_left = 0
+	tab_sel.corner_radius_bottom_right = 0
+	tab_sel.content_margin_left = _us(16)
+	tab_sel.content_margin_right = _us(16)
+	tab_sel.content_margin_top = _us(8)
+	tab_sel.content_margin_bottom = _us(8)
+	tab_sel.border_width_bottom = 3
+	tab_sel.border_color = Color("ffd166")
+	var tab_un: StyleBoxFlat = tab_sel.duplicate()
+	tab_un.bg_color = Color(0.09, 0.1, 0.15)
+	tab_un.border_width_bottom = 0
+	menu_theme.set_stylebox("tab_selected", "TabContainer", tab_sel)
+	menu_theme.set_stylebox("tab_unselected", "TabContainer", tab_un)
+	menu_theme.set_stylebox("tab_hovered", "TabContainer", tab_sel.duplicate())
+	menu_theme.set_color("font_selected_color", "TabContainer", Color("ffd166"))
 	_menu.theme = menu_theme
 	# Fill ~90% of this player's cell whatever its size — quarter-screen
 	# split or a huge fullscreen window alike.
@@ -627,7 +645,9 @@ func _build_video_tab() -> void:
 	tab.add_theme_constant_override("separation", _us(12))
 	_tabs.add_child(tab)
 	var toggle_specs := [["shadows", "Shadows"], ["fancy_light", "Fancy lighting"],
-		["lights", "Dynamic lights"], ["res", "High resolution"], ["wire", "Wireframe"]]
+		["lights", "Dynamic lights"], ["res", "High resolution"]]
+	if OS.is_debug_build():
+		toggle_specs.append(["wire", "Wireframe (dev)"])
 	var toggle_btns: Array = []
 	var refresh_toggles := func() -> void:
 		for i in toggle_btns.size():
