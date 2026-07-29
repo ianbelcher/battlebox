@@ -31,7 +31,43 @@ signal first_chunks_ready
 
 var _announced_ready := false
 
+## Meshing runs on a dedicated worker thread: block edits and streaming
+## never block the render thread. Jobs carry SNAPSHOTS of the chunk bytes
+## (PackedByteArray.duplicate) so the worker never races live edits; the
+## main thread only uploads finished arrays (cheap).
+var _mesh_thread: Thread
+var _mesh_mutex := Mutex.new()
+var _mesh_sem := Semaphore.new()
+var _mesh_jobs: Array = []
+var _mesh_results: Array = []
+var _mesh_exit := false
+
+func _exit_tree() -> void:
+	if _mesh_thread != null:
+		_mesh_exit = true
+		_mesh_sem.post()
+		_mesh_thread.wait_to_finish()
+		_mesh_thread = null
+
+func _mesh_worker() -> void:
+	while true:
+		_mesh_sem.wait()
+		if _mesh_exit:
+			return
+		_mesh_mutex.lock()
+		var job: Dictionary = {} if _mesh_jobs.is_empty() else _mesh_jobs.pop_front()
+		_mesh_mutex.unlock()
+		if job.is_empty():
+			continue
+		var surfaces: Dictionary = Mesher.new().build(
+			job.data, job.neighbors, job.cpos.x, job.cpos.y)
+		_mesh_mutex.lock()
+		_mesh_results.append({"cpos": job.cpos, "surfaces": surfaces})
+		_mesh_mutex.unlock()
+
 func _ready() -> void:
+	_mesh_thread = Thread.new()
+	_mesh_thread.start(_mesh_worker)
 	var terrain := ShaderMaterial.new()
 	terrain.shader = load("res://shaders/terrain.gdshader")
 	var plants := ShaderMaterial.new()
@@ -93,15 +129,18 @@ func _refresh_interest() -> void:
 	# Nothing unloads anymore — the whole map is only a few MB, so chunks
 	# stay resident forever and moving never re-pulls from the server.
 	# Far chunks simply hide, which is what draw distance means.
-	var hide_beyond := view_radius + 1
+	var show_r := view_radius + 1
+	var hide_r := view_radius + 3   # hysteresis: no flicker at the boundary
 	for cpos: Vector2i in _holders.keys():
-		var visible := false
+		var holder: Node3D = _holders[cpos]
+		var best := 1e18
 		for focus in _focus_chunks:
 			var d := cpos - focus
-			if d.x * d.x + d.y * d.y <= hide_beyond * hide_beyond:
-				visible = true
-				break
-		(_holders[cpos] as Node3D).visible = visible
+			best = minf(best, float(d.x * d.x + d.y * d.y))
+		if holder.visible and best > hide_r * hide_r:
+			holder.visible = false
+		elif not holder.visible and best <= show_r * show_r:
+			holder.visible = true
 
 func _dist_to_focus(cpos: Vector2i) -> float:
 	var best := 1e9
@@ -174,27 +213,40 @@ func _queue_mesh(cpos: Vector2i) -> void:
 	_queued[cpos] = true
 	_mesh_queue.append(cpos)
 
-## One chunk meshed per frame, tops — streaming spreads over frames instead
-## of spiking them, and the mesher itself skips empty slabs at C++ speed.
 func _process(_delta: float) -> void:
-	# Time-budgeted meshing: spend at most a few ms per frame so loading
-	# never hitches, however big the backlog is.
-	var mesh_start := Time.get_ticks_usec()
-	var mesh_limit := 12000 if match_mode else 5000
-	while not _mesh_queue.is_empty() \
-			and Time.get_ticks_usec() - mesh_start < mesh_limit:
+	# Feed the mesh worker (snapshots only — never live arrays)...
+	_mesh_mutex.lock()
+	var backlog: int = _mesh_jobs.size()
+	_mesh_mutex.unlock()
+	while backlog < 4 and not _mesh_queue.is_empty():
 		var cpos: Vector2i = _mesh_queue.pop_front()
 		_queued.erase(cpos)
-		if _data.has(cpos):
-			var neighbors := {}
-			for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var n: PackedByteArray = _data.get(cpos + off, PackedByteArray())
-				if not n.is_empty():
-					neighbors[off] = n
-			var surfaces := Mesher.new().build(_data[cpos], neighbors, cpos.x, cpos.y)
-			_topmaps[cpos] = surfaces.get("topmap", PackedByteArray())
-			_apply_surfaces(cpos, surfaces)
-	if not _announced_ready and _mesh_queue.is_empty() and _data.size() > 8:
+		if not _data.has(cpos):
+			continue
+		var neighbors := {}
+		for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: PackedByteArray = _data.get(cpos + off, PackedByteArray())
+			if not n.is_empty():
+				neighbors[off] = n.duplicate()
+		_mesh_mutex.lock()
+		_mesh_jobs.append({"cpos": cpos, "data": _data[cpos].duplicate(),
+			"neighbors": neighbors})
+		_mesh_mutex.unlock()
+		_mesh_sem.post()
+		backlog += 1
+	# ...and upload whatever it finished (cheap: mesh creation only).
+	_mesh_mutex.lock()
+	var done: Array = _mesh_results
+	_mesh_results = []
+	_mesh_mutex.unlock()
+	for result: Dictionary in done:
+		var rpos: Vector2i = result.cpos
+		if not _data.has(rpos):
+			continue
+		_topmaps[rpos] = result.surfaces.get("topmap", PackedByteArray())
+		_apply_surfaces(rpos, result.surfaces)
+	if not _announced_ready and _mesh_queue.is_empty() and done.is_empty() \
+			and _data.size() > 8:
 		_announced_ready = true
 		first_chunks_ready.emit()
 	# Campfire/lantern flicker.

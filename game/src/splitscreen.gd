@@ -59,6 +59,8 @@ func update_layout() -> void:
 		_add_join_hint(rects[3])
 
 ## Anchor rects (in fractions) per cell for a given player count.
+	apply_video_to_cells()
+
 func _layout_rects(count: int) -> Array:
 	match count:
 		1:
@@ -358,6 +360,10 @@ func _update_xray(cell: Dictionary, player: Player) -> void:
 	cell.xray = markers
 
 ## Video setting: 3D render resolution as a fraction of window size.
+func apply_video_to_cells() -> void:
+	set_render_scale(clampf(int(Game.video.get("render_scale", 100)) / 100.0, 0.1, 1.0))
+	set_wireframe(bool(Game.video.get("wire", false)))
+
 func set_render_scale(scale_f: float) -> void:
 	for cell: Dictionary in _cells:
 		if cell.cam != null:

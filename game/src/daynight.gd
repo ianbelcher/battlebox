@@ -60,6 +60,13 @@ func _ready() -> void:
 	environment.glow_intensity = 0.5
 	environment.glow_bloom = 0.05
 	environment.glow_hdr_threshold = 1.0
+	# Depth fog softens the draw-distance edge exactly like Minecraft;
+	# main retunes fog_depth_end whenever the player changes draw distance.
+	environment.fog_enabled = true
+	environment.fog_mode = Environment.FOG_MODE_DEPTH
+	environment.fog_depth_curve = 1.6
+	environment.fog_depth_begin = 70.0
+	environment.fog_depth_end = 128.0
 	# No volumetric fog ever: it fills an orthographic frustum with a flat
 	# gray wash (verified). WORLD_MAXFX adds SDFGI bounce light only.
 	if OS.get_environment("WORLD_MAXFX") == "1":
@@ -118,6 +125,7 @@ func _apply(clock: float) -> void:
 		horizon = NIGHT_HORIZON
 	sky_material.sky_top_color = top
 	sky_material.sky_horizon_color = horizon
+	environment.fog_light_color = horizon
 	# The below-horizon half fades gently from the horizon color instead
 	# of a flat dark gray slab.
 	sky_material.ground_bottom_color = horizon.darkened(0.25)

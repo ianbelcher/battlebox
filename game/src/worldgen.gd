@@ -83,12 +83,6 @@ func height_at(wx: int, wz: int) -> int:
 	if theme == "sky":
 		# Skylands: a shallow ocean below, all the action up on the islands.
 		return clampi(SEA_LEVEL - 3 + int(detail * 0.8), 2, CHUNK_H - 12)
-	if theme == "arena":
-		# Compact ~250x250 battle island: everything is close, fights start
-		# fast, and the whole map fits in RAM instantly.
-		var afall := clampf(1.0 - pow(dist / 125.0, 2.0), 0.0, 1.0)
-		var ah := 16.0 + (base * 14.0 + hills * hills * 22.0) * afall + detail * 1.6
-		return clampi(int(ah), 2, CHUNK_H - 12)
 	if theme == "desert":
 		# Flat rolling dunes well above the water table.
 		var dune := 14.0 + (base * 18.0 + hills * hills * 30.0) * falloff + detail * 1.8

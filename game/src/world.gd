@@ -996,7 +996,7 @@ func _check_reset_votes() -> void:
 func sv_new_map(map_name: String) -> void:
 	if not multiplayer.is_server() or match_phase != "IDLE":
 		return
-	var known := map_name in ["classic", "desert", "isles", "castles", "city", "sky", "arena"]
+	var known := map_name in ["classic", "desert", "isles", "castles", "city", "sky"]
 	if map_name == "mca" or map_name.begins_with("mca:"):
 		for entry in ChunkStore.list_maps():
 			if str(entry.key) == map_name:
@@ -1034,9 +1034,8 @@ func _do_world_reset(map_name := "") -> void:
 const LOBBY_SECONDS := 25.0
 const STORM_START := 360.0
 
-## The Arena theme is a small island, so its storm starts tight too.
 func _storm_start() -> float:
-	return 140.0 if store != null and store.theme == "arena" else STORM_START
+	return STORM_START
 const STORM_END := 16.0
 var storm_minutes := 5.0
 var loot_only := false
@@ -1146,7 +1145,8 @@ func _server_match_drop() -> void:
 		var lz := int(sin(langle) * ldist)
 		var ly := store.surface_y(lx, lz)
 		if ly > 2 and ly < WorldGen.CHUNK_H - 6 \
-				and store.get_block(Vector3i(lx, ly, lz)) != Blocks.WATER:
+				and store.get_block(Vector3i(lx, ly, lz)) != Blocks.WATER \
+				and (store.theme != "sky" or ly > WorldGen.SEA_LEVEL + 6):
 			var lpool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 14, 15]
 			_crates[_next_crate_id] = {"weapon": lpool[randi() % lpool.size()],
 				"pos": Vector3(lx + 0.5, ly + 1.0, lz + 0.5)}
@@ -1538,7 +1538,8 @@ func _server_tick_crates() -> void:
 		var wz := int(anchor.z + sin(angle) * dist)
 		var y := store.surface_y(wx, wz)
 		if y > 2 and y < WorldGen.CHUNK_H - 6 \
-				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER:
+				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER \
+				and (store.theme != "sky" or y > WorldGen.SEA_LEVEL + 6):
 			# Rarer weapons show up less often.
 			var pool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 15]
 			_crates[_next_crate_id] = {"weapon": pool[randi() % pool.size()],

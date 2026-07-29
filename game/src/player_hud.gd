@@ -334,10 +334,14 @@ func _toggle_menu(player: Player, _tab: int) -> void:
 
 ## "Character" tab: big friendly buttons for name, skin, shirt and hat.
 func _build_character_tab() -> void:
+	var char_scroll := ScrollContainer.new()
+	char_scroll.name = "Character"
+	char_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_tabs.add_child(char_scroll)
 	var split := HBoxContainer.new()
-	split.name = "Character"
+	split.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	split.add_theme_constant_override("separation", _us(36))
-	_tabs.add_child(split)
+	char_scroll.add_child(split)
 	var tab := VBoxContainer.new()
 	tab.add_theme_constant_override("separation", _us(14))
 	split.add_child(tab)
@@ -421,10 +425,8 @@ func _build_character_tab() -> void:
 ## "Game" tab: battle royale (with options and teams inline), world picker
 ## and computer players — grouped into tidy sections.
 func _build_game_tab() -> void:
-	var tab := VBoxContainer.new()
-	tab.name = "Game"
+	var tab := _scrolled_tab("Game")
 	tab.add_theme_constant_override("separation", _us(10))
-	_tabs.add_child(tab)
 	_add_section(tab, "⚔  BATTLE ROYALE")
 	var br := Button.new()
 	br.focus_mode = Control.FOCUS_NONE
@@ -514,7 +516,7 @@ func _rebuild_world_row() -> void:
 	for child in _maps_row.get_children():
 		child.queue_free()
 	for choice in [["classic", "Classic"], ["desert", "Desert"], ["isles", "Isles"],
-			["castles", "Castle"], ["city", "City"], ["sky", "Skylands"], ["arena", "Arena"]]:
+			["castles", "Castle"], ["city", "City"], ["sky", "Skylands"]]:
 		_world_row.add_child(_map_button(str(choice[0]), str(choice[1])))
 	var have_maps: bool = world != null and not world.map_list.is_empty()
 	_maps_label.visible = have_maps
@@ -534,6 +536,17 @@ func _map_button(map_key: String, map_name: String) -> Button:
 			_close_menu()
 		Sfx.play("warp", -8.0))
 	return map_btn
+
+## A tab whose content scrolls vertically instead of overflowing.
+func _scrolled_tab(tab_name: String) -> VBoxContainer:
+	var scroll := ScrollContainer.new()
+	scroll.name = tab_name
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_tabs.add_child(scroll)
+	var box := VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(box)
+	return box
 
 func _add_section(tab: Control, title: String) -> void:
 	var lbl := Label.new()
@@ -697,13 +710,10 @@ func _refresh_team_box() -> void:
 ## Its own tab: every video setting individually — numbers get sliders,
 ## switches get checkboxes. No presets, no magic.
 func _build_video_tab() -> void:
-	var tab := VBoxContainer.new()
-	tab.name = "Video"
+	var tab := _scrolled_tab("Video")
 	tab.add_theme_constant_override("separation", _us(10))
-	_tabs.add_child(tab)
 	_add_video_slider(tab, "Draw distance", "dist_blocks", 32, 208, 16, "%d blocks (16 per chunk)")
-	_add_video_slider(tab, "3D resolution", "render_scale", 40, 100, 5,
-		"%d%% — lower renders the world smaller and stretches it up (fast, softer)")
+	_add_video_slider(tab, "3D resolution", "render_scale", 10, 100, 5, "%d%%")
 	_add_video_slider(tab, "Shadow quality", "shadow_quality", 0, 2, 1, "%d")
 	for spec in [["shadows", "Shadows"], ["ssao", "Contact shading (SSAO)"],
 			["glow", "Glow"], ["lights", "Dynamic lights"],

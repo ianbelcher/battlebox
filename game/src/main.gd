@@ -453,6 +453,9 @@ func _apply_video() -> void:
 	var v: Dictionary = Game.video
 	if Game.world != null and Game.world.sky != null:
 		Game.world.sky.allow_shadows = bool(v.shadows)
+		var fog_end := float(int(v.dist_blocks))
+		Game.world.sky.environment.fog_depth_end = fog_end
+		Game.world.sky.environment.fog_depth_begin = fog_end * 0.55
 		Game.world.sky.environment.ssao_enabled = bool(v.ssao)
 		Game.world.sky.environment.glow_enabled = bool(v.glow)
 	if Game.world != null and Game.world.chunks != null:
