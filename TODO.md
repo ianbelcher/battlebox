@@ -1,4 +1,4 @@
-# Belcher World — working list (Ian + Claude)
+# Boxel Battle (was Belcher World) — working list (Ian + Claude)
 
 ## AUDIT — Ian's asks, current status (keep this honest!)
 
@@ -35,8 +35,11 @@ STILL OPEN (next session — do these first):
 - [x] Wireframe requires a debug build (clients export release), so the
       toggle now only appears in dev builds — a true developer tool. The
       other video toggles use runtime settings that work everywhere
-- [ ] Multi-server lobby flow; dedicated compact arena map; open-source
-      Minecraft map library (download, document centers)
+- [x] Dedicated compact ARENA map: new "Arena" world button — tight
+      ~250x250 island, storm starts at 140 and drop ring scales, whole
+      map resident instantly
+- [ ] Multi-server lobby flow; open-source Minecraft map library
+      (download CC maps, document WORLD_MCA_CENTER per map)
 
 The durable backlog. Claude: keep this file updated every iteration —
 strike items when shipped, add new asks immediately.

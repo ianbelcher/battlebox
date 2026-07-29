@@ -458,7 +458,7 @@ func _build_game_tab() -> void:
 	tab.add_child(world_row)
 	for choice in [["classic", "Classic"], ["desert", "Desert"], ["isles", "Isles"],
 			["castles", "Castle"], ["city", "City"], ["sky", "Skylands"],
-			["mca", "Ian's World"]]:
+			["arena", "Arena"], ["mca", "Ian's World"]]:
 		var map_btn := Button.new()
 		map_btn.focus_mode = Control.FOCUS_NONE
 		map_btn.text = str(choice[1])

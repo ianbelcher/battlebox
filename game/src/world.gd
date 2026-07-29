@@ -957,7 +957,7 @@ func _check_reset_votes() -> void:
 func sv_new_map(map_name: String) -> void:
 	if not multiplayer.is_server() or match_phase != "IDLE":
 		return
-	if not (map_name in ["classic", "desert", "isles", "castles", "city", "sky", "mca"]):
+	if not (map_name in ["classic", "desert", "isles", "castles", "city", "sky", "arena", "mca"]):
 		return
 	_do_world_reset(map_name)
 
@@ -986,6 +986,10 @@ func _do_world_reset(map_name := "") -> void:
 # ------------------------------------------------------------------
 const LOBBY_SECONDS := 25.0
 const STORM_START := 360.0
+
+## The Arena theme is a small island, so its storm starts tight too.
+func _storm_start() -> float:
+	return 140.0 if store != null and store.theme == "arena" else STORM_START
 const STORM_END := 16.0
 var storm_minutes := 5.0
 var loot_only := false
@@ -1040,7 +1044,7 @@ func _server_tick_match(delta: float) -> void:
 				# when one team is left standing.
 				_match_timer = 9999.0
 			var frac := 1.0 - clampf(_match_timer / (storm_minutes * 60.0), 0.0, 1.0)
-			storm_radius = lerpf(STORM_START, STORM_END, frac)
+			storm_radius = lerpf(_storm_start(), STORM_END, frac)
 			cl_storm.rpc(storm_radius)
 			_storm_damage()
 			_storm_bite()
@@ -1082,7 +1086,7 @@ func _server_match_drop() -> void:
 			state.hp = 5
 		cl_hearts.rpc(id, 5)
 		var angle := float(i) * TAU / maxf(Game.roster.size(), 1.0) + randf() * 0.3
-		var dist := randf_range(90.0, 150.0)
+		var dist := randf_range(_storm_start() * 0.25, _storm_start() * 0.42)
 		var drop := Vector3(cos(angle) * dist, WorldGen.CHUNK_H - 4, sin(angle) * dist)
 		cl_drop.rpc(id, drop, loot_only)
 		i += 1
@@ -1090,7 +1094,7 @@ func _server_match_drop() -> void:
 	_crates.clear()
 	for n in 40:
 		var langle := randf() * TAU
-		var ldist := sqrt(randf()) * (STORM_START * 0.85)
+		var ldist := sqrt(randf()) * (_storm_start() * 0.85)
 		var lx := int(cos(langle) * ldist)
 		var lz := int(sin(langle) * ldist)
 		var ly := store.surface_y(lx, lz)
@@ -1102,7 +1106,7 @@ func _server_match_drop() -> void:
 			_next_crate_id += 1
 	_broadcast_crates()
 	Game.cl_roster.rpc(Game.roster)
-	storm_radius = STORM_START
+	storm_radius = _storm_start()
 	clock = 0.79  # dusk falls as the match starts: hunt loot in the dark
 	cl_clock.rpc(clock)
 	cl_match.rpc("DROP", 6.0)
