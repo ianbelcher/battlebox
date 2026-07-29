@@ -26,7 +26,9 @@ STILL OPEN (next session — do these first):
       states across every tab (screenshot-verified). More passes welcome
 - [x] Unlimited is truly unlimited: storm never closes, match ends only
       when one team stands
-- [ ] Kit chips should render actual structure previews (mini 3D renders)
+- [x] Kit chips show real per-structure preview icons (house, tower,
+      tree, bridge, campsite, pool, garden, fort, bunker, sniper,
+      barricade) in the picker grid and hotbar
 - [x] X-Ray Goggles crate pickup: while held, every player glows through
       the walls (private per-player render layer). Wireframe stays as a
       video toggle for now per Ian

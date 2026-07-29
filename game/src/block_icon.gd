@@ -114,10 +114,58 @@ func _draw() -> void:
 		return
 	if kind == "structure":
 		var c := _dim(Structures.spec(block_id).color)
-		draw_colored_polygon(PackedVector2Array([Vector2(w * 0.5, h * 0.06),
-			Vector2(w * 0.95, h * 0.45), Vector2(w * 0.05, h * 0.45)]), c)
-		draw_rect(Rect2(w * 0.16, h * 0.45, w * 0.68, h * 0.47), c.darkened(0.25))
-		draw_rect(Rect2(w * 0.4, h * 0.62, w * 0.2, h * 0.3), Color(0.08, 0.08, 0.12, 0.8))
+		var dark := c.darkened(0.3)
+		match block_id:
+			0:  # Little House
+				draw_colored_polygon(PackedVector2Array([Vector2(w * 0.5, h * 0.08),
+					Vector2(w * 0.92, h * 0.45), Vector2(w * 0.08, h * 0.45)]), c)
+				draw_rect(Rect2(w * 0.18, h * 0.45, w * 0.64, h * 0.45), dark)
+				draw_rect(Rect2(w * 0.42, h * 0.62, w * 0.16, h * 0.28), Color(0.08, 0.08, 0.12, 0.85))
+			1:  # Watchtower
+				draw_rect(Rect2(w * 0.34, h * 0.2, w * 0.32, h * 0.7), c)
+				for i in 3:
+					draw_rect(Rect2(w * (0.3 + i * 0.15), h * 0.1, w * 0.1, h * 0.12), c)
+				draw_rect(Rect2(w * 0.42, h * 0.72, w * 0.16, h * 0.18), Color(0.08, 0.08, 0.12, 0.85))
+			2:  # Giant Tree
+				draw_rect(Rect2(w * 0.42, h * 0.5, w * 0.16, h * 0.4), Color("6b4a2f"))
+				draw_circle(Vector2(w * 0.5, h * 0.34), w * 0.3, c)
+			3:  # Bridge
+				draw_rect(Rect2(w * 0.08, h * 0.42, w * 0.84, h * 0.12), c)
+				draw_rect(Rect2(w * 0.14, h * 0.54, w * 0.1, h * 0.34), dark)
+				draw_rect(Rect2(w * 0.76, h * 0.54, w * 0.1, h * 0.34), dark)
+			4:  # Campsite
+				draw_colored_polygon(PackedVector2Array([Vector2(w * 0.38, h * 0.2),
+					Vector2(w * 0.66, h * 0.62), Vector2(w * 0.1, h * 0.62)]), c)
+				draw_circle(Vector2(w * 0.76, h * 0.68), w * 0.09, Color("ff6a3d"))
+			5:  # Fort Wall
+				draw_rect(Rect2(w * 0.08, h * 0.4, w * 0.84, h * 0.42), c)
+				for i in 4:
+					draw_rect(Rect2(w * (0.1 + i * 0.22), h * 0.28, w * 0.12, h * 0.14), c)
+			6:  # Pool
+				draw_rect(Rect2(w * 0.12, h * 0.3, w * 0.76, h * 0.44), dark)
+				draw_rect(Rect2(w * 0.18, h * 0.36, w * 0.64, h * 0.32), Color("62b8f5"))
+			7:  # Flower Garden
+				draw_rect(Rect2(w * 0.1, h * 0.62, w * 0.8, h * 0.2), Color("58a850"))
+				for i in 3:
+					draw_circle(Vector2(w * (0.26 + i * 0.24), h * 0.44), w * 0.08,
+						[Color("ff6b6b"), Color("ffd166"), Color("ff9ff3")][i])
+			8:  # Fort
+				draw_rect(Rect2(w * 0.1, h * 0.26, w * 0.2, h * 0.6), c)
+				draw_rect(Rect2(w * 0.7, h * 0.26, w * 0.2, h * 0.6), c)
+				draw_rect(Rect2(w * 0.24, h * 0.5, w * 0.52, h * 0.36), dark)
+			9:  # Steel Bunker
+				draw_circle(Vector2(w * 0.5, h * 0.72), w * 0.34, c)
+				draw_rect(Rect2(w * 0.16, h * 0.72, w * 0.68, h * 0.18), c)
+				draw_rect(Rect2(w * 0.36, h * 0.58, w * 0.28, h * 0.07), Color(0.08, 0.08, 0.12, 0.85))
+			10:  # Sniper Tower
+				draw_rect(Rect2(w * 0.3, h * 0.14, w * 0.4, h * 0.26), c)
+				draw_line(Vector2(w * 0.36, h * 0.4), Vector2(w * 0.36, h * 0.88), dark, w * 0.05)
+				draw_line(Vector2(w * 0.64, h * 0.4), Vector2(w * 0.64, h * 0.88), dark, w * 0.05)
+			11:  # Barricade
+				draw_line(Vector2(w * 0.14, h * 0.78), Vector2(w * 0.86, h * 0.3), c, w * 0.12)
+				draw_line(Vector2(w * 0.14, h * 0.3), Vector2(w * 0.86, h * 0.78), c, w * 0.12)
+			_:
+				draw_rect(Rect2(w * 0.2, h * 0.3, w * 0.6, h * 0.55), c)
 		return
 	# Blocks.
 	if Blocks.is_cross(block_id):

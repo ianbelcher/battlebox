@@ -75,24 +75,13 @@ func _init(p_category := "blocks") -> void:
 		var chip := Panel.new()
 		chip.custom_minimum_size = Vector2(40, 40)
 		chip.mouse_filter = Control.MOUSE_FILTER_STOP
-		if entry.kind != "structure":
-			var icon := BlockIcon.new(int(entry.id), entry.kind)
-			icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-			icon.offset_left = 4
-			icon.offset_top = 4
-			icon.offset_right = -4
-			icon.offset_bottom = -4
-			chip.add_child(icon)
-		if entry.kind == "structure":
-			var mark := Label.new()
-			mark.text = "⌂"
-			mark.add_theme_font_size_override("font_size", 20)
-			mark.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
-			mark.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-			mark.grow_horizontal = Control.GROW_DIRECTION_BOTH
-			mark.grow_vertical = Control.GROW_DIRECTION_BOTH
-			mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			chip.add_child(mark)
+		var icon := BlockIcon.new(int(entry.id), entry.kind)
+		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		icon.offset_left = 4
+		icon.offset_top = 4
+		icon.offset_right = -4
+		icon.offset_bottom = -4
+		chip.add_child(icon)
 		var index := i
 		chip.gui_input.connect(func(event: InputEvent) -> void:
 			if event is InputEventMouseButton and event.pressed \
@@ -164,8 +153,7 @@ func _refresh() -> void:
 		var entry: Dictionary = _chips[i].get_meta("entry", entries[i])
 		var style := StyleBoxFlat.new()
 		var color: Color = entries[i].color
-		style.bg_color = Color(color.r, color.g, color.b, 1.0) if entries[i].kind == "structure" \
-			else Color(0.1, 0.11, 0.16)
+		style.bg_color = Color(0.1, 0.11, 0.16)
 		style.set_corner_radius_all(6)
 		if i == focus_index:
 			style.border_color = Color.WHITE
