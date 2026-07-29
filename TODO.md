@@ -38,8 +38,13 @@ STILL OPEN (next session — do these first):
 - [x] Dedicated compact ARENA map: new "Arena" world button — tight
       ~250x250 island, storm starts at 140 and drop ring scales, whole
       map resident instantly
-- [ ] Multi-server lobby flow; open-source Minecraft map library
-      (download CC maps, document WORLD_MCA_CENTER per map)
+- [x] Map LIBRARY: maps/ subfolders (region files + map.cfg with
+      name/center/y0) appear automatically as WORLD buttons — the server
+      broadcasts its library to every client. maps/README.md documents
+      adding maps + good CC sources (minecraftmaps.com, Planet Minecraft)
+- [ ] Multi-server lobby flow — likely SUPERSEDED by live map switching +
+      in-place matches on one server; confirm with Ian before building
+- [ ] Ask Ian what "themes drop together in the main play" meant
 
 The durable backlog. Claude: keep this file updated every iteration —
 strike items when shipped, add new asks immediately.

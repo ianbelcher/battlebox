@@ -27,6 +27,8 @@ signal hearts_changed
 signal survival_ended(seconds: float, bonked: int)
 signal match_changed
 signal storm_changed
+signal map_list_changed
+var map_list: Array = []
 signal reset_vote_started
 signal reset_result(happened: bool)
 
@@ -211,6 +213,7 @@ func sv_hello() -> void:
 		return
 	var peer := multiplayer.get_remote_sender_id()
 	cl_world_info.rpc_id(peer, spawn_pos, clock, source)
+	cl_map_list.rpc_id(peer, ChunkStore.list_maps())
 	var payload: Array = []
 	for crate_id: int in _crates.keys():
 		payload.append([crate_id, _crates[crate_id].weapon, _crates[crate_id].pos])
@@ -957,7 +960,13 @@ func _check_reset_votes() -> void:
 func sv_new_map(map_name: String) -> void:
 	if not multiplayer.is_server() or match_phase != "IDLE":
 		return
-	if not (map_name in ["classic", "desert", "isles", "castles", "city", "sky", "arena", "mca"]):
+	var known := map_name in ["classic", "desert", "isles", "castles", "city", "sky", "arena"]
+	if map_name == "mca" or map_name.begins_with("mca:"):
+		for entry in ChunkStore.list_maps():
+			if str(entry.key) == map_name:
+				known = true
+				break
+	if not known:
 		return
 	_do_world_reset(map_name)
 
@@ -1789,6 +1798,11 @@ func send_pos(slot: int, pos: Vector3, yaw: float, anim: int) -> void:
 
 func send_edit(slot: int, pos: Vector3i, block: int) -> void:
 	sv_edit.rpc_id(1, slot, pos, block)
+
+@rpc("authority", "reliable")
+func cl_map_list(maps: Array) -> void:
+	map_list = maps
+	map_list_changed.emit()
 
 @rpc("authority", "reliable")
 func cl_world_info(p_spawn: Vector3i, p_clock: float, p_source: String) -> void:

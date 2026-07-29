@@ -453,23 +453,12 @@ func _build_game_tab() -> void:
 	_team_box.add_theme_constant_override("separation", _us(4))
 	tab.add_child(_team_box)
 	_add_section(tab, "🌍  WORLD")
-	var world_row := HBoxContainer.new()
-	world_row.add_theme_constant_override("separation", _us(6))
-	tab.add_child(world_row)
-	for choice in [["classic", "Classic"], ["desert", "Desert"], ["isles", "Isles"],
-			["castles", "Castle"], ["city", "City"], ["sky", "Skylands"],
-			["arena", "Arena"], ["mca", "Ian's World"]]:
-		var map_btn := Button.new()
-		map_btn.focus_mode = Control.FOCUS_NONE
-		map_btn.text = str(choice[1])
-		map_btn.add_theme_font_size_override("font_size", _us(18))
-		var map_key := str(choice[0])
-		map_btn.pressed.connect(func() -> void:
-			if Game.world != null:
-				Game.world.sv_new_map.rpc_id(1, map_key)
-				_close_menu()
-			Sfx.play("warp", -8.0))
-		world_row.add_child(map_btn)
+	_world_row = HBoxContainer.new()
+	_world_row.add_theme_constant_override("separation", _us(6))
+	tab.add_child(_world_row)
+	_rebuild_world_row()
+	if world != null:
+		world.map_list_changed.connect(_rebuild_world_row)
 	_add_section(tab, "👥  PLAYERS")
 	var bot_row := HBoxContainer.new()
 	bot_row.add_theme_constant_override("separation", _us(8))
@@ -496,6 +485,30 @@ func _build_game_tab() -> void:
 				Sfx.play("pop")
 				return)
 	bot_row.add_child(bot_off)
+
+## Theme buttons plus every imported map the server has in its library.
+func _rebuild_world_row() -> void:
+	if _world_row == null:
+		return
+	for child in _world_row.get_children():
+		child.queue_free()
+	var choices := [["classic", "Classic"], ["desert", "Desert"], ["isles", "Isles"],
+		["castles", "Castle"], ["city", "City"], ["sky", "Skylands"], ["arena", "Arena"]]
+	if world != null:
+		for entry in world.map_list:
+			choices.append([str(entry.key), str(entry.name)])
+	for choice in choices:
+		var map_btn := Button.new()
+		map_btn.focus_mode = Control.FOCUS_NONE
+		map_btn.text = str(choice[1])
+		map_btn.add_theme_font_size_override("font_size", _us(18))
+		var map_key := str(choice[0])
+		map_btn.pressed.connect(func() -> void:
+			if Game.world != null:
+				Game.world.sv_new_map.rpc_id(1, map_key)
+				_close_menu()
+			Sfx.play("warp", -8.0))
+		_world_row.add_child(map_btn)
 
 func _add_section(tab: Control, title: String) -> void:
 	var lbl := Label.new()
@@ -575,6 +588,7 @@ func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color
 				image.set_pixel(px + dx, py + dy, color)
 
 var _team_box: VBoxContainer
+var _world_row: HBoxContainer
 
 ## Battle lobby lives in the menu now: when a match opens, EVERYONE's menu
 ## pops open on the Game tab so each player can pick a team with their own

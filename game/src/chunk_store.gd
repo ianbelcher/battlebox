@@ -130,6 +130,47 @@ func find_spawn() -> Vector3i:
 		return mca.find_spawn()
 	return gen.find_spawn()
 
+## Where imported Minecraft maps live (env override, docker, or repo dir).
+static func maps_root() -> String:
+	var override := OS.get_environment("WORLD_MCA_DIR")
+	if not override.is_empty():
+		return override
+	for candidate in ["/opt/world/maps",
+			ProjectSettings.globalize_path("res://").path_join("../maps")]:
+		if DirAccess.dir_exists_absolute(candidate):
+			return candidate
+	return "maps"
+
+## The map library: loose region files = "Ian's World"; each subfolder
+## with .mca files inside = its own selectable map (name from map.cfg).
+static func list_maps() -> Array:
+	var out: Array = []
+	var root := maps_root()
+	var dir := DirAccess.open(root)
+	if dir == null:
+		return out
+	for file in dir.get_files():
+		if file.ends_with(".mca"):
+			out.append({"key": "mca", "name": "Ian's World"})
+			break
+	for sub in dir.get_directories():
+		var sub_dir := DirAccess.open(root.path_join(sub))
+		if sub_dir == null:
+			continue
+		var has_region := false
+		for file in sub_dir.get_files():
+			if file.ends_with(".mca"):
+				has_region = true
+				break
+		if not has_region and DirAccess.dir_exists_absolute(root.path_join(sub).path_join("region")):
+			has_region = true
+		if has_region:
+			var map_cfg := ConfigFile.new()
+			map_cfg.load(root.path_join(sub).path_join("map.cfg"))
+			out.append({"key": "mca:" + sub,
+				"name": str(map_cfg.get_value("map", "name", sub.capitalize()))})
+	return out
+
 ## Wipe every edit and regenerate from a brand-new seed (map reset vote).
 func reset_world(new_seed: int, map_name := "") -> void:
 	_cache.clear()
@@ -150,19 +191,20 @@ func _apply_map(map_name: String, new_seed: int) -> void:
 	if map_name.is_empty():
 		var themes := ["classic", "desert", "isles", "castles", "city", "sky"]
 		map_name = themes[randi() % themes.size()]
-	if map_name == "mca":
+	if map_name == "mca" or map_name.begins_with("mca:"):
 		source = "mca"
-		var mca_dir := OS.get_environment("WORLD_MCA_DIR")
-		if mca_dir.is_empty():
-			for candidate in ["/opt/world/maps",
-					ProjectSettings.globalize_path("res://").path_join("../maps")]:
-				if DirAccess.dir_exists_absolute(candidate):
-					mca_dir = candidate
-					break
+		var mca_dir := maps_root()
+		if map_name.begins_with("mca:"):
+			mca_dir = mca_dir.path_join(map_name.trim_prefix("mca:"))
 		mca = McaWorld.new(mca_dir)
 		if mca.is_valid():
-			if mca.center == Vector2i.ZERO:
-				mca.center = Vector2i(256, 256)
+			# Per-map settings, else Ian's-world defaults.
+			var map_cfg := ConfigFile.new()
+			map_cfg.load(mca_dir.path_join("map.cfg"))
+			mca.center = Vector2i(
+				int(map_cfg.get_value("map", "center_x", 256)),
+				int(map_cfg.get_value("map", "center_z", 256)))
+			mca.y0 = int(map_cfg.get_value("map", "y0", mca.y0))
 		else:
 			push_error("No importable map found at '%s'" % mca_dir)
 			source = "procedural"
