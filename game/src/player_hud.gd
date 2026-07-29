@@ -48,6 +48,7 @@ var _preview_angle := PI
 var _last_tab := 1
 var _tab_guard := false
 var _radar: TextureRect
+var _clock: Label
 var _storm_tint: ColorRect
 var _water_tint: ColorRect
 var _autoopened := false
@@ -211,6 +212,12 @@ func _ready() -> void:
 	_water_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_water_tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_water_tint)
+	_clock = Label.new()
+	_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_clock.add_theme_font_size_override("font_size", _us(18))
+	_clock.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
+	_clock.add_theme_constant_override("outline_size", 4)
+	add_child(_clock)
 	_radar = TextureRect.new()
 	_radar.stretch_mode = TextureRect.STRETCH_SCALE
 	_radar.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -577,6 +584,15 @@ func _update_radar() -> void:
 				WorldNode.TEAM_COLORS[team] if team >= 0 else Color("ff4426"))
 	_blip(image, center, yaw, player.position, Color.WHITE)
 	_radar.texture = ImageTexture.create_from_image(image)
+	_update_clock()
+
+## Each player gets the clock + player count under their own radar.
+func _update_clock() -> void:
+	if _clock == null or world == null:
+		return
+	var hour := int(fposmod(world.clock * 24.0, 24.0))
+	var night: bool = world.clock > 0.78 or world.clock < 0.22
+	_clock.text = "%s %02d:00 · %d playing" % ["☾" if night else "☀", hour, Game.roster.size()]
 
 func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color) -> void:
 	var s := Vector2(pos.x - center.x, pos.z - center.z).rotated(yaw) / 1.5
@@ -824,6 +840,8 @@ func _process(_delta: float) -> void:
 		var map_px := clampf(size.y * 0.24, 110.0, 380.0)
 		_radar.position = Vector2(size.x - map_px - 10, 10)
 		_radar.size = Vector2(map_px, map_px)
+		_clock.position = Vector2(size.x - map_px - 10, 12 + map_px)
+		_clock.size.x = map_px
 		# Split-screen: fonts are sized for the full window, so shrink the
 		# whole menu to fit this player's cell instead of spilling over.
 		var win_w := float(DisplayServer.window_get_size().x)

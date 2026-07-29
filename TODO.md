@@ -44,6 +44,8 @@ STILL OPEN (next session — do these first):
       adding maps + good CC sources (minecraftmaps.com, Planet Minecraft)
 - [ ] Multi-server lobby flow — likely SUPERSEDED by live map switching +
       in-place matches on one server; confirm with Ian before building
+- [x] Clock/player-count moved under each player's own radar (the global
+      top-right clock overlapped player 2's radar in splits)
 - [ ] Ask Ian what "themes drop together in the main play" meant
 
 The durable backlog. Claude: keep this file updated every iteration —

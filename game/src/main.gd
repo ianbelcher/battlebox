@@ -174,8 +174,10 @@ func _build_game_screen() -> void:
 	_minimap.visible = false
 	_game_screen.add_child(_minimap)
 	_clock_label = _make_label("", 20, Color.WHITE, 4)
+	_clock_label.visible = false  # each PlayerHud shows its own clock now
 	_game_screen.add_child(_clock_label)
 	_players_label = _make_label("", 16, Color(1, 1, 1, 0.75), 4)
+	_players_label.visible = false
 	_game_screen.add_child(_players_label)
 	_wave_label = _make_label("", 20, Color("ff6b6b"), 4)
 	_game_screen.add_child(_wave_label)
@@ -484,12 +486,13 @@ func _layout_topright() -> void:
 	_clock_label.add_theme_font_size_override("font_size", int(22 * ui_scale()))
 	_players_label.add_theme_font_size_override("font_size", int(16 * ui_scale()))
 	_wave_label.add_theme_font_size_override("font_size", int(22 * ui_scale()))
-	# Clock sits under each hud's radar (radar is ~24% of cell height).
-	_clock_label.position = Vector2(window.x - map_px - 12, clock_y)
+	# Clock and player count live top-CENTER so they never sit on top of
+	# any player's radar (each cell has its own radar top-right).
+	_clock_label.position = Vector2(window.x * 0.5 - map_px * 0.5, clock_y)
 	_clock_label.size.x = map_px
-	_players_label.position = Vector2(window.x - map_px - 12, clock_y + 30 * ui_scale())
+	_players_label.position = Vector2(window.x * 0.5 - map_px * 0.5, clock_y + 30 * ui_scale())
 	_players_label.size.x = map_px
-	_wave_label.position = Vector2(window.x - map_px - 12, clock_y + 56 * ui_scale())
+	_wave_label.position = Vector2(window.x * 0.5 - map_px * 0.5, clock_y + 56 * ui_scale())
 	_wave_label.size.x = map_px
 
 func _refresh_match() -> void:
