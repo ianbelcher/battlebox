@@ -251,6 +251,8 @@ func _process(delta: float) -> void:
 				var amp: float = 0.055 * float(cell.bob_amp)
 				vm.position = Vector3(cell.get("vm_base", Vector3(0.3, -0.42, -0.72))) \
 					+ Vector3(cos(float(cell.bob_phase)) * amp, -absf(sin(float(cell.bob_phase))) * amp * 1.3, 0)
+				# Weapon swings/recoils forward while in use.
+				vm.rotation_degrees = Vector3(-75.0 * (player.swing_time / 0.25), 6, 0)
 			continue
 		cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 		cam.near = 0.5

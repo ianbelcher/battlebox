@@ -286,6 +286,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		position = position.lerp(_remote_target, minf(1.0, delta * 10.0))
 		rotation.y = lerp_angle(rotation.y, _remote_yaw, minf(1.0, delta * 10.0))
+	swing_time = maxf(0.0, swing_time - delta)
 	_refresh_hand()
 	_footsteps(delta)
 	_animate(delta)
@@ -643,7 +644,10 @@ func _local_actions(delta: float) -> void:
 				_edit_cooldown = EDIT_REPEAT
 
 ## Sword: a close swing that bonks enemies and chops soft blocks.
+var swing_time := 0.0
+
 func _sword_swing() -> void:
+	swing_time = 0.25
 	Sfx.play("whoosh", -8.0, 1.4)
 	var hit_someone := false
 	# Swing direction: where you LOOK, not where you last walked — and very

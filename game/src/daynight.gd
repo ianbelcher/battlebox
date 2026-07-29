@@ -10,6 +10,7 @@ var moon: DirectionalLight3D
 var environment: Environment
 var sky_material: ProceduralSkyMaterial
 var _clock := 0.35
+var allow_shadows := true
 
 const DAY_TOP := Color("4a9de8")
 const DAY_HORIZON := Color("bcd8ee")
@@ -87,14 +88,14 @@ func _apply(clock: float) -> void:
 	# instead of collapsing into a black trough before the moon takes over.
 	var daylight := clampf(elevation * 2.2 + 0.3, 0.0, 1.0)
 	sun.light_energy = daylight * 1.4
-	sun.shadow_enabled = daylight > 0.1
+	sun.shadow_enabled = allow_shadows and daylight > 0.1
 	var warmth := clampf(1.0 - elevation * 2.0, 0.0, 1.0)  # low sun = warm
 	sun.light_color = Color(1.0, 0.96 - warmth * 0.25, 0.88 - warmth * 0.4)
 
 	var moonlight := clampf(-elevation * 5.0, 0.0, 1.0)
 	moon.rotation = Vector3(-maxf(-elevation, 0.02) * 1.2, -0.6, 0)
 	moon.light_energy = moonlight * 0.4
-	moon.shadow_enabled = moonlight > 0.4
+	moon.shadow_enabled = allow_shadows and moonlight > 0.4
 
 	var top: Color
 	var horizon: Color

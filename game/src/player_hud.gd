@@ -147,8 +147,8 @@ func _ready() -> void:
 	menu_style.bg_color = Color(0.05, 0.06, 0.1, 0.94)
 	menu_style.set_corner_radius_all(14)
 	menu_style.set_content_margin_all(12)
-	menu_style.border_color = Color("ffd166")
-	menu_style.set_border_width_all(2)
+	menu_style.border_color = Color(1, 1, 1, 0.08)
+	menu_style.set_border_width_all(1)
 	_menu.add_theme_stylebox_override("panel", menu_style)
 	# Fill ~90% of this player's cell whatever its size — quarter-screen
 	# split or a huge fullscreen window alike.
@@ -214,6 +214,8 @@ func _ready() -> void:
 	_picker = _pickers[0]
 	_build_character_tab()
 	_build_game_tab()
+	_build_video_tab()
+	_build_battle_modal()
 	# The 8 slots live inside the menu too: click a slot, then click items.
 	_menu_slots_row = HBoxContainer.new()
 	_menu_slots_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -379,9 +381,7 @@ func _build_game_tab() -> void:
 	br.text = "🏆  Start Battle Royale"
 	br.add_theme_font_size_override("font_size", _us(24))
 	br.pressed.connect(func() -> void:
-		if Game.world != null:
-			Game.world.sv_match_start.rpc_id(1, 0)
-			_close_menu())
+		_open_battle_modal(true))
 	tab.add_child(br)
 	var bot_btn := Button.new()
 	bot_btn.focus_mode = Control.FOCUS_NONE
@@ -391,11 +391,11 @@ func _build_game_tab() -> void:
 		Game.join_local(BotSlot.new(randi() % 1000))
 		Sfx.play("join"))
 	tab.add_child(bot_btn)
+	_video_home = tab  # replaced below: the video panel gets its own tab
 	var preset_row := HBoxContainer.new()
 	preset_row.add_theme_constant_override("separation", _us(8))
-	tab.add_child(preset_row)
 	var video_label := Label.new()
-	video_label.text = "🖥  Video:"
+	video_label.text = "Presets:"
 	video_label.add_theme_font_size_override("font_size", _us(22))
 	preset_row.add_child(video_label)
 	var toggle_specs := [["shadows", "Shadows"], ["fancy_light", "Fancy lighting"],
@@ -419,7 +419,7 @@ func _build_game_tab() -> void:
 			Game.video_changed.emit()
 			Sfx.play("tick", -8.0))
 		preset_row.add_child(pbtn)
-	tab.add_child(toggle_row)
+	_video_rows = [preset_row, toggle_row]
 	for spec in toggle_specs:
 		var tbtn := Button.new()
 		tbtn.focus_mode = Control.FOCUS_NONE
@@ -435,7 +435,7 @@ func _build_game_tab() -> void:
 	refresh_toggles.call()
 	var storm_row := HBoxContainer.new()
 	storm_row.add_theme_constant_override("separation", _us(8))
-	tab.add_child(storm_row)
+	_storm_row = storm_row
 	var storm_label := Label.new()
 	storm_label.text = "Storm:"
 	storm_label.add_theme_font_size_override("font_size", _us(22))
@@ -453,7 +453,6 @@ func _build_game_tab() -> void:
 		storm_row.add_child(preset_btn)
 	_team_box = VBoxContainer.new()
 	_team_box.add_theme_constant_override("separation", _us(6))
-	tab.add_child(_team_box)
 	var bot_off := Button.new()
 	bot_off.focus_mode = Control.FOCUS_NONE
 	bot_off.text = "➖  Remove computer player"
@@ -486,8 +485,8 @@ func _refresh_preview() -> void:
 		_preview_avatar.queue_free()
 	var entry := _entry()
 	_preview_viewport.size = Vector2i(
-		maxi(140, mini(_us(330), int(size.x * 0.28))),
-		maxi(180, mini(_us(430), int(size.y * 0.52))))
+		maxi(150, mini(_us(430), int(size.x * 0.36))),
+		maxi(200, mini(_us(560), int(size.y * 0.62))))
 	_preview_avatar = AvatarFactory.build_character(entry.get("style", {}))
 	_preview_avatar.position = Vector3(0, 0, 0)
 	_preview_avatar.rotation.y = _preview_angle
@@ -549,6 +548,12 @@ func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color
 				image.set_pixel(px + dx, py + dy, color)
 
 var _team_box: VBoxContainer
+var _video_home: Control
+var _video_rows: Array = []
+var _storm_row: HBoxContainer
+var _battle_modal: PanelContainer
+var _battle_go: Button
+var _battle_title: Label
 
 ## Battle lobby lives in the menu now: when a match opens, EVERYONE's menu
 ## pops open on the Game tab so each player can pick a team with their own
@@ -559,19 +564,22 @@ func _on_match_changed() -> void:
 		return
 	_refresh_identity()
 	if world.match_phase == "LOBBY":
-		if not _menu.visible:
-			_toggle_menu(player, 5)
-		_tabs.current_tab = 5
+		if _menu.visible:
+			_close_menu()
+		_open_battle_modal(false)
 		_refresh_team_box()
-	elif _menu.visible and world.match_phase == "DROP":
-		_close_menu()
+	elif world.match_phase != "LOBBY" and _battle_modal != null and _battle_modal.visible:
+		_battle_modal.visible = false
+		var p2 := _player()
+		if p2 != null and not _menu.visible:
+			p2.ui_locked = false
 
 func _refresh_team_box() -> void:
 	if _team_box == null:
 		return
 	for child in _team_box.get_children():
 		child.queue_free()
-	if world == null or world.match_phase != "LOBBY":
+	if world == null or (_battle_modal != null and not _battle_modal.visible):
 		return
 	var me := multiplayer.get_unique_id()
 	for id: String in Game.roster.keys():
@@ -611,6 +619,76 @@ func _refresh_team_box() -> void:
 			wait_label.add_theme_font_size_override("font_size", _us(20))
 			wait_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
 			row.add_child(wait_label)
+
+## Its own tab: every video option, with presets on top.
+func _build_video_tab() -> void:
+	var tab := VBoxContainer.new()
+	tab.name = "Video"
+	tab.add_theme_constant_override("separation", _us(14))
+	_tabs.add_child(tab)
+	for row in _video_rows:
+		tab.add_child(row)
+
+## Battle Royale config modal: storm length, loot rules, team picking and
+## the GO button. Pops for everyone when a match opens.
+func _build_battle_modal() -> void:
+	_battle_modal = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.06, 0.07, 0.11, 0.97)
+	style.set_corner_radius_all(16)
+	style.set_content_margin_all(_us(20))
+	style.border_color = Color("ffd166")
+	style.set_border_width_all(2)
+	_battle_modal.add_theme_stylebox_override("panel", style)
+	_battle_modal.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_battle_modal.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_battle_modal.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_battle_modal.visible = false
+	add_child(_battle_modal)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", _us(12))
+	_battle_modal.add_child(box)
+	_battle_title = Label.new()
+	_battle_title.text = "🏆  BATTLE ROYALE"
+	_battle_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_battle_title.add_theme_font_size_override("font_size", _us(22))
+	_battle_title.add_theme_color_override("font_color", Color("ffd166"))
+	box.add_child(_battle_title)
+	box.add_child(_storm_row)
+	box.add_child(_team_box)
+	var button_row := HBoxContainer.new()
+	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	button_row.add_theme_constant_override("separation", _us(14))
+	box.add_child(button_row)
+	_battle_go = Button.new()
+	_battle_go.focus_mode = Control.FOCUS_NONE
+	_battle_go.text = "  🏆  GO!  "
+	_battle_go.add_theme_font_size_override("font_size", _us(26))
+	_battle_go.pressed.connect(func() -> void:
+		if Game.world != null:
+			Game.world.sv_match_start.rpc_id(1, 0))
+	button_row.add_child(_battle_go)
+	var close_btn := Button.new()
+	close_btn.focus_mode = Control.FOCUS_NONE
+	close_btn.text = "  ✕  "
+	close_btn.add_theme_font_size_override("font_size", _us(26))
+	close_btn.pressed.connect(func() -> void:
+		_battle_modal.visible = false
+		var p := _player()
+		if p != null and not _menu.visible:
+			p.ui_locked = false)
+	button_row.add_child(close_btn)
+
+func _open_battle_modal(configuring: bool) -> void:
+	if _menu.visible:
+		_close_menu()
+	_battle_modal.visible = true
+	_battle_go.visible = configuring or (world != null and world.match_phase == "IDLE")
+	_battle_title.text = "🏆  BATTLE ROYALE" if configuring else "⚔  Pick your team!"
+	var p := _player()
+	if p != null:
+		p.ui_locked = true
+	_refresh_team_box()
 
 func _close_menu() -> void:
 	_menu.visible = false
@@ -709,7 +787,7 @@ func _process(_delta: float) -> void:
 			if tab_cycle != 0 and not _menu_tab_latch:
 				var next_tab := _tabs.current_tab
 				for attempt in 6:
-					next_tab = posmod(next_tab + tab_cycle, 6)
+					next_tab = posmod(next_tab + tab_cycle, 7)
 					if not _tabs.is_tab_disabled(next_tab):
 						break
 				_tabs.current_tab = next_tab
@@ -719,7 +797,8 @@ func _process(_delta: float) -> void:
 				_close_menu()
 			if _tabs.current_tab < 4:
 				_pickers[_tabs.current_tab].poll(input, _delta)
-	if not _menu.visible and player.ui_locked:
+	if not _menu.visible and player.ui_locked \
+			and not (_battle_modal != null and _battle_modal.visible):
 		player.ui_locked = false
 	if OS.get_environment("WORLD_AUTOTEST_MENU") == "1" and slot == 0 \
 			and not _autoopened and Time.get_ticks_msec() > 9000:

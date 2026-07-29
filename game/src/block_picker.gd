@@ -21,13 +21,16 @@ func _init(p_category := "blocks") -> void:
 	category = p_category
 	if category == "tools":
 		COLUMNS = 7
+	elif category == "blocks":
+		COLUMNS = 8  # one material family per line
+	elif category == "kits":
+		COLUMNS = 4  # big preview chips
 	visible = false
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.05, 0.06, 0.1, 0.92)
+	style.bg_color = Color(0, 0, 0, 0)
 	style.set_corner_radius_all(14)
 	style.set_content_margin_all(14)
-	style.border_color = Color("ffd166")
-	style.set_border_width_all(2)
+	style.set_border_width_all(0)
 	add_theme_stylebox_override("panel", style)
 	set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	grow_horizontal = Control.GROW_DIRECTION_BOTH

@@ -53,6 +53,20 @@ strike items when shipped, add new asks immediately.
 
 ## Done this round
 
+- [x] Weapons.spec() looked up by ARRAY POSITION — the tools reorder gave
+      every weapon the wrong cooldown/speed (rapid bazooka, broken
+      blaster). Now a by-id lookup; bazooka kept fun-fast (0.35s)
+- [x] Bare bones video actually works: DayNight was re-enabling shadows
+      every frame; Video panel moved to its OWN tab with all toggles
+- [x] Battle Royale is a proper modal: Start BR opens it (storm presets,
+      team list, GO); when a match opens it pops for EVERY player without
+      hijacking their menu. Game tab = Start BR / add+remove bot / new map
+- [x] Blocks tab: one material family per line (8 per row) + texture
+      overlays; kit chips 2x bigger; menu borders de-yellowed
+- [x] Sword (and viewmodel) swings when used; bigger character preview
+- [x] Per-player storm tint, hearts from the drop, castle keep halls with
+      stairs + chandeliers, r.0.0.mca imported + verified
+
 - [x] Materials renamed with REAL names in 8 rainbow-aligned columns:
       steel (Bronze/Copper/Gold Alloy/Emerald Steel/Cobalt/Amethyst
       Steel/Silver/Iron), stone (Ruby/Topaz/Amber/Jade/Lapis/Amethyst/

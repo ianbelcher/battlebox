@@ -463,9 +463,7 @@ func _apply_video() -> void:
 	var v: Dictionary = Game.video
 	if Game.world != null and Game.world.sky != null:
 		Game.world.sky.set_low_fx(not bool(v.fancy_light))
-		Game.world.sky.sun.shadow_enabled = bool(v.shadows)
-		if not bool(v.shadows):
-			Game.world.sky.moon.shadow_enabled = false
+		Game.world.sky.allow_shadows = bool(v.shadows)
 	if Game.world != null and Game.world.chunks != null:
 		Game.world.chunks.light_cap = 8 if bool(v.lights) else 0
 	if _split != null:

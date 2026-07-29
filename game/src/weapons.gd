@@ -8,7 +8,7 @@ const WEAPONS := [
 		"blurb": "Trusty melee: swing at enemies and soft blocks up close"},
 	{"id": 0, "name": "Blaster", "color": Color("ffe08a"), "cooldown": 0.13, "speed": 44.0,
 		"blurb": "Rapid pellets: break soft blocks, light TNT from afar"},
-	{"id": 1, "name": "Bazooka", "color": Color("ff7a3d"), "cooldown": 1.1, "speed": 34.0,
+	{"id": 1, "name": "Bazooka", "color": Color("ff7a3d"), "cooldown": 0.35, "speed": 34.0,
 		"blurb": "Big explosions. Steel only chips on a direct hit"},
 	{"id": 2, "name": "Grapple", "color": Color("c9b3ff"), "cooldown": 0.9, "speed": 50.0,
 		"blurb": "Hit a wall, get zipped to it. Great escapes"},
@@ -46,5 +46,10 @@ static func visible_ids() -> Array:
 			out.append(int(w.id))
 	return out
 
+static var _by_id: Dictionary = {}
+
 static func spec(id: int) -> Dictionary:
-	return WEAPONS[clampi(id, 0, WEAPONS.size() - 1)]
+	if _by_id.is_empty():
+		for w in WEAPONS:
+			_by_id[int(w.id)] = w
+	return _by_id.get(id, WEAPONS[0])
