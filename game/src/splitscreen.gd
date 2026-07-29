@@ -18,6 +18,12 @@ const FP_FOVS: Array[float] = [78.0, 45.0, 20.0, 8.0]
 const DEFAULT_ZOOM := 3
 
 var world: Node = null
+## While set (msec), never capture the mouse — lets macOS window resizing
+## work without the game yanking the cursor back.
+var _capture_hold_until := 0
+
+func suppress_capture(ms: int) -> void:
+	_capture_hold_until = Time.get_ticks_msec() + ms
 var big_map: TextureRect = null
 var low_fx := false
 
@@ -309,7 +315,8 @@ func _process(delta: float) -> void:
 				max_size = maxf(max_size, float(cell.size))
 		world.chunks.view_radius = clampi(
 			int(Game.video.get("dist_blocks", 128)) / 16, 3, 13)
-	# The mouse belongs to the keyboard player while they're in first person.
+	# The mouse belongs to the keyboard player while they're in first person
+	# — but never while the window is being resized (macOS fights it).
 	var want_capture := false
 	for cell: Dictionary in _cells:
 		var input: InputSlot = Game.local_inputs.get(cell.slot)
@@ -317,6 +324,8 @@ func _process(delta: float) -> void:
 				and input.kind == InputSlot.Kind.KEYBOARD_WASD \
 				and (cell.hud == null or not cell.hud.is_ui_open()):
 			want_capture = true
+	if Time.get_ticks_msec() < _capture_hold_until:
+		want_capture = false
 	var target_mode := Input.MOUSE_MODE_CAPTURED if want_capture else Input.MOUSE_MODE_VISIBLE
 	if Input.mouse_mode != target_mode:
 		Input.mouse_mode = target_mode

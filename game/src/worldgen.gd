@@ -429,34 +429,51 @@ func _megacastle_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: in
 			if tower_r == 0 and h + 16 < CHUNK_H:
 				data[idx(lx, h + 16, lz)] = Blocks.LANTERN
 		return
-	# The keep: 24x24 at the center, 26 tall, hollow floors every 6.
+	# The keep: 24x24 at the center — a real great hall, not bumpy terrain.
+	# Everything sits on a FLAT court at a fixed height: marble floor, red
+	# carpet from the gate to a golden throne, banners, chandeliers, and
+	# the staircase up through every floor.
 	if m <= 12:
-		for k in range(1, 27):
-			var y := h + k
+		var base := 28
+		if h > base + 20:
+			return
+		for fy in range(mini(h, base), base):
+			data[idx(lx, fy, lz)] = Blocks.STONE  # foundation up to the court
+		for k in range(0, 27):
+			var y := base + k
 			if y >= CHUNK_H - 1:
 				break
 			var shell: bool = m >= 11
-			var floor_slab: bool = k % 6 == 0
-			var door: bool = wz <= -11 and absi(wx) <= 2 and k <= 4
+			var floor_slab: bool = k % 6 == 0 and k > 0
+			var door: bool = wz <= -11 and absi(wx) <= 2 and k >= 1 and k <= 4
 			var window: bool = shell and k % 6 >= 2 and k % 6 <= 3 and posmod(wx + wz, 4) == 0
-			# A staircase lane along the east wall climbs floor to floor,
-			# with holes in the slabs above and chandeliers in the middle.
 			var stair_step := -1
 			if (wx == 9 or wx == 10) and wz >= 3 and wz <= 7:
 				stair_step = wz - 2  # 1..5, then land on the slab
 			var stair_hole: bool = (wx == 9 or wx == 10) and wz >= 5 and wz <= 7
+			var carpet: bool = absi(wx) <= 1 and wz >= -10 and wz <= 6
+			var throne: bool = absi(wx) <= 1 and wz >= 8 and wz <= 9
 			if door:
 				data[idx(lx, y, lz)] = Blocks.AIR
 			elif shell:
 				data[idx(lx, y, lz)] = Blocks.GLASS if window else Blocks.STONE
+			elif k == 0:
+				data[idx(lx, y, lz)] = Blocks.WOOL_RED if carpet else Blocks.MARBLE
+			elif throne and (k <= 2 or (k == 3 and wz == 9)):
+				data[idx(lx, y, lz)] = Blocks.GOLD
 			elif stair_step > 0 and k % 6 == stair_step % 6 and not floor_slab:
 				data[idx(lx, y, lz)] = Blocks.PLANKS
 			elif floor_slab:
 				data[idx(lx, y, lz)] = Blocks.AIR if stair_hole else Blocks.PLANKS
 			elif k % 6 == 5 and absi(wx) <= 1 and absi(wz) <= 1:
 				data[idx(lx, y, lz)] = Blocks.GLOWSTONE  # chandeliers
+			elif m == 10 and k % 6 >= 2 and k % 6 <= 4 and posmod(wx + 3 * wz, 9) == 0:
+				data[idx(lx, y, lz)] = Blocks.WOOL_RED  # hall banners
 			else:
 				data[idx(lx, y, lz)] = Blocks.AIR
+		# Clear terrain or trees poking through above the roof.
+		for cy in range(base + 27, mini(h + 8, CHUNK_H)):
+			data[idx(lx, cy, lz)] = Blocks.AIR
 		return
 
 ## Rare floating islands high above the world — fly up and explore. Grass

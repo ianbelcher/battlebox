@@ -192,8 +192,10 @@ func _build_game_screen() -> void:
 	_layout_topright()
 	get_viewport().size_changed.connect(func() -> void:
 		_layout_topright()
-		if _split != null and _in_world:
-			_split.update_layout())
+		if _split != null:
+			_split.suppress_capture(1500)
+			if _in_world:
+				_split.update_layout())
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.04, 0.05, 0.08, 0.85)
 	style.set_corner_radius_all(12)
