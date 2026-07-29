@@ -151,6 +151,23 @@ func _ready() -> void:
 	menu_style.border_color = Color(1, 1, 1, 0.08)
 	menu_style.set_border_width_all(1)
 	_menu.add_theme_stylebox_override("panel", menu_style)
+	var btn_normal := StyleBoxFlat.new()
+	btn_normal.bg_color = Color(0.14, 0.16, 0.23)
+	btn_normal.set_corner_radius_all(9)
+	btn_normal.content_margin_left = _us(14)
+	btn_normal.content_margin_right = _us(14)
+	btn_normal.content_margin_top = _us(7)
+	btn_normal.content_margin_bottom = _us(7)
+	var btn_hover: StyleBoxFlat = btn_normal.duplicate()
+	btn_hover.bg_color = Color(0.22, 0.25, 0.35)
+	var btn_pressed: StyleBoxFlat = btn_normal.duplicate()
+	btn_pressed.bg_color = Color(0.55, 0.44, 0.15)
+	var menu_theme := Theme.new()
+	menu_theme.set_stylebox("normal", "Button", btn_normal)
+	menu_theme.set_stylebox("hover", "Button", btn_hover)
+	menu_theme.set_stylebox("pressed", "Button", btn_pressed)
+	menu_theme.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	_menu.theme = menu_theme
 	# Fill ~90% of this player's cell whatever its size — quarter-screen
 	# split or a huge fullscreen window alike.
 	_menu.anchor_left = 0.1

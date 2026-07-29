@@ -62,6 +62,9 @@ static func build(kind: String, id: int) -> Node3D:
 		12:  # Digger: drill
 			root.add_child(_box(Vector3(0.12, 0.14, 0.2), Color("8a6a42"), Vector3(0, 0.05, 0.02)))
 			root.add_child(_cyl(0.0, 0.09, 0.3, Color("b5975f"), Vector3(0, 0.08, -0.24), Vector3(90, 0, 0)))
+		16:  # X-Ray Goggles: teal visor
+			root.add_child(_box(Vector3(0.34, 0.12, 0.08), Color("7de8e0"), Vector3(0, 0.04, 0)))
+			root.add_child(_box(Vector3(0.38, 0.03, 0.03), Color("35363c"), Vector3(0, 0.12, 0)))
 		15:  # Big Shooter: fat double-barrel tube
 			root.add_child(_cyl(0.13, 0.13, 0.5, Color("d63d2e"), Vector3(0, 0.04, 0), Vector3(90, 0, 0)))
 			root.add_child(_cyl(0.16, 0.16, 0.14, Color("8a2a20"), Vector3(0, 0.04, -0.24), Vector3(90, 0, 0)))

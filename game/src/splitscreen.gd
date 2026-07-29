@@ -238,6 +238,7 @@ func _process(delta: float) -> void:
 			var eye: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT, 0)
 			cam.look_at_from_position(eye, eye + player.look_dir(), Vector3.UP)
 			_update_viewmodel(cell, player)
+			_update_xray(cell, player)
 			var vm: Node3D = cell.get("vm")
 			if vm != null and is_instance_valid(vm):
 				# Tuck the gun away while zoomed in (aiming down sights).
@@ -318,6 +319,43 @@ func _process(delta: float) -> void:
 	if Input.mouse_mode != target_mode:
 		Input.mouse_mode = target_mode
 
+
+## X-Ray Goggles: while held, every other player gets a glowing marker
+## drawn through walls — but only on this player's private render layer.
+func _update_xray(cell: Dictionary, player: Player) -> void:
+	var markers: Dictionary = cell.get("xray", {})
+	var holding: bool = str(player.held().kind) == "weapon" and int(player.held().id) == 16
+	var seen := {}
+	if holding and world != null and world.players != null:
+		for child in world.players.get_children():
+			if child is Player and child != player:
+				seen[child.player_id] = true
+				var marker: MeshInstance3D = markers.get(child.player_id)
+				if marker == null or not is_instance_valid(marker):
+					marker = MeshInstance3D.new()
+					var mesh := SphereMesh.new()
+					mesh.radius = 0.45
+					mesh.height = 0.9
+					marker.mesh = mesh
+					var mat := StandardMaterial3D.new()
+					mat.albedo_color = Color(0.5, 1.0, 0.95, 0.6)
+					mat.emission_enabled = true
+					mat.emission = Color("7de8e0")
+					mat.emission_energy_multiplier = 3.0
+					mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+					mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+					mat.no_depth_test = true
+					marker.material_override = mat
+					marker.layers = 1 << (10 + player.slot)
+					add_child(marker)
+					markers[child.player_id] = marker
+				marker.position = child.position + Vector3(0, 1.5, 0)
+	for id in markers.keys().duplicate():
+		if not seen.has(id):
+			if is_instance_valid(markers[id]):
+				markers[id].queue_free()
+			markers.erase(id)
+	cell.xray = markers
 
 ## Video toggle: draw the whole world as wireframes (retro debug look, and
 ## the ultimate old-computer mode).

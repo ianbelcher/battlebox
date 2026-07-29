@@ -412,6 +412,8 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 300.0:
 		return
 	match kind:
+		16:  # X-Ray Goggles: passive, nothing to shoot.
+			return
 		14:  # Flare: a sky light, nothing to break.
 			return
 		15:  # Big Shooter: one huge crater.
@@ -1006,7 +1008,7 @@ func sv_match_config(minutes: int, loot: int) -> void:
 	if not multiplayer.is_server() or match_phase != "LOBBY":
 		return
 	if minutes > 0:
-		storm_minutes = clampf(float(minutes), 2.0, 60.0)
+		storm_minutes = clampf(float(minutes), 2.0, 99.0)
 	if loot >= 0:
 		loot_only = loot == 1
 
@@ -1033,6 +1035,10 @@ func _server_tick_match(delta: float) -> void:
 				_match_timer = storm_minutes * 60.0
 				cl_match.rpc("BATTLE", _match_timer)
 		"BATTLE":
+			if storm_minutes >= 59.0:
+				# Unlimited: the storm never closes and the match only ends
+				# when one team is left standing.
+				_match_timer = 9999.0
 			var frac := 1.0 - clampf(_match_timer / (storm_minutes * 60.0), 0.0, 1.0)
 			storm_radius = lerpf(STORM_START, STORM_END, frac)
 			cl_storm.rpc(storm_radius)
@@ -1090,7 +1096,7 @@ func _server_match_drop() -> void:
 		var ly := store.surface_y(lx, lz)
 		if ly > 2 and ly < WorldGen.CHUNK_H - 6 \
 				and store.get_block(Vector3i(lx, ly, lz)) != Blocks.WATER:
-			var lpool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 14, 15]
+			var lpool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 14, 15, 16]
 			_crates[_next_crate_id] = {"weapon": lpool[randi() % lpool.size()],
 				"pos": Vector3(lx + 0.5, ly + 1.0, lz + 0.5)}
 			_next_crate_id += 1
@@ -1483,7 +1489,7 @@ func _server_tick_crates() -> void:
 		if y > 2 and y < WorldGen.CHUNK_H - 6 \
 				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER:
 			# Rarer weapons show up less often.
-			var pool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 15]
+			var pool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 15, 16]
 			_crates[_next_crate_id] = {"weapon": pool[randi() % pool.size()],
 				"pos": Vector3(wx + 0.5, y + 1.0, wz + 0.5)}
 			_next_crate_id += 1

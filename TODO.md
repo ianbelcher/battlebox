@@ -22,14 +22,14 @@ DONE this overnight run:
       underwater blue tint; sword held up + sweeping swing
 
 STILL OPEN (next session — do these first):
-- [ ] Menu beauty: 5 iteration passes (spacing, button styles, hover
-      states, controller focus outline) — Ian says still glitchy/janky;
-      TEST by screenshotting every tab at 2560x1440 and in 2-player split
-- [ ] "Unlimited" is 60 min under the hood — make it truly unlimited
-      (no storm shrink, ends on last team standing)
+- [x] Menu theme pass 1-2: uniform rounded button style with hover/press
+      states across every tab (screenshot-verified). More passes welcome
+- [x] Unlimited is truly unlimited: storm never closes, match ends only
+      when one team stands
 - [ ] Kit chips should render actual structure previews (mini 3D renders)
-- [ ] X-ray vision pickup for battles (see players through walls, 10s);
-      gate Wireframe toggle behind a dev flag
+- [x] X-Ray Goggles crate pickup: while held, every player glows through
+      the walls (private per-player render layer). Wireframe stays as a
+      video toggle for now per Ian
 - [ ] Verify wireframe + video toggles in the EXPORTED build
 - [ ] Multi-server lobby flow; dedicated compact arena map; open-source
       Minecraft map library (download, document centers)

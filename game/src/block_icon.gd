@@ -94,6 +94,10 @@ func _draw() -> void:
 				draw_line(mid + Vector2(-w * 0.12, -w * 0.18), mid + Vector2(w * 0.04, w * 0.02), ink, w * 0.055)
 				draw_colored_polygon(PackedVector2Array([mid + Vector2(w * 0.0, -w * 0.02),
 					mid + Vector2(w * 0.2, w * 0.08), mid + Vector2(w * 0.06, w * 0.2)]), ink)
+			16:  # X-Ray: goggles.
+				for side in [-1.0, 1.0]:
+					draw_circle(mid + Vector2(side * w * 0.11, 0), w * 0.1, ink, false, w * 0.045)
+				draw_line(mid + Vector2(-w * 0.02, 0), mid + Vector2(w * 0.02, 0), ink, w * 0.04)
 			15:  # Big Shooter: fat rocket.
 				draw_rect(Rect2(mid.x - w * 0.24, mid.y - w * 0.12, w * 0.34, w * 0.24), ink)
 				draw_colored_polygon(PackedVector2Array([mid + Vector2(w * 0.1, -w * 0.2),

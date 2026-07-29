@@ -30,6 +30,8 @@ const WEAPONS := [
 		"blurb": "A gust that hurls friends skyward and scatters Grumps"},
 	{"id": 8, "name": "Paint Bomb", "color": Color("b07df0"), "cooldown": 0.9, "speed": 36.0,
 		"blurb": "Splats the landscape into random wool colors"},
+	{"id": 16, "name": "X-Ray Goggles", "color": Color("7de8e0"), "cooldown": 1.0, "speed": 1.0,
+		"blurb": "Hold to see every player glowing through the walls", "hidden": true},
 	{"id": 3, "name": "Freeze Ray", "color": Color("aef7f0"), "cooldown": 0.8, "speed": 44.0,
 		"blurb": "Turns water to ice and freezes Grumps solid", "hidden": true},
 	{"id": 4, "name": "Block Sucker", "color": Color("62a851"), "cooldown": 0.5, "speed": 44.0,
