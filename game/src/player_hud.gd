@@ -214,7 +214,7 @@ func _ready() -> void:
 	add_child(_water_tint)
 	_clock = Label.new()
 	_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_clock.add_theme_font_size_override("font_size", _us(18))
+	_clock.add_theme_font_size_override("font_size", _us(14))
 	_clock.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
 	_clock.add_theme_constant_override("outline_size", 4)
 	add_child(_clock)

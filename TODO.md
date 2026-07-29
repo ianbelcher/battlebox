@@ -46,6 +46,10 @@ STILL OPEN (next session — do these first):
       in-place matches on one server; confirm with Ian before building
 - [x] Clock/player-count moved under each player's own radar (the global
       top-right clock overlapped player 2's radar in splits)
+- [x] Full theme screenshot sweep at 2560x1440: desert, isles, arena and
+      Ian's MCA world all render clean (0 script errors); arena verified
+      as a great compact battle island; clock font shrunk to stop edge
+      clipping
 - [ ] Ask Ian what "themes drop together in the main play" meant
 
 The durable backlog. Claude: keep this file updated every iteration —
