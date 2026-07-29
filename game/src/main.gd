@@ -46,6 +46,8 @@ func _ready() -> void:
 	# rendering it from the root too would waste a full pass and, with no
 	# camera, spams fog/compute errors.
 	get_viewport().disable_3d = true
+	# Lets the Wireframe video toggle actually draw wireframes at runtime.
+	RenderingServer.set_debug_generate_wireframes(true)
 	_build_connect_screen()
 	_build_game_screen()
 	Net.connected_to_server.connect(_on_connected)
@@ -455,19 +457,20 @@ func _apply_low_fx() -> void:
 		_split.set_low_fx(true)
 	print("Low-FX mode enabled (fps was %d)" % Engine.get_frames_per_second())
 
-## Video presets: 0 fancy, 1 simple (no SSAO/glow), 2 bare bones (no
-## shadows or dynamic lights at all) — for old computers.
-func _apply_video(level: int) -> void:
-	var low := level >= 1
+## Applies the advanced video settings (Game.video) everywhere: shadows,
+## SSAO/glow, dynamic light cap, render resolution, even wireframe.
+func _apply_video() -> void:
+	var v: Dictionary = Game.video
 	if Game.world != null and Game.world.sky != null:
-		Game.world.sky.set_low_fx(low)
-		Game.world.sky.sun.shadow_enabled = level < 2
-		if level >= 2:
+		Game.world.sky.set_low_fx(not bool(v.fancy_light))
+		Game.world.sky.sun.shadow_enabled = bool(v.shadows)
+		if not bool(v.shadows):
 			Game.world.sky.moon.shadow_enabled = false
 	if Game.world != null and Game.world.chunks != null:
-		Game.world.chunks.light_cap = [8, 4, 0][level]
+		Game.world.chunks.light_cap = 8 if bool(v.lights) else 0
 	if _split != null:
-		_split.set_low_fx(low)
+		_split.set_low_fx(not bool(v.res))
+		_split.set_wireframe(bool(v.wire))
 
 ## Everything top-right scales with the window: map ~24% of height.
 func _layout_topright() -> void:
@@ -585,14 +588,8 @@ func _process(_delta: float) -> void:
 	if world.match_phase == "LOBBY":
 		world.match_seconds = maxf(0.0, world.match_seconds - _delta)
 		_lobby_label.text = "BATTLE ROYALE — starting in %d" % int(ceil(world.match_seconds))
-	# Red edges when someone local is outside the storm.
-	var danger := 0.0
-	if world.match_phase == "BATTLE" and world.players != null:
-		for child in world.players.get_children():
-			if child is Player and child.is_local \
-					and Vector2(child.position.x, child.position.z).length() > world.storm_radius:
-				danger = 0.25
-	_storm_tint.color.a = lerpf(_storm_tint.color.a, danger, 0.1)
+	# The per-player red warning lives in each PlayerHud now.
+	_storm_tint.color.a = 0.0
 	var clock: float = world.clock
 	var hour := int(fposmod(clock * 24.0, 24.0))
 	var night: bool = clock > 0.78 or clock < 0.22

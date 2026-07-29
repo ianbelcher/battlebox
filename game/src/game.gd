@@ -14,9 +14,15 @@ const AUTO_NAMES: Array[String] = [
 ]
 
 signal roster_changed
-signal video_changed(level: int)
-## 0 fancy, 1 simple, 2 bare bones — applied by main across all viewports.
-var video_level := 0
+signal video_changed
+## Advanced video settings, applied by main across all viewports.
+var video: Dictionary = {"shadows": true, "fancy_light": true,
+	"lights": true, "res": true, "wire": false}
+const VIDEO_PRESETS := {
+	"Fancy": {"shadows": true, "fancy_light": true, "lights": true, "res": true, "wire": false},
+	"Simple": {"shadows": true, "fancy_light": false, "lights": true, "res": false, "wire": false},
+	"Bare bones": {"shadows": false, "fancy_light": false, "lights": false, "res": false, "wire": false},
+}
 
 ## Key "peer:slot" -> {peer:int, slot:int, name:String, style:int}
 var roster: Dictionary = {}

@@ -309,3 +309,12 @@ func _process(delta: float) -> void:
 	var target_mode := Input.MOUSE_MODE_CAPTURED if want_capture else Input.MOUSE_MODE_VISIBLE
 	if Input.mouse_mode != target_mode:
 		Input.mouse_mode = target_mode
+
+
+## Video toggle: draw the whole world as wireframes (retro debug look, and
+## the ultimate old-computer mode).
+func set_wireframe(on: bool) -> void:
+	for cell: Dictionary in _cells:
+		if cell.cam != null:
+			(cell.cam.get_viewport() as SubViewport).debug_draw = \
+				Viewport.DEBUG_DRAW_WIREFRAME if on else Viewport.DEBUG_DRAW_DISABLED

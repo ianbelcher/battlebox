@@ -48,6 +48,7 @@ var _preview_angle := PI
 var _last_tab := 1
 var _tab_guard := false
 var _radar: TextureRect
+var _storm_tint: ColorRect
 var _autoopened := false
 var _crosshair: Label
 var _storm_arrow: Label
@@ -164,6 +165,11 @@ func _ready() -> void:
 	_tabs.tab_changed.connect(func(tab: int) -> void:
 		if not _tab_guard:
 			_last_tab = tab)
+	_storm_tint = ColorRect.new()
+	_storm_tint.color = Color(0.9, 0.15, 0.1, 0.0)
+	_storm_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_storm_tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_storm_tint)
 	_radar = TextureRect.new()
 	_radar.stretch_mode = TextureRect.STRETCH_SCALE
 	_radar.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -385,16 +391,48 @@ func _build_game_tab() -> void:
 		Game.join_local(BotSlot.new(randi() % 1000))
 		Sfx.play("join"))
 	tab.add_child(bot_btn)
-	var video_btn := Button.new()
-	video_btn.focus_mode = Control.FOCUS_NONE
-	video_btn.text = "🖥  Video: Fancy"
-	video_btn.add_theme_font_size_override("font_size", _us(24))
-	video_btn.pressed.connect(func() -> void:
-		Game.video_level = (Game.video_level + 1) % 3
-		video_btn.text = "🖥  Video: " + ["Fancy", "Simple", "Bare bones"][Game.video_level]
-		Game.video_changed.emit(Game.video_level)
-		Sfx.play("tick", -8.0))
-	tab.add_child(video_btn)
+	var preset_row := HBoxContainer.new()
+	preset_row.add_theme_constant_override("separation", _us(8))
+	tab.add_child(preset_row)
+	var video_label := Label.new()
+	video_label.text = "🖥  Video:"
+	video_label.add_theme_font_size_override("font_size", _us(22))
+	preset_row.add_child(video_label)
+	var toggle_specs := [["shadows", "Shadows"], ["fancy_light", "Fancy lighting"],
+		["lights", "Dynamic lights"], ["res", "High resolution"], ["wire", "Wireframe"]]
+	var toggle_row := HBoxContainer.new()
+	toggle_row.add_theme_constant_override("separation", _us(8))
+	var toggle_btns: Array = []
+	var refresh_toggles := func() -> void:
+		for i in toggle_btns.size():
+			(toggle_btns[i] as Button).text = \
+				("☑ " if Game.video[toggle_specs[i][0]] else "☐ ") + str(toggle_specs[i][1])
+	for preset_name in Game.VIDEO_PRESETS.keys():
+		var pbtn := Button.new()
+		pbtn.focus_mode = Control.FOCUS_NONE
+		pbtn.text = str(preset_name)
+		pbtn.add_theme_font_size_override("font_size", _us(20))
+		var pname := str(preset_name)
+		pbtn.pressed.connect(func() -> void:
+			Game.video = Game.VIDEO_PRESETS[pname].duplicate()
+			refresh_toggles.call()
+			Game.video_changed.emit()
+			Sfx.play("tick", -8.0))
+		preset_row.add_child(pbtn)
+	tab.add_child(toggle_row)
+	for spec in toggle_specs:
+		var tbtn := Button.new()
+		tbtn.focus_mode = Control.FOCUS_NONE
+		tbtn.add_theme_font_size_override("font_size", _us(18))
+		var key := str(spec[0])
+		tbtn.pressed.connect(func() -> void:
+			Game.video[key] = not bool(Game.video[key])
+			refresh_toggles.call()
+			Game.video_changed.emit()
+			Sfx.play("tick", -10.0))
+		toggle_row.add_child(tbtn)
+		toggle_btns.append(tbtn)
+	refresh_toggles.call()
 	var storm_row := HBoxContainer.new()
 	storm_row.add_theme_constant_override("separation", _us(8))
 	tab.add_child(storm_row)
@@ -519,6 +557,7 @@ func _on_match_changed() -> void:
 	var player := _player()
 	if player == null or world == null:
 		return
+	_refresh_identity()
 	if world.match_phase == "LOBBY":
 		if not _menu.visible:
 			_toggle_menu(player, 5)
@@ -610,7 +649,7 @@ func _refresh_identity() -> void:
 		WorldNode.TEAM_COLORS[team] if team >= 0 else Color.WHITE)
 	_treasure_label.text = ""
 	var id := Game.player_id(multiplayer.get_unique_id(), slot)
-	if world != null and (world.survival_active or world.match_phase == "BATTLE"):
+	if world != null and (world.survival_active or world.match_phase in ["DROP", "BATTLE"]):
 		var hp: int = world.hearts.get(id, 5)
 		_hearts_label.text = "♥".repeat(maxi(hp, 0))
 		_hearts_label.visible = true
@@ -701,6 +740,12 @@ func _process(_delta: float) -> void:
 		_last_index = -1
 	if _chip != null:
 		_chip.visible = not _menu.visible
+	if _storm_tint != null and world != null:
+		var danger := 0.0
+		if world.match_phase == "BATTLE" \
+				and Vector2(player.position.x, player.position.z).length() > world.storm_radius:
+			danger = 0.25
+		_storm_tint.color.a = lerpf(_storm_tint.color.a, danger, 0.1)
 	# Caught outside the storm: a big arrow home plus the distance.
 	if world != null and world.match_phase == "BATTLE":
 		var flat := Vector2(player.position.x, player.position.z)

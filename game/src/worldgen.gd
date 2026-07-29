@@ -404,16 +404,24 @@ func _megacastle_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: in
 			var floor_slab: bool = k % 6 == 0
 			var door: bool = wz <= -11 and absi(wx) <= 2 and k <= 4
 			var window: bool = shell and k % 6 >= 2 and k % 6 <= 3 and posmod(wx + wz, 4) == 0
+			# A staircase lane along the east wall climbs floor to floor,
+			# with holes in the slabs above and chandeliers in the middle.
+			var stair_step := -1
+			if wx == 9 and wz >= 3 and wz <= 8:
+				stair_step = wz - 2  # 1..6, six steps per floor
+			var stair_hole: bool = wx == 9 and wz >= 6 and wz <= 9
 			if door:
 				data[idx(lx, y, lz)] = Blocks.AIR
 			elif shell:
 				data[idx(lx, y, lz)] = Blocks.GLASS if window else Blocks.STONE
-			elif floor_slab:
+			elif stair_step > 0 and k % 6 == stair_step % 6 and not floor_slab:
 				data[idx(lx, y, lz)] = Blocks.PLANKS
+			elif floor_slab:
+				data[idx(lx, y, lz)] = Blocks.AIR if stair_hole else Blocks.PLANKS
+			elif k % 6 == 5 and absi(wx) <= 1 and absi(wz) <= 1:
+				data[idx(lx, y, lz)] = Blocks.GLOWSTONE  # chandeliers
 			else:
 				data[idx(lx, y, lz)] = Blocks.AIR
-				if k % 6 == 1 and hash01(wx, wz, 810) < 0.02:
-					data[idx(lx, y, lz)] = Blocks.GLOWSTONE
 		return
 
 ## Rare floating islands high above the world — fly up and explore. Grass

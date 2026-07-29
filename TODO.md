@@ -24,6 +24,23 @@ strike items when shipped, add new asks immediately.
       teammates. Still basic (no pathfinding around cliffs)
 
 ## Features (large)
+
+- [ ] BIG: map picker when starting a Battle Royale — choose a SAVED MAP
+      (imported Minecraft .mca worlds, starting with maps/r.0.0.mca which
+      imports cleanly: WORLD_SOURCE=mca WORLD_MCA_DIR=maps
+      WORLD_MCA_CENTER=256,256) or an auto-generated biome theme. Needs:
+      server-side multi-map support (world store per map), lobby UI row,
+      map handoff without restarting the server
+- [ ] BIG: research + download open-source Minecraft maps/builds online
+      (minecraftmaps.com, Planet Minecraft CC-licensed packs) as an arena
+      library; document per-map WORLD_MCA_CENTER/Y0 settings
+- [ ] Menu UX beauty pass round 2 (Ian: still janky) — spacing, selector
+      sizing, consistent button styles, hover/press feedback
+- [ ] Verify the Wireframe video toggle works in exported release builds
+      (set_debug_generate_wireframes may be debug-only)
+- [ ] Clarify with Ian: "themes drop together in the main play"
+- [ ] NOTE: old saves placed 10-column family blocks (ids 95-102) now render
+      as gaps after the 8-column rename — a New Map clears it
 - [x] DRAGONS: rare soaring beasts; grapple one to mount and ride its
       flight, jump to dismount. Steering is v2
 - [x] CITY theme (street grid, glass-windowed buildings, lamps, parks) and
