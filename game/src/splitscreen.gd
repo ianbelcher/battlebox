@@ -251,8 +251,14 @@ func _process(delta: float) -> void:
 				var amp: float = 0.055 * float(cell.bob_amp)
 				vm.position = Vector3(cell.get("vm_base", Vector3(0.3, -0.42, -0.72))) \
 					+ Vector3(cos(float(cell.bob_phase)) * amp, -absf(sin(float(cell.bob_phase))) * amp * 1.3, 0)
-				# Weapon swings/recoils forward while in use.
-				vm.rotation_degrees = Vector3(-75.0 * (player.swing_time / 0.25), 6, 0)
+				# Sword rests held UP at guard and sweeps across when swung;
+				# other weapons just kick back.
+				if str(player.held().kind) == "weapon" and int(player.held().id) == 13:
+					var arc := sin(clampf(1.0 - player.swing_time / 0.25, 0.0, 1.0) * PI) \
+						if player.swing_time > 0.0 else 0.0
+					vm.rotation_degrees = Vector3(35.0 - 130.0 * arc, 6.0 - 40.0 * arc, -25.0 * arc)
+				else:
+					vm.rotation_degrees = Vector3(-75.0 * (player.swing_time / 0.25), 6, 0)
 			continue
 		cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 		cam.near = 0.5

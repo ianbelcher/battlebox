@@ -131,7 +131,7 @@ func find_spawn() -> Vector3i:
 	return gen.find_spawn()
 
 ## Wipe every edit and regenerate from a brand-new seed (map reset vote).
-func reset_world(new_seed: int) -> void:
+func reset_world(new_seed: int, map_name := "") -> void:
 	_cache.clear()
 	_dirty.clear()
 	var dir := DirAccess.open(data_dir.path_join("chunks"))
@@ -139,13 +139,39 @@ func reset_world(new_seed: int) -> void:
 		for file in dir.get_files():
 			dir.remove(file)
 	_edited.clear()
-	# Every reset rolls a new theme too: classic island, desert with
-	# explorable pyramids, ship-dotted isles, or castle-lands.
-	var themes := ["classic", "desert", "isles", "castles", "city"]
-	theme = themes[randi() % themes.size()]
+	_apply_map(map_name, new_seed)
+
+## Wipe edits and switch to a chosen theme, or "mca" for an imported
+## Minecraft map (Ian's world in maps/).
+func set_map(map_name: String, new_seed: int) -> void:
+	reset_world(new_seed, map_name)
+
+func _apply_map(map_name: String, new_seed: int) -> void:
+	if map_name.is_empty():
+		var themes := ["classic", "desert", "isles", "castles", "city", "sky"]
+		map_name = themes[randi() % themes.size()]
+	if map_name == "mca":
+		source = "mca"
+		var mca_dir := OS.get_environment("WORLD_MCA_DIR")
+		if mca_dir.is_empty():
+			for candidate in ["/opt/world/maps",
+					ProjectSettings.globalize_path("res://").path_join("../maps")]:
+				if DirAccess.dir_exists_absolute(candidate):
+					mca_dir = candidate
+					break
+		mca = McaWorld.new(mca_dir)
+		if mca.is_valid():
+			if mca.center == Vector2i.ZERO:
+				mca.center = Vector2i(256, 256)
+		else:
+			push_error("No importable map found at '%s'" % mca_dir)
+			source = "procedural"
+			mca = null
+	else:
+		source = "procedural"
+		mca = null
+		theme = map_name
 	gen = WorldGen.new(new_seed, theme)
-	mca = null
-	source = "procedural"
 	var config := ConfigFile.new()
 	config.load(data_dir.path_join("world.cfg"))
 	config.set_value("world", "seed", new_seed)

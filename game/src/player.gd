@@ -10,12 +10,12 @@ const JUMP_VELOCITY := 8.6
 const WALK_SPEED := 4.6
 const SWIM_SPEED := 3.0
 const HALF_WIDTH := 0.4
-const HEIGHT := 1.95
+const HEIGHT := 1.85
 const SEND_HZ := 12.0
 const EDIT_REPEAT := 0.24
 ## Eye level for first person — near the top of the head, so blocks read
 ## about waist height like they should.
-const EYE_HEIGHT := 2.15
+const EYE_HEIGHT := 1.65
 ## Default camera yaw; the split-screen rig updates camera_yaw as the view
 ## spins so "stick up" always moves away from the camera.
 const ISO_ROT := PI / 4.0
@@ -119,7 +119,7 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	input = p_input
 	world = p_world
 	_avatar = AvatarFactory.build_character(entry.get("style", {}))
-	_avatar.scale = Vector3(1.5, 1.5, 1.5)
+	_avatar.scale = Vector3(1.15, 1.15, 1.15)
 	add_child(_avatar)
 	_tag = Label3D.new()
 	_tag.text = str(entry.name)
@@ -174,7 +174,7 @@ func refresh_from_roster(entry: Dictionary) -> void:
 	if str(_avatar.get_meta("style", "")) != str(style):
 		var old := _avatar
 		_avatar = AvatarFactory.build_character(style)
-		_avatar.scale = Vector3(1.5, 1.5, 1.5)
+		_avatar.scale = Vector3(1.15, 1.15, 1.15)
 		_avatar.rotation = old.rotation
 		add_child(_avatar)
 		old.queue_free()

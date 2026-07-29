@@ -44,6 +44,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /game/build/server /opt/world/server
+COPY maps /opt/world/maps
 COPY --from=build /game/build/downloads /opt/world/web/downloads
 COPY web/index.html /opt/world/web/index.html
 COPY nginx.conf /etc/nginx/nginx.conf

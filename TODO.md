@@ -1,5 +1,39 @@
 # Belcher World — working list (Ian + Claude)
 
+## AUDIT — Ian's asks, current status (keep this honest!)
+
+DONE this overnight run:
+- [x] Battle UI is an in-menu SECTION (no modal): Game tab = BATTLE ROYALE
+      (Start + "Game length: 3/5/8/Unlimited" + Teams inline), WORLD
+      (Classic/Desert/Isles/Castle/City/Skylands/Ian's World buttons),
+      PLAYERS (add/remove bot together). Video is its own tab
+- [x] Map/biome picker for battles: WORLD buttons switch the server map
+      live (sv_new_map) — including "Ian's World" = the imported r.0.0.mca
+      (auto-found in maps/, center 256,256; Dockerfile ships it)
+- [x] Real cave NETWORKS (connected tunnel worms + vast caverns + water
+      pools + stalagmites/stalactites + crystals) with walkable funnel
+      entrances from the surface
+- [x] SKYLANDS theme: floating island grid, parabolic 2-wide plank
+      bridges, waterfalls off rims, guaranteed spawn island
+- [x] City + castle stairs rebuilt: 2 wide, proper headroom holes, roof
+      access; eye height now BELOW collision top (1.65/1.85, avatar 1.15)
+      so your head can never see inside blocks
+- [x] Little/Medium/Big Shooters (Big = 2s cooldown, enormous blast);
+      underwater blue tint; sword held up + sweeping swing
+
+STILL OPEN (next session — do these first):
+- [ ] Menu beauty: 5 iteration passes (spacing, button styles, hover
+      states, controller focus outline) — Ian says still glitchy/janky;
+      TEST by screenshotting every tab at 2560x1440 and in 2-player split
+- [ ] "Unlimited" is 60 min under the hood — make it truly unlimited
+      (no storm shrink, ends on last team standing)
+- [ ] Kit chips should render actual structure previews (mini 3D renders)
+- [ ] X-ray vision pickup for battles (see players through walls, 10s);
+      gate Wireframe toggle behind a dev flag
+- [ ] Verify wireframe + video toggles in the EXPORTED build
+- [ ] Multi-server lobby flow; dedicated compact arena map; open-source
+      Minecraft map library (download, document centers)
+
 The durable backlog. Claude: keep this file updated every iteration —
 strike items when shipped, add new asks immediately.
 

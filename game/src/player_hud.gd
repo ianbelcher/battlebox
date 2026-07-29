@@ -49,6 +49,7 @@ var _last_tab := 1
 var _tab_guard := false
 var _radar: TextureRect
 var _storm_tint: ColorRect
+var _water_tint: ColorRect
 var _autoopened := false
 var _crosshair: Label
 var _storm_arrow: Label
@@ -170,6 +171,11 @@ func _ready() -> void:
 	_storm_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_storm_tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_storm_tint)
+	_water_tint = ColorRect.new()
+	_water_tint.color = Color(0.1, 0.3, 0.6, 0.0)
+	_water_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_water_tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_water_tint)
 	_radar = TextureRect.new()
 	_radar.stretch_mode = TextureRect.STRETCH_SCALE
 	_radar.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -215,7 +221,6 @@ func _ready() -> void:
 	_build_character_tab()
 	_build_game_tab()
 	_build_video_tab()
-	_build_battle_modal()
 	# The 8 slots live inside the menu too: click a slot, then click items.
 	_menu_slots_row = HBoxContainer.new()
 	_menu_slots_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -370,93 +375,82 @@ func _build_character_tab() -> void:
 	_preview_viewport.add_child(sun)
 
 
-## "Game" tab: match controls and computer players.
+## "Game" tab: battle royale (with options and teams inline), world picker
+## and computer players — grouped into tidy sections.
 func _build_game_tab() -> void:
 	var tab := VBoxContainer.new()
 	tab.name = "Game"
-	tab.add_theme_constant_override("separation", _us(12))
+	tab.add_theme_constant_override("separation", _us(10))
 	_tabs.add_child(tab)
+	_add_section(tab, "⚔  BATTLE ROYALE")
 	var br := Button.new()
 	br.focus_mode = Control.FOCUS_NONE
 	br.text = "🏆  Start Battle Royale"
 	br.add_theme_font_size_override("font_size", _us(24))
 	br.pressed.connect(func() -> void:
-		_open_battle_modal(true))
+		if Game.world != null and Game.world.match_phase == "IDLE":
+			Game.world.sv_match_start.rpc_id(1, 0)
+			Sfx.play("cheer", -10.0))
 	tab.add_child(br)
-	var bot_btn := Button.new()
-	bot_btn.focus_mode = Control.FOCUS_NONE
-	bot_btn.text = "➕  Add computer player"
-	bot_btn.add_theme_font_size_override("font_size", _us(24))
-	bot_btn.pressed.connect(func() -> void:
-		Game.join_local(BotSlot.new(randi() % 1000))
-		Sfx.play("join"))
-	tab.add_child(bot_btn)
-	_video_home = tab  # replaced below: the video panel gets its own tab
-	var preset_row := HBoxContainer.new()
-	preset_row.add_theme_constant_override("separation", _us(8))
-	var video_label := Label.new()
-	video_label.text = "Presets:"
-	video_label.add_theme_font_size_override("font_size", _us(22))
-	preset_row.add_child(video_label)
-	var toggle_specs := [["shadows", "Shadows"], ["fancy_light", "Fancy lighting"],
-		["lights", "Dynamic lights"], ["res", "High resolution"], ["wire", "Wireframe"]]
-	var toggle_row := HBoxContainer.new()
-	toggle_row.add_theme_constant_override("separation", _us(8))
-	var toggle_btns: Array = []
-	var refresh_toggles := func() -> void:
-		for i in toggle_btns.size():
-			(toggle_btns[i] as Button).text = \
-				("☑ " if Game.video[toggle_specs[i][0]] else "☐ ") + str(toggle_specs[i][1])
-	for preset_name in Game.VIDEO_PRESETS.keys():
-		var pbtn := Button.new()
-		pbtn.focus_mode = Control.FOCUS_NONE
-		pbtn.text = str(preset_name)
-		pbtn.add_theme_font_size_override("font_size", _us(20))
-		var pname := str(preset_name)
-		pbtn.pressed.connect(func() -> void:
-			Game.video = Game.VIDEO_PRESETS[pname].duplicate()
-			refresh_toggles.call()
-			Game.video_changed.emit()
-			Sfx.play("tick", -8.0))
-		preset_row.add_child(pbtn)
-	_video_rows = [preset_row, toggle_row]
-	for spec in toggle_specs:
-		var tbtn := Button.new()
-		tbtn.focus_mode = Control.FOCUS_NONE
-		tbtn.add_theme_font_size_override("font_size", _us(18))
-		var key := str(spec[0])
-		tbtn.pressed.connect(func() -> void:
-			Game.video[key] = not bool(Game.video[key])
-			refresh_toggles.call()
-			Game.video_changed.emit()
-			Sfx.play("tick", -10.0))
-		toggle_row.add_child(tbtn)
-		toggle_btns.append(tbtn)
-	refresh_toggles.call()
-	var storm_row := HBoxContainer.new()
-	storm_row.add_theme_constant_override("separation", _us(8))
-	_storm_row = storm_row
-	var storm_label := Label.new()
-	storm_label.text = "Storm:"
-	storm_label.add_theme_font_size_override("font_size", _us(22))
-	storm_row.add_child(storm_label)
-	for preset in [[3, "3 min"], [5, "5 min"], [8, "8 min"], [60, "Endless"]]:
+	var length_row := HBoxContainer.new()
+	length_row.add_theme_constant_override("separation", _us(8))
+	tab.add_child(length_row)
+	var length_label := Label.new()
+	length_label.text = "Game length:"
+	length_label.add_theme_font_size_override("font_size", _us(20))
+	length_row.add_child(length_label)
+	for preset in [[3, "3 min"], [5, "5 min"], [8, "8 min"], [60, "Unlimited"]]:
 		var preset_btn := Button.new()
 		preset_btn.focus_mode = Control.FOCUS_NONE
 		preset_btn.text = str(preset[1])
-		preset_btn.add_theme_font_size_override("font_size", _us(22))
+		preset_btn.add_theme_font_size_override("font_size", _us(18))
 		var minutes: int = preset[0]
 		preset_btn.pressed.connect(func() -> void:
 			if Game.world != null:
 				Game.world.sv_match_config.rpc_id(1, minutes, -1)
 			Sfx.play("tick", -8.0))
-		storm_row.add_child(preset_btn)
+		length_row.add_child(preset_btn)
+	var teams_label := Label.new()
+	teams_label.text = "Teams:"
+	teams_label.add_theme_font_size_override("font_size", _us(20))
+	tab.add_child(teams_label)
 	_team_box = VBoxContainer.new()
-	_team_box.add_theme_constant_override("separation", _us(6))
+	_team_box.add_theme_constant_override("separation", _us(4))
+	tab.add_child(_team_box)
+	_add_section(tab, "🌍  WORLD")
+	var world_row := HBoxContainer.new()
+	world_row.add_theme_constant_override("separation", _us(6))
+	tab.add_child(world_row)
+	for choice in [["classic", "Classic"], ["desert", "Desert"], ["isles", "Isles"],
+			["castles", "Castle"], ["city", "City"], ["sky", "Skylands"],
+			["mca", "Ian's World"]]:
+		var map_btn := Button.new()
+		map_btn.focus_mode = Control.FOCUS_NONE
+		map_btn.text = str(choice[1])
+		map_btn.add_theme_font_size_override("font_size", _us(18))
+		var map_key := str(choice[0])
+		map_btn.pressed.connect(func() -> void:
+			if Game.world != null:
+				Game.world.sv_new_map.rpc_id(1, map_key)
+				_close_menu()
+			Sfx.play("warp", -8.0))
+		world_row.add_child(map_btn)
+	_add_section(tab, "👥  PLAYERS")
+	var bot_row := HBoxContainer.new()
+	bot_row.add_theme_constant_override("separation", _us(8))
+	tab.add_child(bot_row)
+	var bot_btn := Button.new()
+	bot_btn.focus_mode = Control.FOCUS_NONE
+	bot_btn.text = "➕  Add computer player"
+	bot_btn.add_theme_font_size_override("font_size", _us(20))
+	bot_btn.pressed.connect(func() -> void:
+		Game.join_local(BotSlot.new(randi() % 1000))
+		Sfx.play("join"))
+	bot_row.add_child(bot_btn)
 	var bot_off := Button.new()
 	bot_off.focus_mode = Control.FOCUS_NONE
 	bot_off.text = "➖  Remove computer player"
-	bot_off.add_theme_font_size_override("font_size", _us(24))
+	bot_off.add_theme_font_size_override("font_size", _us(20))
 	bot_off.pressed.connect(func() -> void:
 		var slots: Array = Game.local_inputs.keys()
 		slots.sort()
@@ -466,18 +460,16 @@ func _build_game_tab() -> void:
 				Game.leave_local(bot_slot)
 				Sfx.play("pop")
 				return)
-	tab.add_child(bot_off)
-	var reset := Button.new()
-	reset.focus_mode = Control.FOCUS_NONE
-	reset.text = "↺  New map (everyone votes)"
-	reset.add_theme_font_size_override("font_size", _us(24))
-	reset.pressed.connect(func() -> void:
-		if Game.world != null:
-			Game.world.sv_reset_request.rpc_id(1, 0)
-			_close_menu())
-	tab.add_child(reset)
+	bot_row.add_child(bot_off)
 
-## Live rotating you in the Character tab.
+func _add_section(tab: Control, title: String) -> void:
+	var lbl := Label.new()
+	lbl.text = title
+	lbl.add_theme_font_size_override("font_size", _us(16))
+	lbl.add_theme_color_override("font_color", Color("ffd166"))
+	tab.add_child(lbl)
+	tab.add_child(HSeparator.new())
+
 func _refresh_preview() -> void:
 	if _preview_viewport == null:
 		return
@@ -548,12 +540,6 @@ func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color
 				image.set_pixel(px + dx, py + dy, color)
 
 var _team_box: VBoxContainer
-var _video_home: Control
-var _video_rows: Array = []
-var _storm_row: HBoxContainer
-var _battle_modal: PanelContainer
-var _battle_go: Button
-var _battle_title: Label
 
 ## Battle lobby lives in the menu now: when a match opens, EVERYONE's menu
 ## pops open on the Game tab so each player can pick a team with their own
@@ -564,22 +550,19 @@ func _on_match_changed() -> void:
 		return
 	_refresh_identity()
 	if world.match_phase == "LOBBY":
-		if _menu.visible:
-			_close_menu()
-		_open_battle_modal(false)
+		if not _menu.visible:
+			_toggle_menu(player, 5)
+		_tabs.current_tab = 5
 		_refresh_team_box()
-	elif world.match_phase != "LOBBY" and _battle_modal != null and _battle_modal.visible:
-		_battle_modal.visible = false
-		var p2 := _player()
-		if p2 != null and not _menu.visible:
-			p2.ui_locked = false
+	elif _menu.visible and world.match_phase == "DROP":
+		_close_menu()
 
 func _refresh_team_box() -> void:
 	if _team_box == null:
 		return
 	for child in _team_box.get_children():
 		child.queue_free()
-	if world == null or (_battle_modal != null and not _battle_modal.visible):
+	if world == null:
 		return
 	var me := multiplayer.get_unique_id()
 	for id: String in Game.roster.keys():
@@ -624,71 +607,48 @@ func _refresh_team_box() -> void:
 func _build_video_tab() -> void:
 	var tab := VBoxContainer.new()
 	tab.name = "Video"
-	tab.add_theme_constant_override("separation", _us(14))
+	tab.add_theme_constant_override("separation", _us(12))
 	_tabs.add_child(tab)
-	for row in _video_rows:
-		tab.add_child(row)
-
-## Battle Royale config modal: storm length, loot rules, team picking and
-## the GO button. Pops for everyone when a match opens.
-func _build_battle_modal() -> void:
-	_battle_modal = PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.06, 0.07, 0.11, 0.97)
-	style.set_corner_radius_all(16)
-	style.set_content_margin_all(_us(20))
-	style.border_color = Color("ffd166")
-	style.set_border_width_all(2)
-	_battle_modal.add_theme_stylebox_override("panel", style)
-	_battle_modal.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	_battle_modal.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_battle_modal.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_battle_modal.visible = false
-	add_child(_battle_modal)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", _us(12))
-	_battle_modal.add_child(box)
-	_battle_title = Label.new()
-	_battle_title.text = "🏆  BATTLE ROYALE"
-	_battle_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_battle_title.add_theme_font_size_override("font_size", _us(22))
-	_battle_title.add_theme_color_override("font_color", Color("ffd166"))
-	box.add_child(_battle_title)
-	box.add_child(_storm_row)
-	box.add_child(_team_box)
-	var button_row := HBoxContainer.new()
-	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	button_row.add_theme_constant_override("separation", _us(14))
-	box.add_child(button_row)
-	_battle_go = Button.new()
-	_battle_go.focus_mode = Control.FOCUS_NONE
-	_battle_go.text = "  🏆  GO!  "
-	_battle_go.add_theme_font_size_override("font_size", _us(26))
-	_battle_go.pressed.connect(func() -> void:
-		if Game.world != null:
-			Game.world.sv_match_start.rpc_id(1, 0))
-	button_row.add_child(_battle_go)
-	var close_btn := Button.new()
-	close_btn.focus_mode = Control.FOCUS_NONE
-	close_btn.text = "  ✕  "
-	close_btn.add_theme_font_size_override("font_size", _us(26))
-	close_btn.pressed.connect(func() -> void:
-		_battle_modal.visible = false
-		var p := _player()
-		if p != null and not _menu.visible:
-			p.ui_locked = false)
-	button_row.add_child(close_btn)
-
-func _open_battle_modal(configuring: bool) -> void:
-	if _menu.visible:
-		_close_menu()
-	_battle_modal.visible = true
-	_battle_go.visible = configuring or (world != null and world.match_phase == "IDLE")
-	_battle_title.text = "🏆  BATTLE ROYALE" if configuring else "⚔  Pick your team!"
-	var p := _player()
-	if p != null:
-		p.ui_locked = true
-	_refresh_team_box()
+	var toggle_specs := [["shadows", "Shadows"], ["fancy_light", "Fancy lighting"],
+		["lights", "Dynamic lights"], ["res", "High resolution"], ["wire", "Wireframe"]]
+	var toggle_btns: Array = []
+	var refresh_toggles := func() -> void:
+		for i in toggle_btns.size():
+			(toggle_btns[i] as Button).text = \
+				("☑  " if Game.video[toggle_specs[i][0]] else "☐  ") + str(toggle_specs[i][1])
+	var preset_row := HBoxContainer.new()
+	preset_row.add_theme_constant_override("separation", _us(8))
+	tab.add_child(preset_row)
+	var preset_label := Label.new()
+	preset_label.text = "Presets:"
+	preset_label.add_theme_font_size_override("font_size", _us(22))
+	preset_row.add_child(preset_label)
+	for preset_name in Game.VIDEO_PRESETS.keys():
+		var pbtn := Button.new()
+		pbtn.focus_mode = Control.FOCUS_NONE
+		pbtn.text = str(preset_name)
+		pbtn.add_theme_font_size_override("font_size", _us(20))
+		var pname := str(preset_name)
+		pbtn.pressed.connect(func() -> void:
+			Game.video = Game.VIDEO_PRESETS[pname].duplicate()
+			refresh_toggles.call()
+			Game.video_changed.emit()
+			Sfx.play("tick", -8.0))
+		preset_row.add_child(pbtn)
+	for spec in toggle_specs:
+		var tbtn := Button.new()
+		tbtn.focus_mode = Control.FOCUS_NONE
+		tbtn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		tbtn.add_theme_font_size_override("font_size", _us(20))
+		var key := str(spec[0])
+		tbtn.pressed.connect(func() -> void:
+			Game.video[key] = not bool(Game.video[key])
+			refresh_toggles.call()
+			Game.video_changed.emit()
+			Sfx.play("tick", -10.0))
+		tab.add_child(tbtn)
+		toggle_btns.append(tbtn)
+	refresh_toggles.call()
 
 func _close_menu() -> void:
 	_menu.visible = false
@@ -797,8 +757,7 @@ func _process(_delta: float) -> void:
 				_close_menu()
 			if _tabs.current_tab < 4:
 				_pickers[_tabs.current_tab].poll(input, _delta)
-	if not _menu.visible and player.ui_locked \
-			and not (_battle_modal != null and _battle_modal.visible):
+	if not _menu.visible and player.ui_locked:
 		player.ui_locked = false
 	if OS.get_environment("WORLD_AUTOTEST_MENU") == "1" and slot == 0 \
 			and not _autoopened and Time.get_ticks_msec() > 9000:
@@ -819,6 +778,11 @@ func _process(_delta: float) -> void:
 		_last_index = -1
 	if _chip != null:
 		_chip.visible = not _menu.visible
+	if _water_tint != null and world != null and world.chunks != null:
+		var eye := player.position + Vector3(0, Player.EYE_HEIGHT, 0)
+		var under: bool = Blocks.is_liquid(world.chunks.get_block(
+			Vector3i(floori(eye.x), floori(eye.y), floori(eye.z))))
+		_water_tint.color.a = lerpf(_water_tint.color.a, 0.35 if under else 0.0, 0.25)
 	if _storm_tint != null and world != null:
 		var danger := 0.0
 		if world.match_phase == "BATTLE" \

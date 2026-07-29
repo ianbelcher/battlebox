@@ -26,6 +26,7 @@ var _moisture := FastNoiseLite.new()
 var _temperature := FastNoiseLite.new()
 var _lakes := FastNoiseLite.new()
 var _caves := FastNoiseLite.new()
+var _caves2 := FastNoiseLite.new()
 var _sky := FastNoiseLite.new()
 
 func _init(p_seed: int, p_theme := "classic") -> void:
@@ -54,6 +55,9 @@ func _init(p_seed: int, p_theme := "classic") -> void:
 	_caves.seed = p_seed + 606
 	_caves.frequency = 0.05
 	_caves.fractal_octaves = 2
+	_caves2.seed = p_seed + 608
+	_caves2.frequency = 0.045
+	_caves2.fractal_octaves = 2
 	_sky.seed = p_seed + 707
 	_sky.frequency = 0.011
 	_sky.fractal_octaves = 2
@@ -76,6 +80,9 @@ func height_at(wx: int, wz: int) -> int:
 	# Ocean floor ~14, beaches just above sea, hills up to ~+30 over sea.
 	if theme == "city":
 		return clampi(SEA_LEVEL + 4 + int(detail * 1.2), 2, CHUNK_H - 12)
+	if theme == "sky":
+		# Skylands: a shallow ocean below, all the action up on the islands.
+		return clampi(SEA_LEVEL - 3 + int(detail * 0.8), 2, CHUNK_H - 12)
 	if theme == "desert":
 		# Flat rolling dunes well above the water table.
 		var dune := 14.0 + (base * 18.0 + hills * hills * 30.0) * falloff + detail * 1.8
@@ -143,20 +150,43 @@ func generate_chunk(cx: int, cz: int) -> PackedByteArray:
 func _carve_caves(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: int) -> void:
 	if h <= SEA_LEVEL + 1:
 		return
+	# Two noise worms whose intersection is a CONNECTED tunnel network you
+	# can actually run through, plus vast cheese caverns lower down with
+	# water pools on their floors.
 	for y in range(4, h - 3):
-		if _caves.get_noise_3d(wx, y * 1.4, wz) > 0.56:
-			data[idx(lx, y, lz)] = Blocks.AIR
-	# Decorate fresh cave floors.
+		var carve := false
+		if absf(_caves.get_noise_3d(wx, y * 1.6, wz)) < 0.085 \
+				and absf(_caves2.get_noise_3d(wx, y * 1.6, wz)) < 0.085:
+			carve = true
+		elif y < 22 and _caves.get_noise_3d(wx * 0.5, y * 1.1, wz * 0.5) > 0.52:
+			carve = true
+		if carve:
+			data[idx(lx, y, lz)] = Blocks.WATER if y <= 8 else Blocks.AIR
+	# Walkable funnel entrances from the surface on a wide grid.
+	var ax := roundi(float(wx - 48) / 96.0) * 96 + 48
+	var az := roundi(float(wz - 48) / 96.0) * 96 + 48
+	if hash01(ax, az, 909) < 0.4:
+		var dist := Vector2(wx - ax, wz - az).length()
+		if dist < 9.0:
+			for y in range(maxi(4, h - 9 + int(dist)), h + 1):
+				data[idx(lx, y, lz)] = Blocks.AIR
+	# Stalagmites, stalactites, crystals, glowstone and mushrooms.
 	for y in range(5, h - 3):
-		if data[idx(lx, y, lz)] == Blocks.AIR and data[idx(lx, y - 1, lz)] == Blocks.STONE:
-			var roll := hash01(wx, y, wz * 7)
+		if data[idx(lx, y, lz)] != Blocks.AIR:
+			continue
+		var roll := hash01(wx, y, wz * 7)
+		if data[idx(lx, y - 1, lz)] == Blocks.STONE:
 			if roll < 0.02:
 				var crystals := [Blocks.CRYSTAL_PINK, Blocks.CRYSTAL_BLUE, Blocks.CRYSTAL_GREEN]
 				data[idx(lx, y, lz)] = crystals[int(roll * 150.0) % 3]
-			elif roll < 0.028:
+			elif roll < 0.03:
 				data[idx(lx, y - 1, lz)] = Blocks.GLOWSTONE
 			elif roll < 0.05:
 				data[idx(lx, y, lz)] = Blocks.MUSHROOM
+			elif roll < 0.1:
+				data[idx(lx, y, lz)] = Blocks.COBBLE  # stalagmite
+		elif y + 1 < CHUNK_H and data[idx(lx, y + 1, lz)] == Blocks.STONE and roll > 0.94:
+			data[idx(lx, y, lz)] = Blocks.COBBLE  # stalactite
 
 ## Theme landmarks are laid out on a 96-block anchor grid; each column asks
 ## the pure landmark function what it contributes, so structures far bigger
@@ -317,10 +347,11 @@ func _city_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: 
 	# step, hole in each slab above the top step) and, in towers, an open
 	# lift shaft in the far corner — grapple straight up it.
 	var stair: int = -1
-	if street_x == inset + 1 and street_z > inset and street_z <= inset + 5:
-		stair = street_z - inset  # step 1..5
-	var stair_hole: bool = street_x == inset + 1 \
-		and street_z >= inset + 4 and street_z <= inset + 6
+	if (street_x == inset + 1 or street_x == inset + 2) \
+			and street_z > inset and street_z <= inset + 4:
+		stair = street_z - inset  # steps 1..4, then land on the slab itself
+	var stair_hole: bool = (street_x == inset + 1 or street_x == inset + 2) \
+		and street_z >= inset + 2 and street_z <= inset + 4
 	var shaft: bool = height > 16 \
 		and street_x >= 29 - inset and street_x <= 30 - inset \
 		and street_z >= 29 - inset and street_z <= 30 - inset
@@ -337,8 +368,8 @@ func _city_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: 
 			else:
 				data[idx(lx, y, lz)] = Blocks.GLASS if window else material
 		elif k == height:
-			# Roof — the lift shaft stays open so you can grapple out the top.
-			if shaft:
+			# Roof — shaft and stairwell stay open so you can reach the top.
+			if shaft or stair_hole:
 				data[idx(lx, y, lz)] = Blocks.AIR
 			else:
 				data[idx(lx, y, lz)] = material
@@ -407,9 +438,9 @@ func _megacastle_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: in
 			# A staircase lane along the east wall climbs floor to floor,
 			# with holes in the slabs above and chandeliers in the middle.
 			var stair_step := -1
-			if wx == 9 and wz >= 3 and wz <= 8:
-				stair_step = wz - 2  # 1..6, six steps per floor
-			var stair_hole: bool = wx == 9 and wz >= 6 and wz <= 9
+			if (wx == 9 or wx == 10) and wz >= 3 and wz <= 7:
+				stair_step = wz - 2  # 1..5, then land on the slab
+			var stair_hole: bool = (wx == 9 or wx == 10) and wz >= 5 and wz <= 7
 			if door:
 				data[idx(lx, y, lz)] = Blocks.AIR
 			elif shell:
@@ -427,6 +458,9 @@ func _megacastle_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: in
 ## Rare floating islands high above the world — fly up and explore. Grass
 ## on top, a crystal heart inside the bigger ones.
 func _sky_island(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int) -> void:
+	if theme == "sky":
+		_skylands_column(data, lx, lz, wx, wz)
+		return
 	var n := _sky.get_noise_2d(wx, wz) * 0.5 + 0.5
 	if n < 0.8:
 		return
@@ -443,6 +477,60 @@ func _sky_island(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int) -> v
 		data[idx(lx, top + 1, lz)] = Blocks.FLOWER_PINK
 	elif roll < 0.09:
 		data[idx(lx, top + 1, lz)] = Blocks.TALL_GRASS
+
+## SKYLANDS: a whole biome of floating islands on a 48 grid, joined by
+## gentle parabolic plank bridges (2 wide), with waterfalls pouring off
+## some rims into the shallow sea far below.
+func _skylands_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int) -> void:
+	var gx := roundi(float(wx) / 48.0)
+	var gz := roundi(float(wz) / 48.0)
+	for dgx in range(gx - 1, gx + 2):
+		for dgz in range(gz - 1, gz + 2):
+			if hash01(dgx, dgz, 950) >= 0.75 and not (dgx == 0 and dgz == 0):
+				continue  # (0,0) always has an island — that's the spawn
+			var ax := dgx * 48
+			var az := dgz * 48
+			var r := 8.0 + hash01(dgx, dgz, 951) * 7.0
+			var top := 40 + int(hash01(dgx, dgz, 952) * 14.0)
+			var dist := Vector2(wx - ax, wz - az).length()
+			if dist < r:
+				var depth := int((r - dist) * 0.7) + 1
+				data[idx(lx, top, lz)] = Blocks.GRASS
+				for dy in range(1, depth + 1):
+					if top - dy > SEA_LEVEL + 4:
+						data[idx(lx, top - dy, lz)] = Blocks.DIRT if dy == 1 else Blocks.STONE
+				var roll := hash01(wx, wz, 46)
+				if roll < 0.04:
+					data[idx(lx, top + 1, lz)] = [Blocks.FLOWER_PINK,
+						Blocks.FLOWER_RED, Blocks.FLOWER_YELLOW][int(roll * 100.0) % 3]
+				elif roll < 0.1:
+					data[idx(lx, top + 1, lz)] = Blocks.TALL_GRASS
+			# Waterfall off one rim point of some islands.
+			if hash01(dgx, dgz, 953) < 0.35:
+				var fall_a := hash01(dgx, dgz, 954) * TAU
+				var fx := ax + int(cos(fall_a) * (r - 1.5))
+				var fz := az + int(sin(fall_a) * (r - 1.5))
+				if wx == fx and wz == fz:
+					for y in range(SEA_LEVEL - 1, top + 1):
+						if data[idx(lx, y, lz)] == Blocks.AIR:
+							data[idx(lx, y, lz)] = Blocks.WATER
+			# Bridges to the +x and +z neighbor islands.
+			for step_axis in 2:
+				var ngx := dgx + (1 if step_axis == 0 else 0)
+				var ngz := dgz + (0 if step_axis == 0 else 1)
+				if hash01(ngx, ngz, 950) >= 0.75 and not (ngx == 0 and ngz == 0):
+					continue
+				var btop := 40 + int(hash01(ngx, ngz, 952) * 14.0)
+				var a_pos := Vector2(ax, az)
+				var b_pos := Vector2(ngx * 48, ngz * 48)
+				var seg := b_pos - a_pos
+				var t := clampf((Vector2(wx, wz) - a_pos).dot(seg) / seg.length_squared(), 0.0, 1.0)
+				var closest := a_pos + seg * t
+				if Vector2(wx, wz).distance_to(closest) < 1.0 and t > 0.02 and t < 0.98:
+					var by := int(lerpf(float(top), float(btop), t) - 3.0 * sin(PI * t))
+					if by > SEA_LEVEL and by < CHUNK_H - 4 \
+							and data[idx(lx, by, lz)] == Blocks.AIR:
+						data[idx(lx, by, lz)] = Blocks.PLANKS
 
 static func idx(lx: int, y: int, lz: int) -> int:
 	return (y * CHUNK_SIZE + lz) * CHUNK_SIZE + lx
@@ -613,6 +701,9 @@ func _plant_tree(data: PackedByteArray, lx: int, base_y: int, lz: int, size_roll
 ## A decent spawn: walk outward from the middle until we find grass above sea
 ## level. Returns the block position of the ground (players stand on top).
 func find_spawn() -> Vector3i:
+	if theme == "sky":
+		# The (0,0) island always exists; land on top of it.
+		return Vector3i(0, 42 + int(hash01(0, 0, 952) * 14.0), 0)
 	for radius in range(0, 12):
 		for attempt in 24:
 			var angle := hash01(radius, attempt, 55) * TAU
