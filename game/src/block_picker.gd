@@ -5,7 +5,7 @@ extends PanelContainer
 ## name in big letters. Navigate with WASD / stick / D-pad, choose with
 ## jump/place (or click), close with E again.
 
-const COLUMNS := 10
+var COLUMNS := 10
 
 signal picked(entry: Dictionary)
 
@@ -19,6 +19,8 @@ var category := "blocks"
 
 func _init(p_category := "blocks") -> void:
 	category = p_category
+	if category == "tools":
+		COLUMNS = 7
 	visible = false
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.05, 0.06, 0.1, 0.92)

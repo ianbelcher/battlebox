@@ -220,6 +220,7 @@ func _ready() -> void:
 	outer.add_child(menu_box)
 	menu_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(_menu_slots_row)
+	_menu_slots_row.visible = false  # the bottom hotbar is the real one
 	for i in 8:
 		var slot_btn := Button.new()
 		slot_btn.focus_mode = Control.FOCUS_NONE
@@ -245,6 +246,7 @@ func _ready() -> void:
 		world.treasures_changed.connect(_refresh_identity)
 		world.survival_changed.connect(_refresh_identity)
 		world.hearts_changed.connect(_refresh_identity)
+		world.match_changed.connect(_on_match_changed)
 	Game.roster_changed.connect(_refresh_identity)
 	_refresh_identity()
 
@@ -383,6 +385,37 @@ func _build_game_tab() -> void:
 		Game.join_local(BotSlot.new(randi() % 1000))
 		Sfx.play("join"))
 	tab.add_child(bot_btn)
+	var video_btn := Button.new()
+	video_btn.focus_mode = Control.FOCUS_NONE
+	video_btn.text = "🖥  Video: Fancy"
+	video_btn.add_theme_font_size_override("font_size", _us(24))
+	video_btn.pressed.connect(func() -> void:
+		Game.video_level = (Game.video_level + 1) % 3
+		video_btn.text = "🖥  Video: " + ["Fancy", "Simple", "Bare bones"][Game.video_level]
+		Game.video_changed.emit(Game.video_level)
+		Sfx.play("tick", -8.0))
+	tab.add_child(video_btn)
+	var storm_row := HBoxContainer.new()
+	storm_row.add_theme_constant_override("separation", _us(8))
+	tab.add_child(storm_row)
+	var storm_label := Label.new()
+	storm_label.text = "Storm:"
+	storm_label.add_theme_font_size_override("font_size", _us(22))
+	storm_row.add_child(storm_label)
+	for preset in [[3, "3 min"], [5, "5 min"], [8, "8 min"], [60, "Endless"]]:
+		var preset_btn := Button.new()
+		preset_btn.focus_mode = Control.FOCUS_NONE
+		preset_btn.text = str(preset[1])
+		preset_btn.add_theme_font_size_override("font_size", _us(22))
+		var minutes: int = preset[0]
+		preset_btn.pressed.connect(func() -> void:
+			if Game.world != null:
+				Game.world.sv_match_config.rpc_id(1, minutes, -1)
+			Sfx.play("tick", -8.0))
+		storm_row.add_child(preset_btn)
+	_team_box = VBoxContainer.new()
+	_team_box.add_theme_constant_override("separation", _us(6))
+	tab.add_child(_team_box)
 	var bot_off := Button.new()
 	bot_off.focus_mode = Control.FOCUS_NONE
 	bot_off.text = "➖  Remove computer player"
@@ -430,7 +463,7 @@ func _update_radar() -> void:
 		if _radar != null:
 			_radar.visible = false
 		return
-	_radar.visible = true
+	_radar.visible = not _menu.visible
 	var center := player.position
 	# Radar convention: whatever you're facing is UP on the map.
 	var yaw: float = player.camera_yaw
@@ -477,6 +510,69 @@ func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color
 			if px + dx >= 0 and px + dx < 128 and py + dy >= 0 and py + dy < 128:
 				image.set_pixel(px + dx, py + dy, color)
 
+var _team_box: VBoxContainer
+
+## Battle lobby lives in the menu now: when a match opens, EVERYONE's menu
+## pops open on the Game tab so each player can pick a team with their own
+## controls.
+func _on_match_changed() -> void:
+	var player := _player()
+	if player == null or world == null:
+		return
+	if world.match_phase == "LOBBY":
+		if not _menu.visible:
+			_toggle_menu(player, 5)
+		_tabs.current_tab = 5
+		_refresh_team_box()
+	elif _menu.visible and world.match_phase == "DROP":
+		_close_menu()
+
+func _refresh_team_box() -> void:
+	if _team_box == null:
+		return
+	for child in _team_box.get_children():
+		child.queue_free()
+	if world == null or world.match_phase != "LOBBY":
+		return
+	var me := multiplayer.get_unique_id()
+	for id: String in Game.roster.keys():
+		var entry: Dictionary = Game.roster[id]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", _us(10))
+		_team_box.add_child(row)
+		var name_label := Label.new()
+		name_label.text = str(entry.name) + ("  🤖" if entry.get("bot", false) else "")
+		name_label.custom_minimum_size = Vector2(_us(170), 0)
+		name_label.add_theme_font_size_override("font_size", _us(22))
+		var team := int(entry.get("team", -1))
+		name_label.add_theme_color_override("font_color",
+			WorldNode.TEAM_COLORS[team] if team >= 0 else Color.WHITE)
+		row.add_child(name_label)
+		var mine: bool = int(entry.peer) == me and int(entry.slot) == slot
+		var bot: bool = bool(entry.get("bot", false))
+		if mine or bot:
+			var team_btn := Button.new()
+			team_btn.focus_mode = Control.FOCUS_NONE
+			team_btn.text = "  " + (WorldNode.TEAM_NAMES[team] if team >= 0 else "Pick team") + "  "
+			team_btn.add_theme_font_size_override("font_size", _us(20))
+			var next_team := (team + 1) % 4
+			var target_id := id
+			var target_slot := int(entry.slot)
+			team_btn.pressed.connect(func() -> void:
+				if bot and not mine:
+					if Game.world != null:
+						Game.world.sv_set_bot_team.rpc_id(1, target_id, next_team)
+				else:
+					Game.set_local_team(target_slot, next_team)
+				Sfx.play("tick", -8.0))
+			row.add_child(team_btn)
+		else:
+			var wait_label := Label.new()
+			wait_label.text = WorldNode.TEAM_NAMES[team] if team >= 0 else "picking..."
+			wait_label.add_theme_font_size_override("font_size", _us(20))
+			wait_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
+			row.add_child(wait_label)
+
 func _close_menu() -> void:
 	_menu.visible = false
 	var player := _player()
@@ -502,6 +598,7 @@ func _player() -> Player:
 	return null
 
 func _refresh_identity() -> void:
+	_refresh_team_box()
 	var entry := _entry()
 	if entry.is_empty():
 		return

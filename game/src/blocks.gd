@@ -70,35 +70,41 @@ enum {
 	# 63..102: the battle-block families — 4 materials x 10 colors, generated
 	# in _static_init (M_* are the row starts).
 	M_STEEL = 63,
-	M_STONE = 73,
-	M_SOIL = 83,
-	M_SNOW = 93,
-	MAX_BLOCK = 103,
+	M_STONE = 71,
+	M_SOIL = 79,
+	M_SNOW = 87,
+	MAX_BLOCK = 95,
 }
 
-## Family colors: the rainbow six plus black/dark gray/light gray/white.
+## Eight columns, rainbow-aligned across the four material rows. Each block
+## gets a REAL name; the finish still tells the materials apart.
 const FAMILY_COLORS := [
-	["Red", Color("c94a3d")], ["Orange", Color("d98a3d")], ["Yellow", Color("d9c44a")],
-	["Green", Color("58a850")], ["Blue", Color("4a7dc9")], ["Purple", Color("8f5fc2")],
-	["Black", Color("35363c")], ["Dark Gray", Color("5c5e66")],
-	["Light Gray", Color("9a9da6")], ["White", Color("e8e8ea")],
+	Color("c94a3d"), Color("d98a3d"), Color("d9c44a"), Color("58a850"),
+	Color("4a7dc9"), Color("8f5fc2"), Color("e8e8ea"), Color("35363c"),
 ]
+const STEEL_NAMES := ["Bronze", "Copper", "Gold Alloy", "Emerald Steel",
+	"Cobalt", "Amethyst Steel", "Silver", "Iron"]
+const STONE_NAMES := ["Ruby Rock", "Topaz Rock", "Amber Rock", "Jade",
+	"Lapis", "Amethyst", "Gypsum", "Coal"]
+const ORGANIC_NAMES := ["Redwood", "Timber", "Sand Pile", "Turf",
+	"Clay", "Lavender", "Birch Bark", "Peat"]
+const SNOW_NAMES := ["Rose Snow", "Peach Snow", "Golden Snow", "Mint Snow",
+	"Blue Ice", "Violet Snow", "Snow Drift", "Ash"]
 static var EXTRA: Dictionary = {}
 
 static func _static_init() -> void:
 	for i in FAMILY_COLORS.size():
-		var cname: String = FAMILY_COLORS[i][0]
-		var base: Color = FAMILY_COLORS[i][1]
+		var base: Color = FAMILY_COLORS[i]
 		# Same COLOR across materials — the finish tells them apart:
-		# steel smooth + sheen, stone rough + faint sheen, soil rough matte,
-		# snow smooth and translucent (and soft to walk through).
-		EXTRA[M_STEEL + i] = {"name": cname + " Steel", "color": base,
+		# steel smooth + sheen, stone rough + faint sheen, organic rough
+		# matte (and it BURNS), snow smooth, translucent and soft.
+		EXTRA[M_STEEL + i] = {"name": STEEL_NAMES[i], "color": base,
 			"top": base.lightened(0.18), "solid": true, "opaque": true, "emit": 0.25}
-		EXTRA[M_STONE + i] = {"name": cname + " Stone", "color": base,
-			"solid": true, "opaque": true, "emit": 0.06, "rough": 1.6}
-		EXTRA[M_SOIL + i] = {"name": cname + " Soil", "color": base.darkened(0.06),
-			"solid": true, "opaque": true, "rough": 2.4}
-		EXTRA[M_SNOW + i] = {"name": cname + " Snow",
+		EXTRA[M_STONE + i] = {"name": STONE_NAMES[i], "color": base,
+			"solid": true, "opaque": true, "emit": 0.06, "rough": 2.2}
+		EXTRA[M_SOIL + i] = {"name": ORGANIC_NAMES[i], "color": base.darkened(0.06),
+			"solid": true, "opaque": true, "rough": 3.0}
+		EXTRA[M_SNOW + i] = {"name": SNOW_NAMES[i],
 			"color": Color(base.lightened(0.35), 0.8),
 			"solid": false, "opaque": false, "translucent": true}
 
@@ -192,9 +198,9 @@ const INFO := {
 const WOOD := [LOG, PLANKS, BIRCH_PLANKS, DARK_PLANKS, CHERRY_PLANKS]
 const STONY := [STONE, COBBLE, MOSSY_COBBLE, BRICK, MARBLE, SLATE, SANDSTONE, GOLD, PATH, CHARRED]
 static func hardness(id: int) -> int:
-	if id >= M_STEEL and id < M_STEEL + 10:
+	if id >= M_STEEL and id < M_STONE:
 		return 3
-	if id >= M_STONE and id < M_STONE + 10:
+	if id >= M_STONE and id < M_SOIL:
 		return 2
 	if id >= M_SOIL and id < MAX_BLOCK:
 		return 0
@@ -214,7 +220,8 @@ static func is_flammable(id: int) -> bool:
 		TALL_GRASS, FLOWER_RED, FLOWER_YELLOW, FLOWER_PINK, SAPLING, BERRY_BUSH,
 		MUSHROOM, SHELL, WOOL_RED, WOOL_ORANGE, WOOL_YELLOW, WOOL_GREEN,
 		WOOL_TEAL, WOOL_BLUE, WOOL_PURPLE, WOOL_PINK, WOOL_BROWN, WOOL_WHITE,
-		WOOL_BLACK, PUMPKIN]
+		WOOL_BLACK, PUMPKIN] \
+		or (id >= M_SOIL and id < M_SNOW)  # organic blocks burn
 
 ## What the place-hotbar offers, in order: build stuff first, glow stuff,
 ## then the fun machines. Everything is infinite (creative style) — the cozy
@@ -228,17 +235,17 @@ const HOTBAR: Array[int] = [
 	LANTERN, CAMPFIRE, GLOWSTONE, CRYSTAL_PINK, CRYSTAL_BLUE, CRYSTAL_GREEN, LAVA,
 	STEEL, CHARRED, BOOM, FIREWORK, BOUNCY, LAUNCHER, NOTE, SPONGE, TELEPORT, CONFETTI,
 	FLOWER_RED, FLOWER_YELLOW, SAPLING,
-	M_STEEL, M_STEEL + 1, M_STEEL + 2, M_STEEL + 3, M_STEEL + 4, M_STEEL + 5, M_STEEL + 6, M_STEEL + 7, M_STEEL + 8, M_STEEL + 9,
-	M_STONE, M_STONE + 1, M_STONE + 2, M_STONE + 3, M_STONE + 4, M_STONE + 5, M_STONE + 6, M_STONE + 7, M_STONE + 8, M_STONE + 9,
-	M_SOIL, M_SOIL + 1, M_SOIL + 2, M_SOIL + 3, M_SOIL + 4, M_SOIL + 5, M_SOIL + 6, M_SOIL + 7, M_SOIL + 8, M_SOIL + 9,
-	M_SNOW, M_SNOW + 1, M_SNOW + 2, M_SNOW + 3, M_SNOW + 4, M_SNOW + 5, M_SNOW + 6, M_SNOW + 7, M_SNOW + 8, M_SNOW + 9,
+	M_STEEL, M_STEEL + 1, M_STEEL + 2, M_STEEL + 3, M_STEEL + 4, M_STEEL + 5, M_STEEL + 6, M_STEEL + 7,
+	M_STONE, M_STONE + 1, M_STONE + 2, M_STONE + 3, M_STONE + 4, M_STONE + 5, M_STONE + 6, M_STONE + 7,
+	M_SOIL, M_SOIL + 1, M_SOIL + 2, M_SOIL + 3, M_SOIL + 4, M_SOIL + 5, M_SOIL + 6, M_SOIL + 7,
+	M_SNOW, M_SNOW + 1, M_SNOW + 2, M_SNOW + 3, M_SNOW + 4, M_SNOW + 5, M_SNOW + 6, M_SNOW + 7,
 ]
 
 ## Picker categories (what each tab shows).
 static func family_blocks() -> Array:
 	var out: Array = []
 	for row in [M_STEEL, M_STONE, M_SOIL, M_SNOW]:
-		for i in 10:
+		for i in 8:
 			out.append(row + i)
 	return out
 

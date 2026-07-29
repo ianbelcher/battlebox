@@ -36,6 +36,26 @@ strike items when shipped, add new asks immediately.
 
 ## Done this round
 
+- [x] Materials renamed with REAL names in 8 rainbow-aligned columns:
+      steel (Bronze/Copper/Gold Alloy/Emerald Steel/Cobalt/Amethyst
+      Steel/Silver/Iron), stone (Ruby/Topaz/Amber/Jade/Lapis/Amethyst/
+      Gypsum/Coal), ORGANIC (Redwood/Timber/Sand/Turf/Clay/Lavender/
+      Birch/Peat — and organic BURNS + spreads fire), snow (…/Ash).
+      NOTE: old saves' family blocks (ids shifted) may show gaps
+- [x] Tools tab: combat row (Sword, Blaster, Bazooka, Grapple, Digger,
+      Napalm, Flare) then utility row (Wings, Bridge, Popper, Whirl,
+      Paint); square colorful icons instead of circles, new sword glyph,
+      material texture overlays on family block icons
+- [x] Real swimming: hold jump to rise, Shift to dive; grapple works from
+      water; build up from the seabed
+- [x] Video presets in Game tab: Fancy / Simple / Bare bones
+- [x] Battle lobby moved into the menu: starting a match auto-opens
+      EVERY player's menu on the Game tab with storm presets
+      (3/5/8/Endless), sword-only toggle and a proper team picker list
+- [x] Menu cleanups: duplicate in-menu slot row removed, radar no longer
+      overlays the menu
+- [x] Progressive whole-island preload after joining (radius 8→17)
+
 - [x] RADAR MATH FIXED: screen-to-world used +yaw instead of -yaw, so the
       map was mirrored/inverted — now rotates correctly against you
 - [x] Wider streaming ring (7-13 chunks) so travel doesn't pop in

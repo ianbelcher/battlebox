@@ -423,12 +423,18 @@ func _local_move(delta: float) -> void:
 			vert = -5.5
 		velocity.y = lerpf(velocity.y, vert, minf(1.0, delta * 8.0))
 	elif in_water:
-		velocity.y -= GRAVITY * 0.25 * delta
-		velocity.y = maxf(velocity.y, -2.0)
-		if jump_now:
-			velocity.y = minf(velocity.y + 30.0 * delta, 4.0)
-		# Buoyancy beats gravity so kids bob back up to the surface.
-		velocity.y = minf(velocity.y + 8.0 * delta, 2.5)
+		if carry_time > 0.0:
+			# Grapple zips still yank you out of the water.
+			velocity.y -= GRAVITY * 0.2 * delta
+		else:
+			# Real swimming: hold jump to rise, Shift to dive, gentle sink
+			# otherwise — dive down, explore, place blocks and build up.
+			var swim := -0.5
+			if input.is_jump_pressed():
+				swim = 3.2
+			elif input.is_sprint_pressed() or input.is_descend_pressed():
+				swim = -3.4
+			velocity.y = lerpf(velocity.y, swim, minf(1.0, delta * 5.0))
 	elif held().kind == "weapon" and int(held().id) == 11 and velocity.y < 0.5 and not on_floor:
 		# Wings held: glide. Gentle fall, big reach — and no shooting hand.
 		velocity.y = maxf(velocity.y - GRAVITY * delta * 0.12, -1.6)

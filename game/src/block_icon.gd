@@ -27,11 +27,19 @@ func _draw() -> void:
 	if kind == "weapon":
 		var spec := Weapons.spec(block_id)
 		var c := _dim(spec.color)
-		draw_circle(mid, w * 0.42, Color(0, 0, 0, 0.35))
-		draw_circle(mid, w * 0.38, c)
-		draw_circle(mid, w * 0.38, Color(1, 1, 1, 0.35), false, w * 0.03)
-		var ink := Color(0.06, 0.06, 0.1, 0.95)
+		# Big colorful glyph on a soft tinted plate — no more circles.
+		draw_rect(Rect2(w * 0.05, h * 0.05, w * 0.9, h * 0.9), Color(c.r, c.g, c.b, 0.16))
+		draw_rect(Rect2(w * 0.05, h * 0.05, w * 0.9, h * 0.9),
+			Color(c.r, c.g, c.b, 0.85), false, w * 0.035)
+		var ink := Color(c.lightened(0.22), 1.0)
+		draw_set_transform(mid * -0.4, 0.0, Vector2(1.4, 1.4))
 		match block_id:
+			13:  # Sword: diagonal blade, crossguard, pommel.
+				draw_line(mid + Vector2(-w * 0.1, w * 0.14), mid + Vector2(w * 0.16, -w * 0.12), ink, w * 0.07)
+				draw_colored_polygon(PackedVector2Array([mid + Vector2(w * 0.13, -w * 0.16),
+					mid + Vector2(w * 0.24, -w * 0.2), mid + Vector2(w * 0.2, -w * 0.09)]), ink)
+				draw_line(mid + Vector2(-w * 0.16, w * 0.02), mid + Vector2(-w * 0.02, w * 0.2), ink, w * 0.05)
+				draw_circle(mid + Vector2(-w * 0.16, w * 0.2), w * 0.045, ink)
 			0:  # Blaster: three speed pellets.
 				for i in 3:
 					draw_circle(mid + Vector2((i - 1) * w * 0.16, (i - 1) * -w * 0.05), w * 0.07, ink)
@@ -94,6 +102,7 @@ func _draw() -> void:
 						mid + Vector2(0, -w * 0.14) + Vector2(cos(sa), sin(sa)) * w * 0.12, ink, w * 0.04)
 			_:
 				draw_circle(mid, w * 0.1, ink)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		return
 	if kind == "structure":
 		var c := _dim(Structures.spec(block_id).color)
@@ -169,3 +178,22 @@ func _draw() -> void:
 				var a := i * TAU / 5.0
 				draw_line(Vector2(w * 0.62, h * 0.3),
 					Vector2(w * 0.62, h * 0.3) + Vector2(cos(a), sin(a)) * w * 0.12, overlay, w * 0.03)
+
+	# Material textures so the family blocks read as more than flat color.
+	if block_id >= Blocks.M_STONE and block_id < Blocks.M_SOIL:
+		for i in 6:
+			draw_circle(mid + Vector2(sin(i * 2.4 + block_id) * w * 0.16,
+				cos(i * 1.7 + block_id) * w * 0.13 + w * 0.04), w * 0.025, Color(0, 0, 0, 0.32))
+	elif block_id >= Blocks.M_SOIL and block_id < Blocks.M_SNOW:
+		for i in 3:
+			var gy := h * (0.42 + i * 0.14)
+			draw_line(Vector2(w * 0.3, gy), Vector2(w * 0.7, gy + w * 0.04),
+				Color(0, 0, 0, 0.24), w * 0.03)
+	elif block_id >= Blocks.M_STEEL and block_id < Blocks.M_STONE:
+		for rivet in [Vector2(0.34, 0.38), Vector2(0.66, 0.38), Vector2(0.34, 0.72), Vector2(0.66, 0.72)]:
+			draw_circle(Vector2(w * rivet.x, h * rivet.y), w * 0.028, Color(1, 1, 1, 0.4))
+	elif block_id >= Blocks.M_SNOW and block_id < Blocks.MAX_BLOCK:
+		for i in 3:
+			var p := mid + Vector2(sin(i * 2.1 + block_id) * w * 0.15, cos(i * 2.8) * w * 0.12)
+			draw_line(p - Vector2(w * 0.035, 0), p + Vector2(w * 0.035, 0), Color(1, 1, 1, 0.75), w * 0.02)
+			draw_line(p - Vector2(0, w * 0.035), p + Vector2(0, w * 0.035), Color(1, 1, 1, 0.75), w * 0.02)

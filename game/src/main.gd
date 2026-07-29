@@ -290,7 +290,15 @@ func _on_connected() -> void:
 	var world := Game.create_world()
 	_split.world = world
 	world.world_ready.connect(func() -> void:
-		_loading_label.visible = false)
+		_loading_label.visible = false
+		# Progressively pull the whole island in the background so travel
+		# never waits on the server.
+		for i in 4:
+			var radius: int = [8, 11, 14, 17][i]
+			get_tree().create_timer(2.0 + i * 5.0).timeout.connect(func() -> void:
+				if Game.world != null and Game.world.chunks != null:
+					Game.world.chunks.prefetch(radius)))
+	Game.video_changed.connect(_apply_video)
 	world.survival_changed.connect(_refresh_survival)
 	world.match_changed.connect(_refresh_match)
 	world.match_won.connect(func(winner: int) -> void:
@@ -447,6 +455,20 @@ func _apply_low_fx() -> void:
 		_split.set_low_fx(true)
 	print("Low-FX mode enabled (fps was %d)" % Engine.get_frames_per_second())
 
+## Video presets: 0 fancy, 1 simple (no SSAO/glow), 2 bare bones (no
+## shadows or dynamic lights at all) — for old computers.
+func _apply_video(level: int) -> void:
+	var low := level >= 1
+	if Game.world != null and Game.world.sky != null:
+		Game.world.sky.set_low_fx(low)
+		Game.world.sky.sun.shadow_enabled = level < 2
+		if level >= 2:
+			Game.world.sky.moon.shadow_enabled = false
+	if Game.world != null and Game.world.chunks != null:
+		Game.world.chunks.light_cap = [8, 4, 0][level]
+	if _split != null:
+		_split.set_low_fx(low)
+
 ## Everything top-right scales with the window: map ~24% of height.
 func _layout_topright() -> void:
 	if _minimap == null:
@@ -474,7 +496,7 @@ func _refresh_match() -> void:
 	if world == null:
 		return
 	var phase: String = world.match_phase
-	_lobby_panel.visible = phase == "LOBBY"
+	_lobby_panel.visible = false  # the lobby lives in each player's menu now
 	if phase == "LOBBY":
 		_rebuild_team_rows()
 	elif phase == "DROP":

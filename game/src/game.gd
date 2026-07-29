@@ -14,6 +14,9 @@ const AUTO_NAMES: Array[String] = [
 ]
 
 signal roster_changed
+signal video_changed(level: int)
+## 0 fancy, 1 simple, 2 bare bones — applied by main across all viewports.
+var video_level := 0
 
 ## Key "peer:slot" -> {peer:int, slot:int, name:String, style:int}
 var roster: Dictionary = {}

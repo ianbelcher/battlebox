@@ -989,7 +989,7 @@ func sv_match_config(minutes: int, loot: int) -> void:
 	if not multiplayer.is_server() or match_phase != "LOBBY":
 		return
 	if minutes > 0:
-		storm_minutes = clampf(float(minutes), 2.0, 10.0)
+		storm_minutes = clampf(float(minutes), 2.0, 60.0)
 	if loot >= 0:
 		loot_only = loot == 1
 
