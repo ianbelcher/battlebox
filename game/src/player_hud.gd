@@ -673,73 +673,70 @@ func _refresh_team_box() -> void:
 			wait_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
 			row.add_child(wait_label)
 
-## Its own tab: every video option, with presets on top.
+## Its own tab: every video setting individually — numbers get sliders,
+## switches get checkboxes. No presets, no magic.
 func _build_video_tab() -> void:
 	var tab := VBoxContainer.new()
 	tab.name = "Video"
-	tab.add_theme_constant_override("separation", _us(12))
+	tab.add_theme_constant_override("separation", _us(10))
 	_tabs.add_child(tab)
-	var toggle_specs := [["shadows", "Shadows"], ["fancy_light", "Fancy lighting"],
-		["lights", "Dynamic lights"], ["res", "High resolution"],
-		["wire", "Wireframe"]]
-	var dist_ref: Array = []
-	var toggle_btns: Array = []
-	var refresh_toggles := func() -> void:
-		for i in toggle_btns.size():
-			(toggle_btns[i] as Button).text = \
-				("☑  " if Game.video[toggle_specs[i][0]] else "☐  ") + str(toggle_specs[i][1])
-	var preset_row := HBoxContainer.new()
-	preset_row.add_theme_constant_override("separation", _us(8))
-	tab.add_child(preset_row)
-	var preset_label := Label.new()
-	preset_label.text = "Presets:"
-	preset_label.add_theme_font_size_override("font_size", _us(22))
-	preset_row.add_child(preset_label)
-	for preset_name in Game.VIDEO_PRESETS.keys():
-		var pbtn := Button.new()
-		pbtn.focus_mode = Control.FOCUS_NONE
-		pbtn.text = str(preset_name)
-		pbtn.add_theme_font_size_override("font_size", _us(20))
-		var pname := str(preset_name)
-		pbtn.pressed.connect(func() -> void:
-			Game.video = Game.VIDEO_PRESETS[pname].duplicate()
-			refresh_toggles.call()
-			if dist_ref.size() > 0:
-				(dist_ref[0] as Button).text = "🌄  Draw distance: " + \
-					["Near", "Normal", "Far"][int(Game.video.get("dist", 1))]
-			Game.video_changed.emit()
-			Sfx.play("tick", -8.0))
-		preset_row.add_child(pbtn)
-	var update_dist := func() -> void:
-		if dist_ref.size() > 0:
-			(dist_ref[0] as Button).text = "🌄  Draw distance: " + \
-				["Near", "Normal", "Far"][int(Game.video.get("dist", 1))]
-	var dist_btn := Button.new()
-	dist_btn.focus_mode = Control.FOCUS_NONE
-	dist_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	dist_btn.add_theme_font_size_override("font_size", _us(20))
-	dist_btn.pressed.connect(func() -> void:
-		Game.video["dist"] = (int(Game.video.get("dist", 1)) + 1) % 3
-		update_dist.call()
-		Game.video_changed.emit()
-		Sfx.play("tick", -10.0))
-	tab.add_child(dist_btn)
-	dist_ref.append(dist_btn)
-	update_dist.call()
-	for spec in toggle_specs:
+	_add_video_slider(tab, "Draw distance", "dist_blocks", 48, 208, 16, "%d blocks")
+	_add_video_slider(tab, "Render scale", "render_scale", 40, 100, 5, "%d%%")
+	_add_video_slider(tab, "Shadow quality", "shadow_quality", 0, 2, 1, "%d")
+	for spec in [["shadows", "Shadows"], ["ssao", "Contact shading (SSAO)"],
+			["glow", "Glow"], ["lights", "Dynamic lights"], ["wire", "Wireframe"]]:
+		var key := str(spec[0])
 		var tbtn := Button.new()
 		tbtn.focus_mode = Control.FOCUS_NONE
 		tbtn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		tbtn.add_theme_font_size_override("font_size", _us(20))
-		var key := str(spec[0])
+		tbtn.text = ("☑  " if Game.video[key] else "☐  ") + str(spec[1])
+		var label_text := str(spec[1])
 		tbtn.pressed.connect(func() -> void:
 			Game.video[key] = not bool(Game.video[key])
-			refresh_toggles.call()
+			tbtn.text = ("☑  " if Game.video[key] else "☐  ") + label_text
 			Game.video_changed.emit()
 			Sfx.play("tick", -10.0))
 		tab.add_child(tbtn)
-		toggle_btns.append(tbtn)
-	refresh_toggles.call()
+	# Renderer: Full (Vulkan, all effects) vs Lite (OpenGL, Minecraft-class
+	# speed on old computers). Switching restarts the game.
+	var is_lite := RenderingServer.get_rendering_device() == null
+	var lite_btn := Button.new()
+	lite_btn.focus_mode = Control.FOCUS_NONE
+	lite_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	lite_btn.add_theme_font_size_override("font_size", _us(20))
+	lite_btn.text = "🎨  Renderer: " + ("Lite — fast, for old computers" if is_lite \
+		else "Full — all the fancy effects") + "   (switch = quick restart)"
+	lite_btn.pressed.connect(func() -> void:
+		Game.relaunch_with_renderer(not is_lite))
+	tab.add_child(lite_btn)
+
+func _add_video_slider(tab: Control, label_text: String, key: String,
+		minv: int, maxv: int, step: int, suffix: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", _us(10))
+	tab.add_child(row)
+	var name_label := Label.new()
+	name_label.text = label_text + ":"
+	name_label.custom_minimum_size = Vector2(_us(190), 0)
+	name_label.add_theme_font_size_override("font_size", _us(20))
+	row.add_child(name_label)
+	var slider := HSlider.new()
+	slider.min_value = minv
+	slider.max_value = maxv
+	slider.step = step
+	slider.value = int(Game.video.get(key, minv))
+	slider.custom_minimum_size = Vector2(_us(230), _us(24))
+	slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(slider)
+	var value_label := Label.new()
+	value_label.text = suffix % int(slider.value)
+	value_label.add_theme_font_size_override("font_size", _us(20))
+	row.add_child(value_label)
+	slider.value_changed.connect(func(val: float) -> void:
+		Game.video[key] = int(val)
+		value_label.text = suffix % int(val)
+		Game.video_changed.emit())
 
 func _close_menu() -> void:
 	_menu.visible = false

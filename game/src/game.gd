@@ -15,14 +15,47 @@ const AUTO_NAMES: Array[String] = [
 
 signal roster_changed
 signal video_changed
-## Advanced video settings, applied by main across all viewports.
-var video: Dictionary = {"shadows": true, "fancy_light": true,
-	"lights": true, "res": true, "wire": false, "dist": 1}
-const VIDEO_PRESETS := {
-	"Fancy": {"shadows": true, "fancy_light": true, "lights": true, "res": true, "wire": false, "dist": 2},
-	"Simple": {"shadows": true, "fancy_light": false, "lights": true, "res": false, "wire": false, "dist": 1},
-	"Bare bones": {"shadows": false, "fancy_light": false, "lights": false, "res": false, "wire": false, "dist": 0},
+## Video settings: every switch is its own boolean, every scale its own
+## number. Persisted to disk so they survive restarts.
+var video: Dictionary = {
+	"dist_blocks": 128,     # draw distance in BLOCKS (like Minecraft)
+	"render_scale": 100,    # 3D resolution percent
+	"shadows": true,
+	"shadow_quality": 2,    # 0/1/2 -> 1024/2048/4096 shadow atlas
+	"ssao": true,           # contact shading
+	"glow": true,           # bloom on bright things
+	"lights": true,         # dynamic lights (lanterns, crystals...)
+	"wire": false,          # wireframe
+	"renderer": "full",     # full (Vulkan) or lite (OpenGL) — needs restart
 }
+const VIDEO_PATH := "user://video.cfg"
+
+func load_video() -> void:
+	var config := ConfigFile.new()
+	if config.load(VIDEO_PATH) != OK:
+		return
+	for key in video.keys():
+		video[key] = config.get_value("video", key, video[key])
+
+func save_video() -> void:
+	var config := ConfigFile.new()
+	for key in video.keys():
+		config.set_value("video", key, video[key])
+	config.save(VIDEO_PATH)
+
+## Renderer switching needs a process restart; the saved preference is
+## honored on every launch.
+func relaunch_with_renderer(lite: bool) -> void:
+	video["renderer"] = "lite" if lite else "full"
+	save_video()
+	var args := PackedStringArray()
+	if not OS.has_feature("standalone"):
+		args.append("--path")
+		args.append(ProjectSettings.globalize_path("res://"))
+	args.append("--rendering-method")
+	args.append("gl_compatibility" if lite else "forward_plus")
+	OS.create_process(OS.get_executable_path(), args)
+	get_tree().quit()
 
 ## Key "peer:slot" -> {peer:int, slot:int, name:String, style:int}
 var roster: Dictionary = {}
@@ -33,6 +66,8 @@ var world: Node = null
 var profile_keys: Dictionary = {}
 
 func _ready() -> void:
+	load_video()
+	video_changed.connect(save_video)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 

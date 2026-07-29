@@ -29,9 +29,9 @@ RUN godot --headless --path /game --import || true
 
 RUN mkdir -p /game/build/server /game/build/downloads \
     && godot --headless --path /game --export-release "Linux Server" build/server/world-server.x86_64 \
-    && godot --headless --path /game --export-release "Linux Client" build/downloads/belcher-world-linux.x86_64 \
-    && godot --headless --path /game --export-release "Windows Client" build/downloads/belcher-world-windows.exe \
-    && godot --headless --path /game --export-release "macOS Client" build/downloads/belcher-world-macos.zip
+    && godot --headless --path /game --export-release "Linux Client" build/downloads/boxel-linux.x86_64 \
+    && godot --headless --path /game --export-release "Windows Client" build/downloads/boxel-windows.exe \
+    && godot --headless --path /game --export-release "macOS Client" build/downloads/boxel-macos.zip
 
 # Runtime stage: one image, two roles. The k8s deployment runs two containers
 # from this image — `server` (the world) and `web` (nginx serving the
@@ -46,11 +46,6 @@ RUN apt-get update \
 COPY --from=build /game/build/server /opt/world/server
 COPY maps /opt/world/maps
 COPY --from=build /game/build/downloads /opt/world/web/downloads
-RUN printf 'start belcher-world-windows.exe --rendering-method gl_compatibility\r\n' \
-        > /opt/world/web/downloads/belcher-world-windows-LITE.bat \
-    && printf '#!/bin/sh\nexec "$(dirname "$0")/belcher-world-linux.x86_64" --rendering-method gl_compatibility\n' \
-        > /opt/world/web/downloads/belcher-world-linux-lite.sh \
-    && chmod +x /opt/world/web/downloads/belcher-world-linux-lite.sh
 COPY web/index.html /opt/world/web/index.html
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY entrypoint.sh /entrypoint.sh

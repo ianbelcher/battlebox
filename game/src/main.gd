@@ -4,7 +4,7 @@ extends Control
 ## When launched headless (or with --server / WORLD_ROLE=server) no UI is
 ## built at all; we just start listening.
 
-const TITLE := "Boxel Battle"
+const TITLE := "Boxel"
 const BG_TOP := Color("22304a")
 const BG_BOTTOM := Color("10141f")
 const GOLD := Color("ffd166")
@@ -48,6 +48,14 @@ func _ready() -> void:
 	get_viewport().disable_3d = true
 	# Lets the Wireframe video toggle actually draw wireframes at runtime.
 	RenderingServer.set_debug_generate_wireframes(true)
+	# Honor the saved renderer choice (Full/Lite switching needs a restart).
+	if OS.get_environment("WORLD_AUTOTEST").is_empty() \
+			and OS.get_environment("WORLD_SHOTS").is_empty():
+		var want_lite: bool = str(Game.video.get("renderer", "full")) == "lite"
+		var is_lite := RenderingServer.get_rendering_device() == null
+		if want_lite != is_lite:
+			Game.relaunch_with_renderer(want_lite)
+			return
 	_build_connect_screen()
 	_build_game_screen()
 	Net.connected_to_server.connect(_on_connected)
@@ -322,16 +330,6 @@ func _on_connected() -> void:
 	_show_screen(_game_screen)
 	_split.update_layout()
 	_maybe_start_autotest()
-	# Old machines: if we can't hold ~45fps after settling, drop the fancy
-	# effects and render scale automatically (WORLD_LOWFX=1/0 forces it).
-	var forced_fx := OS.get_environment("WORLD_LOWFX")
-	if forced_fx == "1":
-		_apply_low_fx()
-	elif forced_fx != "0":
-		get_tree().create_timer(14.0).timeout.connect(func() -> void:
-			if _in_world and Engine.get_frames_per_second() < 45.0:
-				_apply_low_fx()
-				_show_banner("Smoother mode on!"))
 
 ## WORLD_AUTOTEST=<n>: join n bot players who wander, dig and build — lets a
 ## headless client soak-test a full world session.
@@ -448,36 +446,22 @@ func _update_minimap() -> void:
 							wide.set_pixel(px + dx, py + dy, dot)
 		_split.big_map.texture = ImageTexture.create_from_image(wide)
 
-func _apply_low_fx() -> void:
-	if Game.world == null:
-		return
-	if Game.world.sky != null:
-		Game.world.sky.set_low_fx(true)
-	if Game.world.chunks != null:
-		Game.world.chunks.light_cap = 4
-	if _split != null:
-		_split.set_low_fx(true)
-	print("Low-FX mode enabled (fps was %d)" % Engine.get_frames_per_second())
 
-## Applies the advanced video settings (Game.video) everywhere: shadows,
-## SSAO/glow, dynamic light cap, render resolution, even wireframe.
+## Applies the video settings (Game.video) everywhere. Each setting maps
+## to exactly one thing — no presets, no automatic overrides.
 func _apply_video() -> void:
 	var v: Dictionary = Game.video
 	if Game.world != null and Game.world.sky != null:
-		Game.world.sky.set_low_fx(not bool(v.fancy_light))
 		Game.world.sky.allow_shadows = bool(v.shadows)
+		Game.world.sky.environment.ssao_enabled = bool(v.ssao)
+		Game.world.sky.environment.glow_enabled = bool(v.glow)
 	if Game.world != null and Game.world.chunks != null:
 		Game.world.chunks.light_cap = 8 if bool(v.lights) else 0
 	if _split != null:
-		_split.set_low_fx(not bool(v.res))
+		_split.set_render_scale(clampf(int(v.render_scale) / 100.0, 0.4, 1.0))
 		_split.set_wireframe(bool(v.wire))
-	# Smaller shadow atlas on lower presets: big win on old GPUs.
-	var shadow_size := 4096
-	if not bool(v.fancy_light):
-		shadow_size = 2048
-	if not bool(v.shadows):
-		shadow_size = 1024
-	RenderingServer.directional_shadow_atlas_set_size(shadow_size, true)
+	RenderingServer.directional_shadow_atlas_set_size(
+		[1024, 2048, 4096][clampi(int(v.shadow_quality), 0, 2)], true)
 
 ## Everything top-right scales with the window: map ~24% of height.
 func _layout_topright() -> void:

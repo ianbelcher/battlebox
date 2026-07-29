@@ -305,10 +305,8 @@ func _process(delta: float) -> void:
 		for cell: Dictionary in _cells:
 			if cell.cam != null and not cell.get("fp", false):
 				max_size = maxf(max_size, float(cell.size))
-		var dist_caps: Array = [[4, 4, 6], [5, 6, 9], [6, 7, 13]][
-			clampi(int(Game.video.get("dist", 1)), 0, 2)]
-		world.chunks.view_radius = clampi(int(dist_caps[0]) + int(max_size / 7.0),
-			int(dist_caps[1]), int(dist_caps[2]))
+		world.chunks.view_radius = clampi(
+			int(Game.video.get("dist_blocks", 128)) / 16, 3, 13)
 	# The mouse belongs to the keyboard player while they're in first person.
 	var want_capture := false
 	for cell: Dictionary in _cells:
@@ -358,6 +356,12 @@ func _update_xray(cell: Dictionary, player: Player) -> void:
 				markers[id].queue_free()
 			markers.erase(id)
 	cell.xray = markers
+
+## Video setting: 3D render resolution as a fraction of window size.
+func set_render_scale(scale_f: float) -> void:
+	for cell: Dictionary in _cells:
+		if cell.cam != null:
+			(cell.cam.get_viewport() as SubViewport).scaling_3d_scale = scale_f
 
 ## Video toggle: draw the whole world as wireframes (retro debug look, and
 ## the ultimate old-computer mode).

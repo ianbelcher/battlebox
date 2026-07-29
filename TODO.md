@@ -3,6 +3,17 @@
 ## AUDIT — Ian's asks, current status (keep this honest!)
 
 DONE this overnight run:
+- [x] VIDEO SETTINGS DONE PROPERLY (Ian's ask): presets deleted; every
+      setting individual — Draw distance slider IN BLOCKS (48-208),
+      Render scale % slider, Shadow quality slider, checkboxes for
+      Shadows/SSAO/Glow/Dynamic lights/Wireframe, all persisted to disk;
+      Renderer: Full/Lite switch IN-GAME (game restarts itself — no bat
+      files, those are deleted); "Smoother mode" auto-override and its
+      banner removed entirely
+- [x] Startup jank: meshing is now TIME-budgeted (5ms/frame, 12ms in
+      matches) instead of chunk-counted — load-in no longer hitches
+- [x] Renamed to just BOXEL everywhere (title, server log, downloads are
+      boxel-macos.zip / boxel-windows.exe / boxel-linux.x86_64)
 - [x] PERFORMANCE ROUND: X-Ray Goggles removed; Wireframe back as a video
       toggle; Draw distance option (Near/Normal/Far) drives the streaming
       ring; shadow atlas shrinks on lower presets (4096/2048/1024); radar

@@ -169,12 +169,12 @@ func _queue_mesh(cpos: Vector2i) -> void:
 ## One chunk meshed per frame, tops — streaming spreads over frames instead
 ## of spiking them, and the mesher itself skips empty slabs at C++ speed.
 func _process(_delta: float) -> void:
-	# Burst-mesh when a match is on or a big backlog piled up (prefetch),
-	# one per frame otherwise to keep frames smooth.
-	var mesh_budget: int = 4 if (match_mode or _mesh_queue.size() > 40) else 1
-	for _mesh_pass in mesh_budget:
-		if _mesh_queue.is_empty():
-			break
+	# Time-budgeted meshing: spend at most a few ms per frame so loading
+	# never hitches, however big the backlog is.
+	var mesh_start := Time.get_ticks_usec()
+	var mesh_limit := 12000 if match_mode else 5000
+	while not _mesh_queue.is_empty() \
+			and Time.get_ticks_usec() - mesh_start < mesh_limit:
 		var cpos: Vector2i = _mesh_queue.pop_front()
 		_queued.erase(cpos)
 		if _data.has(cpos):
