@@ -1,6 +1,7 @@
 # Boxel Battle map library
 
-Loose `r.*.mca` region files in this folder = **Ian's World**.
+Each subfolder here is one selectable map (currently Custom 1-4, the
+four regions from `deployments/world/regions/`).
 
 To add another map: make a subfolder (e.g. `maps/skyblock/`) and drop the
 Minecraft region files in it (either directly or as a `region/` subdir),

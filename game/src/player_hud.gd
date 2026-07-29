@@ -461,9 +461,20 @@ func _build_game_tab() -> void:
 	_team_box.add_theme_constant_override("separation", _us(4))
 	tab.add_child(_team_box)
 	_add_section(tab, "🌍  WORLD")
+	var gen_label := Label.new()
+	gen_label.text = "Generated worlds:"
+	gen_label.add_theme_font_size_override("font_size", _us(18))
+	tab.add_child(gen_label)
 	_world_row = HBoxContainer.new()
 	_world_row.add_theme_constant_override("separation", _us(6))
 	tab.add_child(_world_row)
+	_maps_label = Label.new()
+	_maps_label.text = "Maps:"
+	_maps_label.add_theme_font_size_override("font_size", _us(18))
+	tab.add_child(_maps_label)
+	_maps_row = HBoxContainer.new()
+	_maps_row.add_theme_constant_override("separation", _us(6))
+	tab.add_child(_maps_row)
 	_rebuild_world_row()
 	if world != null:
 		world.map_list_changed.connect(_rebuild_world_row)
@@ -494,29 +505,35 @@ func _build_game_tab() -> void:
 				return)
 	bot_row.add_child(bot_off)
 
-## Theme buttons plus every imported map the server has in its library.
+## Generated themes on one row; the server's imported map library below.
 func _rebuild_world_row() -> void:
 	if _world_row == null:
 		return
 	for child in _world_row.get_children():
 		child.queue_free()
-	var choices := [["classic", "Classic"], ["desert", "Desert"], ["isles", "Isles"],
-		["castles", "Castle"], ["city", "City"], ["sky", "Skylands"], ["arena", "Arena"]]
-	if world != null:
+	for child in _maps_row.get_children():
+		child.queue_free()
+	for choice in [["classic", "Classic"], ["desert", "Desert"], ["isles", "Isles"],
+			["castles", "Castle"], ["city", "City"], ["sky", "Skylands"], ["arena", "Arena"]]:
+		_world_row.add_child(_map_button(str(choice[0]), str(choice[1])))
+	var have_maps: bool = world != null and not world.map_list.is_empty()
+	_maps_label.visible = have_maps
+	_maps_row.visible = have_maps
+	if have_maps:
 		for entry in world.map_list:
-			choices.append([str(entry.key), str(entry.name)])
-	for choice in choices:
-		var map_btn := Button.new()
-		map_btn.focus_mode = Control.FOCUS_NONE
-		map_btn.text = str(choice[1])
-		map_btn.add_theme_font_size_override("font_size", _us(18))
-		var map_key := str(choice[0])
-		map_btn.pressed.connect(func() -> void:
-			if Game.world != null:
-				Game.world.sv_new_map.rpc_id(1, map_key)
-				_close_menu()
-			Sfx.play("warp", -8.0))
-		_world_row.add_child(map_btn)
+			_maps_row.add_child(_map_button(str(entry.key), str(entry.name)))
+
+func _map_button(map_key: String, map_name: String) -> Button:
+	var map_btn := Button.new()
+	map_btn.focus_mode = Control.FOCUS_NONE
+	map_btn.text = map_name
+	map_btn.add_theme_font_size_override("font_size", _us(18))
+	map_btn.pressed.connect(func() -> void:
+		if Game.world != null:
+			Game.world.sv_new_map.rpc_id(1, map_key)
+			_close_menu()
+		Sfx.play("warp", -8.0))
+	return map_btn
 
 func _add_section(tab: Control, title: String) -> void:
 	var lbl := Label.new()
@@ -612,6 +629,8 @@ func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color
 
 var _team_box: VBoxContainer
 var _world_row: HBoxContainer
+var _maps_row: HBoxContainer
+var _maps_label: Label
 
 ## Battle lobby lives in the menu now: when a match opens, EVERYONE's menu
 ## pops open on the Game tab so each player can pick a team with their own

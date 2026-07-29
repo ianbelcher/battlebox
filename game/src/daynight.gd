@@ -38,6 +38,8 @@ func _ready() -> void:
 	moon.directional_shadow_max_distance = 90.0
 	moon.light_color = Color(0.62, 0.72, 0.95)
 	moon.light_energy = 0.0
+	# Never draw a second (dark) sun disc for the moon in the sky.
+	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(moon)
 
 	sky_material = ProceduralSkyMaterial.new()
@@ -116,6 +118,8 @@ func _apply(clock: float) -> void:
 		horizon = NIGHT_HORIZON
 	sky_material.sky_top_color = top
 	sky_material.sky_horizon_color = horizon
-	sky_material.ground_bottom_color = horizon.darkened(0.5)
+	# The below-horizon half fades gently from the horizon color instead
+	# of a flat dark gray slab.
+	sky_material.ground_bottom_color = horizon.darkened(0.25)
 	sky_material.ground_horizon_color = horizon
 	environment.ambient_light_energy = (0.72 + daylight * 0.28) * _gl_boost

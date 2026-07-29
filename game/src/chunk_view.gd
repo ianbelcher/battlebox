@@ -90,19 +90,18 @@ func _refresh_interest() -> void:
 			if batch.size() >= REQUEST_BATCH:
 				break
 		world.request_chunks(batch)
-	if match_mode:
-		return
-	# Drop chunks far outside every focus.
-	var unload := view_radius + 2
-	for cpos: Vector2i in _data.keys().duplicate():
-		var keep := false
+	# Nothing unloads anymore — the whole map is only a few MB, so chunks
+	# stay resident forever and moving never re-pulls from the server.
+	# Far chunks simply hide, which is what draw distance means.
+	var hide_beyond := view_radius + 1
+	for cpos: Vector2i in _holders.keys():
+		var visible := false
 		for focus in _focus_chunks:
 			var d := cpos - focus
-			if d.x * d.x + d.y * d.y <= unload * unload:
-				keep = true
+			if d.x * d.x + d.y * d.y <= hide_beyond * hide_beyond:
+				visible = true
 				break
-		if not keep:
-			_drop_chunk(cpos)
+		(_holders[cpos] as Node3D).visible = visible
 
 func _dist_to_focus(cpos: Vector2i) -> float:
 	var best := 1e9
