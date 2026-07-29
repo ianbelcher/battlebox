@@ -3,6 +3,15 @@
 ## AUDIT — Ian's asks, current status (keep this honest!)
 
 DONE this overnight run:
+- [x] PERFORMANCE ROUND: X-Ray Goggles removed; Wireframe back as a video
+      toggle; Draw distance option (Near/Normal/Far) drives the streaming
+      ring; shadow atlas shrinks on lower presets (4096/2048/1024); radar
+      rebuilds 3x less often under 20fps; LITE launchers shipped
+      (belcher-world-windows-LITE.bat / linux-lite.sh) that start the game
+      on the GL Compatibility renderer — verified working, this is the fix
+      for old PCs where Vulkan crawls at 1fps. Download page explains it
+- [ ] Lite-mode look: GL renderer is darker (no SSAO/tonemap tuning) —
+      add a GL-detected ambient boost pass
 - [x] Battle UI is an in-menu SECTION (no modal): Game tab = BATTLE ROYALE
       (Start + "Game length: 3/5/8/Unlimited" + Teams inline), WORLD
       (Classic/Desert/Isles/Castle/City/Skylands/Ian's World buttons),

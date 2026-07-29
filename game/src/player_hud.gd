@@ -48,6 +48,7 @@ var _preview_angle := PI
 var _last_tab := 1
 var _tab_guard := false
 var _radar: TextureRect
+var _radar_tick := 0
 var _clock: Label
 var _storm_tint: ColorRect
 var _water_tint: ColorRect
@@ -548,6 +549,10 @@ func _update_radar() -> void:
 			_radar.visible = false
 		return
 	_radar.visible = not _menu.visible
+	# On struggling machines rebuild the radar a third as often.
+	_radar_tick += 1
+	if Engine.get_frames_per_second() < 20 and _radar_tick % 3 != 0:
+		return
 	var center := player.position
 	# Radar convention: whatever you're facing is UP on the map.
 	var yaw: float = player.camera_yaw
@@ -675,9 +680,9 @@ func _build_video_tab() -> void:
 	tab.add_theme_constant_override("separation", _us(12))
 	_tabs.add_child(tab)
 	var toggle_specs := [["shadows", "Shadows"], ["fancy_light", "Fancy lighting"],
-		["lights", "Dynamic lights"], ["res", "High resolution"]]
-	if OS.is_debug_build():
-		toggle_specs.append(["wire", "Wireframe (dev)"])
+		["lights", "Dynamic lights"], ["res", "High resolution"],
+		["wire", "Wireframe"]]
+	var dist_ref: Array = []
 	var toggle_btns: Array = []
 	var refresh_toggles := func() -> void:
 		for i in toggle_btns.size():
@@ -699,9 +704,28 @@ func _build_video_tab() -> void:
 		pbtn.pressed.connect(func() -> void:
 			Game.video = Game.VIDEO_PRESETS[pname].duplicate()
 			refresh_toggles.call()
+			if dist_ref.size() > 0:
+				(dist_ref[0] as Button).text = "🌄  Draw distance: " + \
+					["Near", "Normal", "Far"][int(Game.video.get("dist", 1))]
 			Game.video_changed.emit()
 			Sfx.play("tick", -8.0))
 		preset_row.add_child(pbtn)
+	var update_dist := func() -> void:
+		if dist_ref.size() > 0:
+			(dist_ref[0] as Button).text = "🌄  Draw distance: " + \
+				["Near", "Normal", "Far"][int(Game.video.get("dist", 1))]
+	var dist_btn := Button.new()
+	dist_btn.focus_mode = Control.FOCUS_NONE
+	dist_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	dist_btn.add_theme_font_size_override("font_size", _us(20))
+	dist_btn.pressed.connect(func() -> void:
+		Game.video["dist"] = (int(Game.video.get("dist", 1)) + 1) % 3
+		update_dist.call()
+		Game.video_changed.emit()
+		Sfx.play("tick", -10.0))
+	tab.add_child(dist_btn)
+	dist_ref.append(dist_btn)
+	update_dist.call()
 	for spec in toggle_specs:
 		var tbtn := Button.new()
 		tbtn.focus_mode = Control.FOCUS_NONE

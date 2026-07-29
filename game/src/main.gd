@@ -471,6 +471,13 @@ func _apply_video() -> void:
 	if _split != null:
 		_split.set_low_fx(not bool(v.res))
 		_split.set_wireframe(bool(v.wire))
+	# Smaller shadow atlas on lower presets: big win on old GPUs.
+	var shadow_size := 4096
+	if not bool(v.fancy_light):
+		shadow_size = 2048
+	if not bool(v.shadows):
+		shadow_size = 1024
+	RenderingServer.directional_shadow_atlas_set_size(shadow_size, true)
 
 ## Everything top-right scales with the window: map ~24% of height.
 func _layout_topright() -> void:

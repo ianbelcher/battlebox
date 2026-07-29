@@ -46,6 +46,11 @@ RUN apt-get update \
 COPY --from=build /game/build/server /opt/world/server
 COPY maps /opt/world/maps
 COPY --from=build /game/build/downloads /opt/world/web/downloads
+RUN printf 'start belcher-world-windows.exe --rendering-method gl_compatibility\r\n' \
+        > /opt/world/web/downloads/belcher-world-windows-LITE.bat \
+    && printf '#!/bin/sh\nexec "$(dirname "$0")/belcher-world-linux.x86_64" --rendering-method gl_compatibility\n' \
+        > /opt/world/web/downloads/belcher-world-linux-lite.sh \
+    && chmod +x /opt/world/web/downloads/belcher-world-linux-lite.sh
 COPY web/index.html /opt/world/web/index.html
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY entrypoint.sh /entrypoint.sh

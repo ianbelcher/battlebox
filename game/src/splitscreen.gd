@@ -238,7 +238,6 @@ func _process(delta: float) -> void:
 			var eye: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT, 0)
 			cam.look_at_from_position(eye, eye + player.look_dir(), Vector3.UP)
 			_update_viewmodel(cell, player)
-			_update_xray(cell, player)
 			var vm: Node3D = cell.get("vm")
 			if vm != null and is_instance_valid(vm):
 				# Tuck the gun away while zoomed in (aiming down sights).
@@ -306,7 +305,10 @@ func _process(delta: float) -> void:
 		for cell: Dictionary in _cells:
 			if cell.cam != null and not cell.get("fp", false):
 				max_size = maxf(max_size, float(cell.size))
-		world.chunks.view_radius = clampi(6 + int(max_size / 7.0), 7, 13)
+		var dist_caps: Array = [[4, 4, 6], [5, 6, 9], [6, 7, 13]][
+			clampi(int(Game.video.get("dist", 1)), 0, 2)]
+		world.chunks.view_radius = clampi(int(dist_caps[0]) + int(max_size / 7.0),
+			int(dist_caps[1]), int(dist_caps[2]))
 	# The mouse belongs to the keyboard player while they're in first person.
 	var want_capture := false
 	for cell: Dictionary in _cells:

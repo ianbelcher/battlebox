@@ -415,8 +415,6 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 300.0:
 		return
 	match kind:
-		16:  # X-Ray Goggles: passive, nothing to shoot.
-			return
 		14:  # Flare: a sky light, nothing to break.
 			return
 		15:  # Big Shooter: one huge crater.
@@ -1109,7 +1107,7 @@ func _server_match_drop() -> void:
 		var ly := store.surface_y(lx, lz)
 		if ly > 2 and ly < WorldGen.CHUNK_H - 6 \
 				and store.get_block(Vector3i(lx, ly, lz)) != Blocks.WATER:
-			var lpool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 14, 15, 16]
+			var lpool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 14, 15]
 			_crates[_next_crate_id] = {"weapon": lpool[randi() % lpool.size()],
 				"pos": Vector3(lx + 0.5, ly + 1.0, lz + 0.5)}
 			_next_crate_id += 1
@@ -1502,7 +1500,7 @@ func _server_tick_crates() -> void:
 		if y > 2 and y < WorldGen.CHUNK_H - 6 \
 				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER:
 			# Rarer weapons show up less often.
-			var pool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 15, 16]
+			var pool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 15]
 			_crates[_next_crate_id] = {"weapon": pool[randi() % pool.size()],
 				"pos": Vector3(wx + 0.5, y + 1.0, wz + 0.5)}
 			_next_crate_id += 1
