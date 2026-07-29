@@ -19,7 +19,7 @@ signal video_changed
 ## number. Persisted to disk so they survive restarts.
 var video: Dictionary = {
 	"dist_blocks": 128,     # draw distance in BLOCKS (like Minecraft)
-	"render_scale": 100,    # 3D resolution percent
+	"render_scale": 40,     # 3D resolution percent (flat voxels upscale well)
 	"shadows": true,
 	"shadow_quality": 2,    # 0/1/2 -> 1024/2048/4096 shadow atlas
 	"ssao": true,           # contact shading

@@ -67,6 +67,8 @@ func _ready() -> void:
 	environment.fog_depth_curve = 1.6
 	environment.fog_depth_begin = 70.0
 	environment.fog_depth_end = 128.0
+	# The sky itself stays almost clear so the sun and moon shine through.
+	environment.fog_sky_affect = 0.08
 	# No volumetric fog ever: it fills an orthographic frustum with a flat
 	# gray wash (verified). WORLD_MAXFX adds SDFGI bounce light only.
 	if OS.get_environment("WORLD_MAXFX") == "1":

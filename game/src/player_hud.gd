@@ -713,7 +713,7 @@ func _build_video_tab() -> void:
 	var tab := _scrolled_tab("Video")
 	tab.add_theme_constant_override("separation", _us(10))
 	_add_video_slider(tab, "Draw distance", "dist_blocks", 32, 208, 16, "%d blocks (16 per chunk)")
-	_add_video_slider(tab, "3D resolution", "render_scale", 10, 100, 5, "%d%%")
+	_add_video_slider(tab, "3D resolution", "render_scale", 1, 100, 1, "%d%%")
 	_add_video_slider(tab, "Shadow quality", "shadow_quality", 0, 2, 1, "%d")
 	for spec in [["shadows", "Shadows"], ["ssao", "Contact shading (SSAO)"],
 			["glow", "Glow"], ["lights", "Dynamic lights"],

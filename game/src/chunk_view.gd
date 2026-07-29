@@ -41,6 +41,8 @@ var _mesh_sem := Semaphore.new()
 var _mesh_jobs: Array = []
 var _mesh_results: Array = []
 var _mesh_exit := false
+var _mesh_gen: Dictionary = {}      # cpos -> generation stamp
+var _inflight: Dictionary = {}      # cpos -> submit time msec
 
 func _exit_tree() -> void:
 	if _mesh_thread != null:
@@ -62,7 +64,7 @@ func _mesh_worker() -> void:
 		var surfaces: Dictionary = Mesher.new().build(
 			job.data, job.neighbors, job.cpos.x, job.cpos.y)
 		_mesh_mutex.lock()
-		_mesh_results.append({"cpos": job.cpos, "surfaces": surfaces})
+		_mesh_results.append({"cpos": job.cpos, "surfaces": surfaces, "gen": job.gen})
 		_mesh_mutex.unlock()
 
 func _ready() -> void:
@@ -214,6 +216,14 @@ func _queue_mesh(cpos: Vector2i) -> void:
 	_mesh_queue.append(cpos)
 
 func _process(_delta: float) -> void:
+	# Watchdog: if the worker ever dies, restart it and log loudly.
+	if _mesh_thread == null or not _mesh_thread.is_alive():
+		push_warning("Mesh worker not alive — restarting it")
+		if _mesh_thread != null:
+			_mesh_thread.wait_to_finish()
+		_mesh_exit = false
+		_mesh_thread = Thread.new()
+		_mesh_thread.start(_mesh_worker)
 	# Feed the mesh worker (snapshots only — never live arrays)...
 	_mesh_mutex.lock()
 	var backlog: int = _mesh_jobs.size()
@@ -228,9 +238,12 @@ func _process(_delta: float) -> void:
 			var n: PackedByteArray = _data.get(cpos + off, PackedByteArray())
 			if not n.is_empty():
 				neighbors[off] = n.duplicate()
+		var gen: int = int(_mesh_gen.get(cpos, 0)) + 1
+		_mesh_gen[cpos] = gen
+		_inflight[cpos] = Time.get_ticks_msec()
 		_mesh_mutex.lock()
 		_mesh_jobs.append({"cpos": cpos, "data": _data[cpos].duplicate(),
-			"neighbors": neighbors})
+			"neighbors": neighbors, "gen": gen})
 		_mesh_mutex.unlock()
 		_mesh_sem.post()
 		backlog += 1
@@ -241,10 +254,30 @@ func _process(_delta: float) -> void:
 	_mesh_mutex.unlock()
 	for result: Dictionary in done:
 		var rpos: Vector2i = result.cpos
-		if not _data.has(rpos):
-			continue
+		if not _data.has(rpos) or int(result.get("gen", 0)) != int(_mesh_gen.get(rpos, 0)):
+			continue  # superseded by a newer edit or a sync fallback
+		_inflight.erase(rpos)
 		_topmaps[rpos] = result.surfaces.get("topmap", PackedByteArray())
 		_apply_surfaces(rpos, result.surfaces)
+	# Stall fallback: if the worker hasn't returned a chunk within 1.5s,
+	# mesh it synchronously so the world NEVER shows stale blocks.
+	var now_ms := Time.get_ticks_msec()
+	for spos: Vector2i in _inflight.keys().duplicate():
+		if now_ms - int(_inflight[spos]) < 1500:
+			continue
+		_inflight.erase(spos)
+		if not _data.has(spos):
+			continue
+		push_warning("Mesh worker stalled on %s — meshing synchronously" % spos)
+		_mesh_gen[spos] = int(_mesh_gen.get(spos, 0)) + 1
+		var nb := {}
+		for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: PackedByteArray = _data.get(spos + off, PackedByteArray())
+			if not n.is_empty():
+				nb[off] = n
+		var sync_surfaces := Mesher.new().build(_data[spos], nb, spos.x, spos.y)
+		_topmaps[spos] = sync_surfaces.get("topmap", PackedByteArray())
+		_apply_surfaces(spos, sync_surfaces)
 	if not _announced_ready and _mesh_queue.is_empty() and done.is_empty() \
 			and _data.size() > 8:
 		_announced_ready = true

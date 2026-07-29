@@ -566,14 +566,19 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 		9:  # Napalm Rocket: no crater — it just sets the impact ablaze.
 			cl_boom_fx.rpc(cell)
 			var splashed: Array = []
-			for off in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1),
-					Vector3i(0, 0, -1), Vector3i(0, 1, 0), Vector3i(0, 0, 0)]:
-				var pos: Vector3i = cell + off
-				var block := store.get_block(pos)
-				if (block == Blocks.AIR or Blocks.is_flammable(block)) and _fires.size() < 120:
-					store.set_block(pos, Blocks.FIRE)
-					_fires[pos] = Time.get_ticks_msec() + randi_range(1200, 2800)
-					splashed.append(pos)
+			for dz in range(-2, 3):
+				for dx in range(-2, 3):
+					for dy in range(-1, 2):
+						var ring := maxi(absi(dx), absi(dz))
+						if ring == 2 and randf() > 0.5:
+							continue  # ragged outer edge
+						var pos: Vector3i = cell + Vector3i(dx, dy, dz)
+						var block := store.get_block(pos)
+						if (block == Blocks.AIR or Blocks.is_flammable(block)) \
+								and _fires.size() < 160:
+							store.set_block(pos, Blocks.FIRE)
+							_fires[pos] = Time.get_ticks_msec() + randi_range(6000, 14000)
+							splashed.append(pos)
 			if not splashed.is_empty():
 				cl_batch.rpc(splashed, Blocks.FIRE)
 			return
@@ -764,7 +769,7 @@ func _blast(origin: Vector3i, radius: float, pre_cleared: Array, impact := Vecto
 			if Blocks.is_flammable(store.get_block(next)) and not _fires.has(next) \
 					and _fires.size() < 120 and WorldGen.hash01(next.x, next.z, next.y) < 0.35:
 				store.set_block(next, Blocks.FIRE)
-				_fires[next] = Time.get_ticks_msec() + randi_range(2500, 6000)
+				_fires[next] = Time.get_ticks_msec() + randi_range(5000, 11000)
 				lit.append(next)
 	if not lit.is_empty():
 		cl_batch.rpc(lit, Blocks.FIRE)
@@ -784,7 +789,7 @@ func _ignite_at(cell: Vector3i) -> void:
 		var block := store.get_block(pos)
 		if (block == Blocks.AIR or Blocks.is_flammable(block)) and _fires.size() < 120:
 			store.set_block(pos, Blocks.FIRE)
-			_fires[pos] = Time.get_ticks_msec() + randi_range(2500, 5500)
+			_fires[pos] = Time.get_ticks_msec() + randi_range(5000, 10000)
 			placed.append(pos)
 	if not placed.is_empty():
 		cl_batch.rpc(placed, Blocks.FIRE)
@@ -810,7 +815,7 @@ func _server_tick_fire() -> void:
 			var next: Vector3i = pos + off
 			if Blocks.is_flammable(store.get_block(next)) and not _fires.has(next):
 				store.set_block(next, Blocks.FIRE)
-				_fires[next] = now + randi_range(2500, 6000)
+				_fires[next] = now + randi_range(5000, 11000)
 				lit.append(next)
 	if not out.is_empty():
 		cl_batch.rpc(out, Blocks.AIR)

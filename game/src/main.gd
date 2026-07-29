@@ -466,7 +466,7 @@ func _apply_video() -> void:
 			Mesher.ao_step = want_ao
 			Game.world.chunks.remesh_all()
 	if _split != null:
-		_split.set_render_scale(clampf(int(v.render_scale) / 100.0, 0.4, 1.0))
+		_split.set_render_scale(clampf(int(v.render_scale) / 100.0, 0.01, 1.0))
 		_split.set_wireframe(bool(v.wire))
 	RenderingServer.directional_shadow_atlas_set_size(
 		[1024, 2048, 4096][clampi(int(v.shadow_quality), 0, 2)], true)

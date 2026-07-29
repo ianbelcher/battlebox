@@ -361,7 +361,7 @@ func _update_xray(cell: Dictionary, player: Player) -> void:
 
 ## Video setting: 3D render resolution as a fraction of window size.
 func apply_video_to_cells() -> void:
-	set_render_scale(clampf(int(Game.video.get("render_scale", 100)) / 100.0, 0.1, 1.0))
+	set_render_scale(clampf(int(Game.video.get("render_scale", 40)) / 100.0, 0.01, 1.0))
 	set_wireframe(bool(Game.video.get("wire", false)))
 
 func set_render_scale(scale_f: float) -> void:
