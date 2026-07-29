@@ -3,6 +3,17 @@
 ## AUDIT — Ian's asks, current status (keep this honest!)
 
 DONE this overnight run:
+- [x] Ian's video feedback round 2: renamed "3D resolution" with an
+      explanation in the label; draw distance floor now 32 blocks; NEW
+      toggles "Shiny water (sun glints)" (the water reflection is shader
+      specular, now honors settings) and "Corner shading on blocks"
+      (baked AO — toggling re-meshes live); radar shows the WHOLE island
+      via a server-sent overview (no more only-what's-rendered);
+      double-jump window 320→480ms; player = Minecraft-exact 1.8/1.62;
+      hotbar scales with the window (was fixed 52px = huge on small
+      screens)
+- [ ] Plant variety + more block types + richer MCA palette (roads etc.)
+      — next round
 - [x] VIDEO SETTINGS DONE PROPERLY (Ian's ask): presets deleted; every
       setting individual — Draw distance slider IN BLOCKS (48-208),
       Render scale % slider, Shadow quality slider, checkboxes for
@@ -223,3 +234,10 @@ strike items when shipped, add new asks immediately.
 - [x] Population One ghosts + loud 6s revives; storm arrow + glowing wall
 - [x] Sword-only night drops, empty slots, labeled crates, arena prefetch,
       no disk writes mid-match, full-roster lobby with bot teaming
+
+---
+
+- Please keep the to-do list up to date. We can get rid of anything which is now done. The to-do list is a list of items that need to be to-do items, right? If we don't need to do them anymore, get rid of them.
+- The to-do list is also just a list. It is not a historical document of done this round, done overnight, ASCII in this, like rah rah rah, likely superseded, all of this kind of stuff. Ensure that things are not removed from the list until they are absolutely done, please. This markdown file has a git history so we can have a look at that if need be.
+- There are some items on here which have not been done, like features. like for example dragons I don't know of any dragons in there but we should be able to like get on a dragon and fly it sort of like an aerodactyl in cobblemon. I believe you might have already added this, but if you have, what I mean by large flying dragons, I meant large flying dragons, not little chickens, whatever the hell that they are. I haven't been able to grapple any of them at the moment, but making it the size of what an aerodactyl is in Cobblamon is sort of the intent here. It'd be great if you could fly around like the aerodactyl in Cobblemon. And it'd be great if it had the ability to essentially breathe, make it sort of like wherever it's looking, it still have crosshairs and it will be able to shoot things sort of like the medium sized blaster. But obviously when those explode, they're very large orange kind of fire explosions in a way. We don't want actual things to catch on fire so much but making sure that they're large orange explosions would be great.
+- 

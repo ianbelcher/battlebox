@@ -19,7 +19,7 @@ const SHADE_TOP := 1.0
 const SHADE_BOTTOM := 0.62
 const SHADE_X := 0.86
 const SHADE_Z := 0.78
-const AO_STEP := 0.16
+static var ao_step := 0.16
 
 ## Cross-quad footprint (width, height) per plant so flowers read as flowers
 ## rather than block-sized billboards.
@@ -203,7 +203,7 @@ func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String
 				vert.y = y + top_y
 			_verts[key].append(vert)
 			_normals[key].append(Vector3(n))
-			var brightness := shade * jitter * (1.0 - AO_STEP * ao[i])
+			var brightness := shade * jitter * (1.0 - ao_step * ao[i])
 			var out := Color(color.r * brightness, color.g * brightness, color.b * brightness, color.a)
 			_colors[key].append(out)
 			# Leaves sway everywhere; liquids wave only on their surface.

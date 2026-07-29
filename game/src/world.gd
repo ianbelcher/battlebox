@@ -29,6 +29,42 @@ signal match_changed
 signal storm_changed
 signal map_list_changed
 var map_list: Array = []
+## Low-res whole-island backdrop for the radar (192x192, 4 blocks/px) so
+## the map shows the world beyond what's rendered, even on slow machines.
+var overview := PackedByteArray()
+
+func overview_block(wx: int, wz: int) -> int:
+	if overview.is_empty():
+		return 0
+	var ox := wx / 4 + 96
+	var oz := wz / 4 + 96
+	if ox < 0 or ox >= 192 or oz < 0 or oz >= 192:
+		return 0
+	return overview[oz * 192 + ox]
+
+## Server: rough top-block guess from the pure terrain function — cheap,
+## no chunk generation needed. Imported maps skip it (no pure function).
+func _build_overview() -> void:
+	overview = PackedByteArray()
+	if store == null or store.source != "procedural":
+		return
+	overview.resize(192 * 192)
+	for oz in 192:
+		for ox in 192:
+			var wx := (ox - 96) * 4
+			var wz := (oz - 96) * 4
+			var h: int = store.gen.height_at(wx, wz)
+			h -= store.gen.lake_depth_at(wx, wz, h)
+			var block := Blocks.GRASS
+			if h <= WorldGen.SEA_LEVEL:
+				block = Blocks.WATER
+			elif h <= WorldGen.SEA_LEVEL + 2:
+				block = Blocks.SAND
+			elif h > WorldGen.SEA_LEVEL + 22:
+				block = Blocks.SNOW
+			if store.theme == "desert":
+				block = Blocks.SAND if h > WorldGen.SEA_LEVEL else Blocks.WATER
+			overview[oz * 192 + ox] = block
 signal reset_vote_started
 signal reset_result(happened: bool)
 
@@ -104,6 +140,7 @@ func _server_setup() -> void:
 	store = ChunkStore.new()
 	source = store.source
 	spawn_pos = store.find_spawn()
+	_build_overview()
 	var config := ConfigFile.new()
 	config.load(store.data_dir.path_join("world.cfg"))
 	clock = float(config.get_value("world", "clock", 0.35))
@@ -214,6 +251,7 @@ func sv_hello() -> void:
 	var peer := multiplayer.get_remote_sender_id()
 	cl_world_info.rpc_id(peer, spawn_pos, clock, source)
 	cl_map_list.rpc_id(peer, ChunkStore.list_maps())
+	cl_overview.rpc_id(peer, overview)
 	var payload: Array = []
 	for crate_id: int in _crates.keys():
 		payload.append([crate_id, _crates[crate_id].weapon, _crates[crate_id].pos])
@@ -973,6 +1011,8 @@ func _do_world_reset(map_name := "") -> void:
 	print("WORLD RESET: new seed %d map=%s" % [new_seed, map_name])
 	store.reset_world(new_seed, map_name)
 	spawn_pos = store.find_spawn()
+	_build_overview()
+	cl_overview.rpc(overview)
 	clock = 0.35
 	survival_active = false
 	_monsters.clear()
@@ -1796,6 +1836,10 @@ func send_pos(slot: int, pos: Vector3, yaw: float, anim: int) -> void:
 
 func send_edit(slot: int, pos: Vector3i, block: int) -> void:
 	sv_edit.rpc_id(1, slot, pos, block)
+
+@rpc("authority", "reliable")
+func cl_overview(bytes: PackedByteArray) -> void:
+	overview = bytes
 
 @rpc("authority", "reliable")
 func cl_map_list(maps: Array) -> void:

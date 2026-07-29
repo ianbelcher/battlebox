@@ -10,12 +10,12 @@ const JUMP_VELOCITY := 8.6
 const WALK_SPEED := 4.6
 const SWIM_SPEED := 3.0
 const HALF_WIDTH := 0.4
-const HEIGHT := 1.85
+const HEIGHT := 1.8   # Minecraft's exact player height
 const SEND_HZ := 12.0
 const EDIT_REPEAT := 0.24
 ## Eye level for first person — near the top of the head, so blocks read
 ## about waist height like they should.
-const EYE_HEIGHT := 1.65
+const EYE_HEIGHT := 1.62  # Minecraft's exact eye line
 ## Default camera yaw; the split-screen rig updates camera_yaw as the view
 ## spins so "stick up" always moves away from the camera.
 const ISO_ROT := PI / 4.0
@@ -371,7 +371,7 @@ func _local_move(delta: float) -> void:
 	var jump_now := input.is_jump_pressed()
 	if jump_now and not _prev_jump:
 		var now := Time.get_ticks_msec()
-		if now - _last_jump_ms < 320 and not world.survival_active \
+		if now - _last_jump_ms < 480 and not world.survival_active \
 				and world.match_phase == "IDLE":
 			fly_mode = not fly_mode
 			if fly_mode:

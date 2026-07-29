@@ -563,6 +563,8 @@ func _update_radar() -> void:
 			var wx := int(center.x + off.x)
 			var wz := int(center.z + off.y)
 			var block: int = world.chunks.top_block(wx, wz)
+			if block <= 0:
+				block = world.overview_block(wx, wz)
 			var color := Color(0.06, 0.07, 0.1)
 			if block > 0:
 				color = Blocks.top_color_of(block).darkened(
@@ -680,11 +682,14 @@ func _build_video_tab() -> void:
 	tab.name = "Video"
 	tab.add_theme_constant_override("separation", _us(10))
 	_tabs.add_child(tab)
-	_add_video_slider(tab, "Draw distance", "dist_blocks", 48, 208, 16, "%d blocks")
-	_add_video_slider(tab, "Render scale", "render_scale", 40, 100, 5, "%d%%")
+	_add_video_slider(tab, "Draw distance", "dist_blocks", 32, 208, 16, "%d blocks (16 per chunk)")
+	_add_video_slider(tab, "3D resolution", "render_scale", 40, 100, 5,
+		"%d%% — lower renders the world smaller and stretches it up (fast, softer)")
 	_add_video_slider(tab, "Shadow quality", "shadow_quality", 0, 2, 1, "%d")
 	for spec in [["shadows", "Shadows"], ["ssao", "Contact shading (SSAO)"],
-			["glow", "Glow"], ["lights", "Dynamic lights"], ["wire", "Wireframe"]]:
+			["glow", "Glow"], ["lights", "Dynamic lights"],
+			["water_shine", "Shiny water (sun glints)"],
+			["ao", "Corner shading on blocks"], ["wire", "Wireframe"]]:
 		var key := str(spec[0])
 		var tbtn := Button.new()
 		tbtn.focus_mode = Control.FOCUS_NONE
@@ -859,6 +864,10 @@ func _process(_delta: float) -> void:
 	if size.x != _last_width:
 		_last_width = size.x
 		var map_px := clampf(size.y * 0.24, 110.0, 380.0)
+		# Hotbar chips scale with the cell so small screens aren't swamped.
+		var chip_px := clampf(size.y * 0.05, 34.0, 72.0)
+		for hb_frame in _hotbar.get_children():
+			(hb_frame as Control).custom_minimum_size = Vector2(chip_px, chip_px)
 		_radar.position = Vector2(size.x - map_px - 10, 10)
 		_radar.size = Vector2(map_px, map_px)
 		_clock.position = Vector2(size.x - map_px - 10, 12 + map_px)

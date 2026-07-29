@@ -25,6 +25,8 @@ var video: Dictionary = {
 	"ssao": true,           # contact shading
 	"glow": true,           # bloom on bright things
 	"lights": true,         # dynamic lights (lanterns, crystals...)
+	"water_shine": true,    # sun glints + gloss on water
+	"ao": true,             # baked corner shading on blocks
 	"wire": false,          # wireframe
 	"renderer": "full",     # full (Vulkan) or lite (OpenGL) — needs restart
 }

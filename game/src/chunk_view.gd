@@ -40,6 +40,15 @@ func _ready() -> void:
 	water.shader = load("res://shaders/water.gdshader")
 	_materials = {"opaque": terrain, "plants": plants, "trans": water}
 
+func set_water_shine(on: bool) -> void:
+	(_materials["trans"] as ShaderMaterial).set_shader_parameter("shine", 1.0 if on else 0.0)
+
+## Queue every resident chunk for a rebuild (AO toggle etc.); the
+## time-budgeted mesher spreads the cost over frames.
+func remesh_all() -> void:
+	for cpos: Vector2i in _data.keys():
+		_queue_mesh(cpos)
+
 func has_chunk(cpos: Vector2i) -> bool:
 	return _data.has(cpos)
 
