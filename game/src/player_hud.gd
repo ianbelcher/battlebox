@@ -842,6 +842,7 @@ func _process(_delta: float) -> void:
 		_radar.size = Vector2(map_px, map_px)
 		_clock.position = Vector2(size.x - map_px - 10, 12 + map_px)
 		_clock.size.x = map_px
+		_clock.add_theme_font_size_override("font_size", maxi(11, int(map_px / 11.0)))
 		# Split-screen: fonts are sized for the full window, so shrink the
 		# whole menu to fit this player's cell instead of spilling over.
 		var win_w := float(DisplayServer.window_get_size().x)
