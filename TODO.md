@@ -3,14 +3,7 @@
 A live list of OPEN work only. Items leave the list when they are done
 (git history is the record).
 
-- [ ] Sky islands: less grid-like (jitter positions), big + small island
-      mix, wider height range, vertical connections between stacked islands
 - [ ] Castle interior is still a mess — proper rooms/halls redesign
-- [ ] Plant variety: fern, dead bush, cattail, daisy, bluebell, wild
-      wheat... distinct shapes/colors, scattered by biome
-- [ ] More block types + richer Minecraft import palette (dirt_path,
-      gravel, stone_bricks, mud, andesite, deepslate...) so imported
-      roads read as roads
 - [ ] Mac window resize fights the mouse capture (window can only shrink);
       release the mouse while the window is being resized
 - [ ] Review draw-distance interplay with 3+ local players (each player

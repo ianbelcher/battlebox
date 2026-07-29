@@ -91,6 +91,13 @@ const ORGANIC_NAMES := ["Redwood", "Timber", "Sand Pile", "Turf",
 const SNOW_NAMES := ["Rose Snow", "Peach Snow", "Golden Snow", "Mint Snow",
 	"Blue Ice", "Violet Snow", "Snow Drift", "Ash"]
 static var EXTRA: Dictionary = {}
+## Extra cross-plants past the family rows.
+const FERN := 95
+const DEAD_BUSH := 96
+const CATTAIL := 97
+const DAISY := 98
+const BLUEBELL := 99
+const WHEAT_PLANT := 100
 
 static func _static_init() -> void:
 	for i in FAMILY_COLORS.size():
@@ -107,6 +114,12 @@ static func _static_init() -> void:
 		EXTRA[M_SNOW + i] = {"name": SNOW_NAMES[i],
 			"color": Color(base.lightened(0.35), 0.8),
 			"solid": false, "opaque": false, "translucent": true}
+	EXTRA[FERN] = {"name": "Fern", "color": Color("3f7a33"), "cross": true, "sway": 0.5}
+	EXTRA[DEAD_BUSH] = {"name": "Dead Bush", "color": Color("9a7648"), "cross": true, "sway": 0.2}
+	EXTRA[CATTAIL] = {"name": "Cattail", "color": Color("6b8a3d"), "cross": true, "sway": 0.6}
+	EXTRA[DAISY] = {"name": "Daisy", "color": Color("f2f2e0"), "cross": true, "sway": 0.4}
+	EXTRA[BLUEBELL] = {"name": "Bluebell", "color": Color("6a7df0"), "cross": true, "sway": 0.4}
+	EXTRA[WHEAT_PLANT] = {"name": "Wild Wheat", "color": Color("d9b84a"), "cross": true, "sway": 0.7}
 
 ## Per-block info, indexed by block id:
 ##   color: base albedo
@@ -221,7 +234,8 @@ static func is_flammable(id: int) -> bool:
 		MUSHROOM, SHELL, WOOL_RED, WOOL_ORANGE, WOOL_YELLOW, WOOL_GREEN,
 		WOOL_TEAL, WOOL_BLUE, WOOL_PURPLE, WOOL_PINK, WOOL_BROWN, WOOL_WHITE,
 		WOOL_BLACK, PUMPKIN] \
-		or (id >= M_SOIL and id < M_SNOW)  # organic blocks burn
+		or (id >= M_SOIL and id < M_SNOW) \
+		or (id >= FERN and id <= WHEAT_PLANT)  # organic blocks + plants burn
 
 ## What the place-hotbar offers, in order: build stuff first, glow stuff,
 ## then the fun machines. Everything is infinite (creative style) — the cozy

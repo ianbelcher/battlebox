@@ -374,6 +374,27 @@ static func map_block(mc_name: String) -> int:
 static func _map_block_uncached(short_name: String) -> int:
 	if NAME_MAP.has(short_name):
 		return NAME_MAP[short_name]
+	# Roads, paths and common stone variants map to close Boxel blocks.
+	match short_name:
+		"dirt_path", "grass_path", "gravel", "coarse_dirt":
+			return Blocks.PATH
+		"mud", "packed_mud", "rooted_dirt", "podzol":
+			return Blocks.DIRT
+		"mud_bricks":
+			return Blocks.BRICK
+	if short_name.contains("deepslate") or short_name.contains("blackstone") \
+			or short_name.contains("basalt"):
+		return Blocks.SLATE
+	if short_name.contains("stone_brick") or short_name.contains("cobblestone"):
+		return Blocks.COBBLE
+	if short_name.begins_with("andesite") or short_name.begins_with("polished_andesite") \
+			or short_name.begins_with("tuff"):
+		return Blocks.STONE
+	if short_name.begins_with("diorite") or short_name.begins_with("polished_diorite") \
+			or short_name.begins_with("calcite"):
+		return Blocks.MARBLE
+	if short_name.begins_with("granite") or short_name.begins_with("polished_granite"):
+		return Blocks.SANDSTONE
 	# Wool / concrete / terracotta / stained glass by their color token.
 	for color: String in WOOL_COLOR_MAP.keys():
 		if short_name.begins_with(color + "_"):

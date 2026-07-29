@@ -33,6 +33,12 @@ const CROSS_SIZES := {
 	Blocks.SHELL: Vector2(0.4, 0.35),
 	Blocks.BERRY_BUSH: Vector2(0.95, 0.9),
 	Blocks.FIRE: Vector2(1.0, 1.3),
+	Blocks.FERN: Vector2(0.85, 0.5),
+	Blocks.DEAD_BUSH: Vector2(0.6, 0.5),
+	Blocks.CATTAIL: Vector2(0.35, 1.1),
+	Blocks.DAISY: Vector2(0.45, 0.5),
+	Blocks.BLUEBELL: Vector2(0.4, 0.55),
+	Blocks.WHEAT_PLANT: Vector2(0.9, 0.8),
 }
 
 ## Face table: [normal, u_axis, v_axis, shade]. Vertices are laid out

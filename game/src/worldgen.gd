@@ -139,6 +139,10 @@ func generate_chunk(cx: int, cz: int) -> PackedByteArray:
 					var b := data[idx(lx, y, lz)]
 					if b == Blocks.GRASS or b == Blocks.DIRT:
 						data[idx(lx, y, lz)] = Blocks.SAND if y == h else Blocks.SANDSTONE
+				if h > SEA_LEVEL + 2 and h + 1 < CHUNK_H and hash01(wx, wz, 61) < 0.015:
+					data[idx(lx, h + 1, lz)] = Blocks.DEAD_BUSH
+			elif h == SEA_LEVEL + 1 and h + 1 < CHUNK_H and hash01(wx, wz, 62) < 0.1:
+				data[idx(lx, h + 1, lz)] = Blocks.CATTAIL
 			_carve_caves(data, lx, lz, wx, wz, h)
 			_sky_island(data, lx, lz, wx, wz)
 			_landmark_column(data, lx, lz, wx, wz, h)
@@ -478,56 +482,82 @@ func _sky_island(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int) -> v
 	elif roll < 0.09:
 		data[idx(lx, top + 1, lz)] = Blocks.TALL_GRASS
 
-## SKYLANDS: a whole biome of floating islands on a 48 grid, joined by
-## gentle parabolic plank bridges (2 wide), with waterfalls pouring off
-## some rims into the shallow sea far below.
+## SKYLANDS: floating islands with jittered positions, a mix of small and
+## MEGA islands, satellites stacked above the big ones (with waterfalls
+## pouring between them), and gentle parabolic plank bridges.
+func _sky_params(gx: int, gz: int) -> Dictionary:
+	if hash01(gx, gz, 950) >= 0.75 and not (gx == 0 and gz == 0):
+		return {}
+	var mega := hash01(gx, gz, 955) < 0.15 and not (gx == 0 and gz == 0)
+	return {
+		"ax": gx * 48 + int((hash01(gx, gz, 956) - 0.5) * 20.0),
+		"az": gz * 48 + int((hash01(gx, gz, 957) - 0.5) * 20.0),
+		"r": (18.0 + hash01(gx, gz, 951) * 8.0) if mega else (7.0 + hash01(gx, gz, 951) * 7.0),
+		"top": 34 + int(hash01(gx, gz, 952) * 22.0),
+		"mega": mega,
+	}
+
+func _stamp_island(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
+		ax: int, az: int, r: float, top: int) -> void:
+	var dist := Vector2(wx - ax, wz - az).length()
+	if dist >= r or top >= CHUNK_H - 2:
+		return
+	var depth := int((r - dist) * 0.7) + 1
+	data[idx(lx, top, lz)] = Blocks.GRASS
+	for dy in range(1, depth + 1):
+		if top - dy > SEA_LEVEL + 4:
+			data[idx(lx, top - dy, lz)] = Blocks.DIRT if dy == 1 else Blocks.STONE
+	var roll := hash01(wx, wz, 46)
+	if roll < 0.04:
+		data[idx(lx, top + 1, lz)] = [Blocks.FLOWER_PINK,
+			Blocks.FLOWER_RED, Blocks.BLUEBELL][int(roll * 100.0) % 3]
+	elif roll < 0.1:
+		data[idx(lx, top + 1, lz)] = Blocks.TALL_GRASS
+
 func _skylands_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int) -> void:
 	var gx := roundi(float(wx) / 48.0)
 	var gz := roundi(float(wz) / 48.0)
 	for dgx in range(gx - 1, gx + 2):
 		for dgz in range(gz - 1, gz + 2):
-			if hash01(dgx, dgz, 950) >= 0.75 and not (dgx == 0 and dgz == 0):
-				continue  # (0,0) always has an island — that's the spawn
-			var ax := dgx * 48
-			var az := dgz * 48
-			var r := 8.0 + hash01(dgx, dgz, 951) * 7.0
-			var top := 40 + int(hash01(dgx, dgz, 952) * 14.0)
-			var dist := Vector2(wx - ax, wz - az).length()
-			if dist < r:
-				var depth := int((r - dist) * 0.7) + 1
-				data[idx(lx, top, lz)] = Blocks.GRASS
-				for dy in range(1, depth + 1):
-					if top - dy > SEA_LEVEL + 4:
-						data[idx(lx, top - dy, lz)] = Blocks.DIRT if dy == 1 else Blocks.STONE
-				var roll := hash01(wx, wz, 46)
-				if roll < 0.04:
-					data[idx(lx, top + 1, lz)] = [Blocks.FLOWER_PINK,
-						Blocks.FLOWER_RED, Blocks.FLOWER_YELLOW][int(roll * 100.0) % 3]
-				elif roll < 0.1:
-					data[idx(lx, top + 1, lz)] = Blocks.TALL_GRASS
+			var p := _sky_params(dgx, dgz)
+			if p.is_empty():
+				continue
+			_stamp_island(data, lx, lz, wx, wz, p.ax, p.az, p.r, p.top)
+			# Mega islands carry a small satellite floating above them.
+			if p.mega:
+				var sat_x: int = p.ax + int((hash01(dgx, dgz, 958) - 0.5) * 16.0)
+				var sat_z: int = p.az + int((hash01(dgx, dgz, 959) - 0.5) * 16.0)
+				var sat_top: int = p.top + 13
+				_stamp_island(data, lx, lz, wx, wz, sat_x, sat_z, 5.5, sat_top)
+				# A waterfall pours off the satellite onto the big island.
+				if wx == sat_x + 2 and wz == sat_z:
+					for y in range(p.top + 1, mini(sat_top, CHUNK_H - 1)):
+						if data[idx(lx, y, lz)] == Blocks.AIR:
+							data[idx(lx, y, lz)] = Blocks.WATER
 			# Waterfall off one rim point of some islands.
 			if hash01(dgx, dgz, 953) < 0.35:
 				var fall_a := hash01(dgx, dgz, 954) * TAU
-				var fx := ax + int(cos(fall_a) * (r - 1.5))
-				var fz := az + int(sin(fall_a) * (r - 1.5))
+				var fx: int = p.ax + int(cos(fall_a) * (p.r - 1.5))
+				var fz: int = p.az + int(sin(fall_a) * (p.r - 1.5))
 				if wx == fx and wz == fz:
-					for y in range(SEA_LEVEL - 1, top + 1):
+					for y in range(SEA_LEVEL - 1, p.top + 1):
 						if data[idx(lx, y, lz)] == Blocks.AIR:
 							data[idx(lx, y, lz)] = Blocks.WATER
 			# Bridges to the +x and +z neighbor islands.
 			for step_axis in 2:
-				var ngx := dgx + (1 if step_axis == 0 else 0)
-				var ngz := dgz + (0 if step_axis == 0 else 1)
-				if hash01(ngx, ngz, 950) >= 0.75 and not (ngx == 0 and ngz == 0):
+				var np := _sky_params(dgx + (1 if step_axis == 0 else 0),
+					dgz + (0 if step_axis == 0 else 1))
+				if np.is_empty():
 					continue
-				var btop := 40 + int(hash01(ngx, ngz, 952) * 14.0)
-				var a_pos := Vector2(ax, az)
-				var b_pos := Vector2(ngx * 48, ngz * 48)
+				var a_pos := Vector2(p.ax, p.az)
+				var b_pos := Vector2(np.ax, np.az)
 				var seg := b_pos - a_pos
+				if seg.length_squared() < 1.0:
+					continue
 				var t := clampf((Vector2(wx, wz) - a_pos).dot(seg) / seg.length_squared(), 0.0, 1.0)
 				var closest := a_pos + seg * t
 				if Vector2(wx, wz).distance_to(closest) < 1.0 and t > 0.02 and t < 0.98:
-					var by := int(lerpf(float(top), float(btop), t) - 3.0 * sin(PI * t))
+					var by := int(lerpf(float(p.top), float(np.top), t) - 3.0 * sin(PI * t))
 					if by > SEA_LEVEL and by < CHUNK_H - 4 \
 							and data[idx(lx, by, lz)] == Blocks.AIR:
 						data[idx(lx, by, lz)] = Blocks.PLANKS
@@ -602,6 +632,10 @@ func _scatter_grass_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz:
 				data[idx(lx, ground + 1, lz)] = Blocks.MUSHROOM
 			elif hash01(wx, wz, 10) < 0.02:
 				data[idx(lx, ground + 1, lz)] = Blocks.FLOWER_PINK
+			elif hash01(wx, wz, 14) < 0.03:
+				data[idx(lx, ground + 1, lz)] = Blocks.DAISY
+			elif hash01(wx, wz, 15) < 0.02:
+				data[idx(lx, ground + 1, lz)] = Blocks.BLUEBELL
 		Biome.FOREST:
 			if interior and tree_roll < 0.03:
 				_plant_tree(data, lx, ground + 1, lz, hash01(wx, wz, 8), 0)
@@ -609,11 +643,15 @@ func _scatter_grass_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz:
 				data[idx(lx, ground + 1, lz)] = Blocks.TALL_GRASS
 			elif hash01(wx, wz, 12) < 0.007:
 				data[idx(lx, ground + 1, lz)] = Blocks.MUSHROOM
+			elif hash01(wx, wz, 14) < 0.08:
+				data[idx(lx, ground + 1, lz)] = Blocks.FERN
 		Biome.PINE:
 			if lx >= 2 and lx < 14 and lz >= 2 and lz < 14 and tree_roll < 0.05:
 				_plant_tree(data, lx, ground + 1, lz, hash01(wx, wz, 8), 2)
 			elif hash01(wx, wz, 9) < 0.03:
 				data[idx(lx, ground + 1, lz)] = Blocks.TALL_GRASS
+			elif hash01(wx, wz, 14) < 0.05:
+				data[idx(lx, ground + 1, lz)] = Blocks.FERN
 		Biome.FLOWERS:
 			if hash01(wx, wz, 10) < 0.15:
 				var pick := hash01(wx, wz, 11)
@@ -627,6 +665,10 @@ func _scatter_grass_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz:
 				data[idx(lx, ground + 1, lz)] = Blocks.TALL_GRASS
 			elif hash01(wx, wz, 13) < 0.01:
 				data[idx(lx, ground + 1, lz)] = Blocks.BERRY_BUSH
+			elif hash01(wx, wz, 16) < 0.06:
+				data[idx(lx, ground + 1, lz)] = Blocks.WHEAT_PLANT
+			elif hash01(wx, wz, 17) < 0.03:
+				data[idx(lx, ground + 1, lz)] = Blocks.BLUEBELL
 			elif interior and tree_roll < 0.004:
 				_plant_tree(data, lx, ground + 1, lz, hash01(wx, wz, 8), 0)
 		_:
@@ -703,7 +745,7 @@ func _plant_tree(data: PackedByteArray, lx: int, base_y: int, lz: int, size_roll
 func find_spawn() -> Vector3i:
 	if theme == "sky":
 		# The (0,0) island always exists; land on top of it.
-		return Vector3i(0, 42 + int(hash01(0, 0, 952) * 14.0), 0)
+		return Vector3i(0, 36 + int(hash01(0, 0, 952) * 22.0), 0)
 	for radius in range(0, 12):
 		for attempt in 24:
 			var angle := hash01(radius, attempt, 55) * TAU
