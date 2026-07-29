@@ -10,8 +10,8 @@ DONE this overnight run:
       (belcher-world-windows-LITE.bat / linux-lite.sh) that start the game
       on the GL Compatibility renderer — verified working, this is the fix
       for old PCs where Vulkan crawls at 1fps. Download page explains it
-- [ ] Lite-mode look: GL renderer is darker (no SSAO/tonemap tuning) —
-      add a GL-detected ambient boost pass
+- [x] Lite-mode look: GL renderer auto-boosts sun+ambient 1.45x —
+      screenshot-verified it now matches the Forward+ look
 - [x] Battle UI is an in-menu SECTION (no modal): Game tab = BATTLE ROYALE
       (Start + "Game length: 3/5/8/Unlimited" + Teams inline), WORLD
       (Classic/Desert/Isles/Castle/City/Skylands/Ian's World buttons),

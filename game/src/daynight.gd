@@ -11,6 +11,9 @@ var environment: Environment
 var sky_material: ProceduralSkyMaterial
 var _clock := 0.35
 var allow_shadows := true
+## The GL Compatibility renderer (LITE mode) has no SSAO/GI, so it reads
+## darker — boost light to keep the same friendly look.
+var _gl_boost := 1.0
 
 const DAY_TOP := Color("4a9de8")
 const DAY_HORIZON := Color("bcd8ee")
@@ -20,6 +23,8 @@ const NIGHT_TOP := Color("0a0e22")
 const NIGHT_HORIZON := Color("1c2445")
 
 func _ready() -> void:
+	if RenderingServer.get_rendering_device() == null:
+		_gl_boost = 1.45
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
@@ -87,7 +92,7 @@ func _apply(clock: float) -> void:
 	# The sun keeps glowing a little past the horizon so dusk stays warm
 	# instead of collapsing into a black trough before the moon takes over.
 	var daylight := clampf(elevation * 2.2 + 0.3, 0.0, 1.0)
-	sun.light_energy = daylight * 1.4
+	sun.light_energy = daylight * 1.4 * _gl_boost
 	sun.shadow_enabled = allow_shadows and daylight > 0.1
 	var warmth := clampf(1.0 - elevation * 2.0, 0.0, 1.0)  # low sun = warm
 	sun.light_color = Color(1.0, 0.96 - warmth * 0.25, 0.88 - warmth * 0.4)
@@ -113,4 +118,4 @@ func _apply(clock: float) -> void:
 	sky_material.sky_horizon_color = horizon
 	sky_material.ground_bottom_color = horizon.darkened(0.5)
 	sky_material.ground_horizon_color = horizon
-	environment.ambient_light_energy = 0.72 + daylight * 0.28
+	environment.ambient_light_energy = (0.72 + daylight * 0.28) * _gl_boost
