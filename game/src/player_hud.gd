@@ -810,6 +810,20 @@ func _process(_delta: float) -> void:
 		var map_px := clampf(size.y * 0.24, 110.0, 380.0)
 		_radar.position = Vector2(size.x - map_px - 10, 10)
 		_radar.size = Vector2(map_px, map_px)
+		# Split-screen: fonts are sized for the full window, so shrink the
+		# whole menu to fit this player's cell instead of spilling over.
+		var win_w := float(DisplayServer.window_get_size().x)
+		var cell_frac := clampf(size.x / maxf(win_w, 1.0), 0.25, 1.0)
+		if cell_frac < 0.95:
+			_menu.scale = Vector2.ONE * (cell_frac * 1.42)
+			_menu.anchor_left = 0.02
+			_menu.anchor_right = 0.98
+			_menu.anchor_top = 0.04
+			_menu.anchor_bottom = 0.94
+		else:
+			_menu.scale = Vector2.ONE
+			_menu.anchor_left = 0.1
+			_menu.anchor_right = 0.9
 		_selected_label.add_theme_font_size_override("font_size",
 			int(clampf(size.x / 45.0, 16.0, 34.0)))
 		_last_index = -1
