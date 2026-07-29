@@ -21,3 +21,10 @@ jobs:
         with:
           config: ${{ secrets.KLUSTA_KUBE_CONFIG_DATA }}
           command: set image --namespace world --record deployment/world server=${{ steps.build.outputs.IMAGE_URL }} web=${{ steps.build.outputs.IMAGE_URL }}
+      # set image is a no-op when the tag doesn't change, which silently
+      # leaves old pods running — always force fresh pods.
+      - name: Force rollout
+        uses: steebchen/kubectl@v2.0.0
+        with:
+          config: ${{ secrets.KLUSTA_KUBE_CONFIG_DATA }}
+          command: rollout restart --namespace world deployment/world

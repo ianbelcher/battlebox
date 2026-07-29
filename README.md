@@ -160,3 +160,4 @@ first apply). LAN-only by design; config changes in
   iso cameras.
 - After adding a `class_name`, run `godot --headless --import` or other
   scripts won't see it.
+
