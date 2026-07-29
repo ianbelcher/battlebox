@@ -3,11 +3,6 @@
 A live list of OPEN work only. Items leave the list when they are done
 (git history is the record).
 
-- [ ] DRAGONS v2: LARGE flying dragons (Aerodactyl-in-Cobblemon scale),
-      mountable (grapple or touch), actually flyable (steer with look +
-      move, rise/fall, jump to dismount), fire breath while riding —
-      Medium-Shooter-like shots with big ORANGE fireball explosions, no
-      lingering fire spread
 - [ ] Sky islands: less grid-like (jitter positions), big + small island
       mix, wider height range, vertical connections between stacked islands
 - [ ] Castle interior is still a mess — proper rooms/halls redesign

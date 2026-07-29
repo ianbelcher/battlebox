@@ -36,7 +36,7 @@ func shoot_local(player: Player, kind: int) -> void:
 		world.sv_dig_tunnel.rpc_id(1, player.slot, origin, dir)
 	if kind == 0:
 		Sfx.play("click", -6.0)
-	elif kind == 1 or kind == 9 or kind == 15:
+	elif kind == 1 or kind == 9 or kind == 15 or kind == 17:
 		Sfx.play("thoomp", -2.0)
 	else:
 		Sfx.play("whoosh", -3.0, 1.1)
@@ -44,7 +44,7 @@ func shoot_local(player: Player, kind: int) -> void:
 func _add_orb(shooter_id: String, origin: Vector3, dir: Vector3, mine: bool, slot: int, kind: int) -> void:
 	var node := MeshInstance3D.new()
 	var mesh := SphereMesh.new()
-	mesh.radius = 0.09 if kind == 0 else (0.32 if kind == 15 else 0.22)
+	mesh.radius = 0.09 if kind == 0 else (0.32 if kind == 15 or kind == 17 else 0.22)
 	mesh.height = mesh.radius * 2.0
 	node.mesh = mesh
 	var mat := StandardMaterial3D.new()
@@ -120,7 +120,7 @@ func _physics_process(delta: float) -> void:
 				if dragon >= 0 and world.critter_view.is_dragon(dragon):
 					for child in world.players.get_children():
 						if child is Player and child.player_id == orb.shooter_id:
-							child.riding = dragon
+							child._set_riding(dragon)
 							Sfx.play("warp")
 					died = true
 			# Critters poof when shot (kind 0 pellets only — be humane-ish).

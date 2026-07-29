@@ -93,6 +93,11 @@ func set_team_glow(team: int) -> void:
 var downed := false
 ## Riding a dragon (critter id) — grapple one to mount, jump to dismount.
 var riding := -1
+
+func _set_riding(dragon_id: int) -> void:
+	riding = dragon_id
+	if world != null:
+		world.sv_set_riding.rpc_id(1, slot, dragon_id)
 ## While > 0, horizontal velocity is carried (grapple zips, knockbacks)
 ## instead of being overwritten by stick input every frame.
 var carry_time := 0.0
@@ -381,18 +386,40 @@ func _local_move(delta: float) -> void:
 	_prev_jump = jump_now
 
 	if riding >= 0:
-		var seat: Vector3 = world.critter_view.mount_point(riding)
-		if seat == Vector3.INF:
-			riding = -1
+		if not world.critter_view.is_dragon(riding):
+			_set_riding(-1)
 		else:
-			position = position.lerp(seat, minf(1.0, delta * 8.0))
-			velocity = Vector3.ZERO
+			# Dragon flight: you steer, the dragon carries you. Jump climbs,
+			# Shift dives, double-tap jump hops off.
+			var ride_move := input.get_move_vector()
+			var ride_dir := Vector3(ride_move.x, 0, ride_move.y).rotated(Vector3.UP, camera_yaw)
+			velocity.x = lerpf(velocity.x, ride_dir.x * 14.0, minf(1.0, delta * 5.0))
+			velocity.z = lerpf(velocity.z, ride_dir.z * 14.0, minf(1.0, delta * 5.0))
+			var ride_vert := 0.0
+			if input.is_jump_pressed():
+				ride_vert = 7.0
+			elif input.is_descend_pressed() or input.is_sprint_pressed():
+				ride_vert = -7.0
+			velocity.y = lerpf(velocity.y, ride_vert, minf(1.0, delta * 5.0))
+			var ride_next := position + velocity * delta
+			ride_next.y = clampf(ride_next.y, 2.0, float(WorldGen.CHUNK_H) + 24.0)
+			if not _collides(ride_next):
+				position = ride_next
 			anim = Anim.FLY
-			if input.is_jump_pressed() and not _prev_jump:
-				riding = -1
-				velocity.y = 4.0
-			_prev_jump = input.is_jump_pressed()
+			var ride_jump := input.is_jump_pressed()
+			if ride_jump and not _prev_jump:
+				var now_ride := Time.get_ticks_msec()
+				if now_ride - _last_jump_ms < 400:
+					_set_riding(-1)
+					velocity.y = 5.0
+				_last_jump_ms = now_ride
+			_prev_jump = ride_jump
 			return
+	elif on_floor and not downed and world.critter_view != null:
+		# Walk up to a dragon to climb on.
+		var near_dragon: int = world.critter_view.nearest_dragon(position, 3.0)
+		if near_dragon >= 0:
+			_set_riding(near_dragon)
 	carry_time = maxf(0.0, carry_time - delta)
 	var speed := SWIM_SPEED if in_water else WALK_SPEED
 	if input.is_sprint_pressed() and on_floor and not downed:
@@ -557,7 +584,16 @@ func _check_floor_machines(delta: float) -> void:
 # Local actions: dig / place / hotbar / leave
 # ------------------------------------------------------------------
 
+var _dragon_fire_cd := 0.0
+
 func _local_actions(delta: float) -> void:
+	if riding >= 0:
+		# From dragonback you breathe fire instead of using your tools.
+		_dragon_fire_cd = maxf(0.0, _dragon_fire_cd - delta)
+		if input.is_place_pressed() and _dragon_fire_cd <= 0.0:
+			_dragon_fire_cd = 0.45
+			world.orbs.shoot_local(self, 17)
+		return
 	_edit_cooldown = maxf(0.0, _edit_cooldown - delta)
 	var cycle := input.cycle_direction()
 	if cycle != 0 and not _cycle_latch:

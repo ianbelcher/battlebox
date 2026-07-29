@@ -55,6 +55,18 @@ func mount_point(id: int) -> Vector3:
 func is_dragon(id: int) -> bool:
 	return _nodes.has(id) and int(_nodes[id].kind) == DRAGON
 
+func nearest_dragon(pos: Vector3, radius: float) -> int:
+	var best := -1
+	var best_dist := radius
+	for id: int in _nodes.keys():
+		if int(_nodes[id].kind) != DRAGON:
+			continue
+		var d: float = ((_nodes[id].node as Node3D).position).distance_to(pos)
+		if d < best_dist:
+			best_dist = d
+			best = id
+	return best
+
 func nearest_id(pos: Vector3, radius: float) -> int:
 	var best := -1
 	var best_dist := radius
@@ -154,10 +166,27 @@ func _process(delta: float) -> void:
 			if dist < 24.0:
 				var call: Array = CALLS[entry.kind]
 				Sfx.play(call[0], -4.0 - dist * 0.9, randf_range(call[1], call[2]))
-	for entry: Dictionary in _nodes.values():
+	var wnode := get_parent()
+	var ridden := {}
+	if wnode != null and "riding_map" in wnode:
+		for rider_id in wnode.riding_map.keys():
+			ridden[int(wnode.riding_map[rider_id])] = rider_id
+	for id: int in _nodes.keys():
+		var entry: Dictionary = _nodes[id]
 		var node: Node3D = entry.node
 		var target: Vector3 = entry.target
 		var kind: int = entry.kind
+		if ridden.has(id) and wnode.players != null:
+			# Carried by the rider: sit right under them, face their way.
+			for child in wnode.players.get_children():
+				if child is Player and child.player_id == ridden[id]:
+					node.position = child.position + Vector3(0, -1.9, 0)
+					node.rotation.y = child.rotation.y + PI
+					entry.target = node.position
+					(node.get_child(0) as Node3D).position.y = \
+						lerpf((node.get_child(0) as Node3D).position.y, 0.0, 0.2)
+					break
+			continue
 		var phase: float = entry.phase
 		var to_target := target - node.position
 		node.position = node.position.lerp(target, minf(1.0, delta * 4.0))
@@ -281,6 +310,8 @@ func _build(kind: int) -> Node3D:
 				wing.material_override = mat
 				visual.add_child(wing)
 		DRAGON:
+			# Aerodactyl-sized: you should feel small next to it.
+			visual.scale = Vector3(3.2, 3.2, 3.2)
 			var body := _sphere(0.55, Color("7a3a8f"), 0.9)
 			body.position = Vector3(0, 0.4, 0)
 			body.scale = Vector3(1.0, 1.0, 1.7)

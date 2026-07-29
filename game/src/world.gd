@@ -28,6 +28,24 @@ signal survival_ended(seconds: float, bonked: int)
 signal match_changed
 signal storm_changed
 signal map_list_changed
+## player_id -> dragon critter id, replicated so everyone sees who rides.
+var riding_map: Dictionary = {}
+
+@rpc("any_peer", "call_local", "reliable")
+func sv_set_riding(slot: int, dragon_id: int) -> void:
+	if not multiplayer.is_server():
+		return
+	var id := Game.player_id(multiplayer.get_remote_sender_id() \
+		if multiplayer.get_remote_sender_id() != 0 else multiplayer.get_unique_id(), slot)
+	if dragon_id < 0:
+		riding_map.erase(id)
+	else:
+		riding_map[id] = dragon_id
+	cl_riding.rpc(riding_map)
+
+@rpc("authority", "reliable")
+func cl_riding(map: Dictionary) -> void:
+	riding_map = map
 var map_list: Array = []
 ## Low-res whole-island backdrop for the radar (192x192, 4 blocks/px) so
 ## the map shows the world beyond what's rendered, even on slow machines.
@@ -453,6 +471,15 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 	if state.is_empty() or Vector3(cell).distance_to(state.pos) > 300.0:
 		return
 	match kind:
+		17:  # Dragon fire: a big orange boom, no lingering flames.
+			_blast(cell, 4.5, [], cell)
+			if match_phase == "BATTLE":
+				for pid: String in _match_alive.keys():
+					if pid != id and _teams_differ(id, pid) \
+							and _player_state.has(pid) \
+							and Vector3(cell).distance_to(_player_state[pid].pos) < 6.0:
+						_match_hurt(pid, 2, Vector3(cell))
+			return
 		14:  # Flare: a sky light, nothing to break.
 			return
 		15:  # Big Shooter: one huge crater.
@@ -1623,7 +1650,16 @@ func _server_tick_critters() -> void:
 		var anchor: Vector3 = player_positions[randi() % player_positions.size()]
 		_try_spawn_critter(anchor, night)
 	# Wander + flee.
+	var ridden := {}
+	for rider_id in riding_map.keys():
+		ridden[int(riding_map[rider_id])] = rider_id
 	for id: int in _critters.keys():
+		if ridden.has(id):
+			# A ridden dragon goes wherever its rider goes.
+			var rider: Dictionary = _player_state.get(ridden[id], {})
+			if not rider.is_empty():
+				_critters[id].pos = Vector3(rider.pos) + Vector3(0, -1.6, 0)
+			continue
 		_move_critter(_critters[id], player_positions)
 	# Broadcast compact state.
 	var payload: Array = []
