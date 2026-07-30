@@ -150,7 +150,7 @@ func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Di
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = _verts[key]
-		if key == "plants" and _uvs[key].size() == _verts[key].size():
+		if _uvs[key].size() == _verts[key].size():
 			arrays[Mesh.ARRAY_TEX_UV] = _uvs[key]
 		arrays[Mesh.ARRAY_NORMAL] = _normals[key]
 		arrays[Mesh.ARRAY_COLOR] = _colors[key]
@@ -213,6 +213,10 @@ func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String
 				ao[i] = 3.0 if (s1 and s2) else float(int(s1) + int(s2) + int(c))
 
 		var start: int = _verts[key].size()
+		var pattern := int(Blocks.LK_PATTERN_TOP[block] if n.y != 0
+			else Blocks.LK_PATTERN_SIDE[block])
+		var face_uvs := [Vector2(pattern, 1), Vector2(pattern + 0.999, 1),
+			Vector2(pattern + 0.999, 0), Vector2(pattern, 0)]
 		for i in 4:
 			var cs: Vector2i = corner_signs[i]
 			var vert := center + half_u * float(cs.x) + half_v * float(cs.y)
@@ -220,6 +224,7 @@ func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String
 				vert.y = y + top_y
 			_verts[key].append(vert)
 			_normals[key].append(Vector3(n))
+			_uvs[key].append(face_uvs[i])
 			var brightness := shade * jitter * (1.0 - ao_step * ao[i])
 			var out := Color(color.r * brightness, color.g * brightness, color.b * brightness, color.a)
 			_colors[key].append(out)
@@ -349,6 +354,7 @@ func _add_shape(block: int, shape: int, x: int, y: int, z: int, cx: int, cz: int
 				var brightness := shade * jitter
 				_colors[key].append(Color(color.r * brightness, color.g * brightness,
 					color.b * brightness, color.a))
+				_uvs[key].append(Vector2.ZERO)
 				_uv2s[key].append(Vector2.ZERO)
 			for index in [0, 2, 1, 0, 3, 2]:
 				_indices[key].append(start + index)

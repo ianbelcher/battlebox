@@ -2,10 +2,6 @@
 
 A live list of OPEN work only (git history is the record of done).
 
-- [ ] IN-WORLD BLOCK FACES: bookshelf/crafting table/chest placed in
-      the world are just brown cubes — signature blocks need real face
-      detail in the terrain renderer (procedural face textures via
-      face UVs + block id, like the plant silhouettes)
 
 - [ ] Vanilla sweep leftovers (low priority): per-species fence/door
       colors, glazed terracotta patterns, purpur block, mycelium

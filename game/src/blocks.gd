@@ -354,6 +354,12 @@ static var LK_SWAY := PackedFloat32Array()
 static var LK_EMIT := PackedFloat32Array()
 static var LK_LIGHT := PackedFloat32Array()
 static var LK_ROUGH := PackedFloat32Array()
+## In-world face patterns the terrain shader draws procedurally
+## (0 none · 1 books · 2 crafting grid · 3 chest · 4 furnace · 5 tnt ·
+## 6 melon stripes · 7 pumpkin ribs · 8 hay bands · 9 plank grain ·
+## 10 brick bond · 11 stone-brick bond · 12 bark · 13 log rings).
+static var LK_PATTERN_SIDE := PackedByteArray()
+static var LK_PATTERN_TOP := PackedByteArray()
 
 static func _build_lookups() -> void:
 	LK_OPAQUE.resize(256)
@@ -367,6 +373,23 @@ static func _build_lookups() -> void:
 	LK_EMIT.resize(256)
 	LK_LIGHT.resize(256)
 	LK_ROUGH.resize(256)
+	LK_PATTERN_SIDE.resize(256)
+	LK_PATTERN_TOP.resize(256)
+	var side_patterns := {132: 1, CRAFTING_TABLE: 2, CHEST: 3, FURNACE: 4,
+		BOOM: 5, 137: 6, PUMPKIN: 7, 138: 8,
+		PLANKS: 9, BIRCH_PLANKS: 9, DARK_PLANKS: 9, CHERRY_PLANKS: 9,
+		129: 9, 131: 9, 203: 9, 204: 9, 205: 9,
+		BRICK: 10, 119: 10, 101: 11, 102: 11, 103: 11, 109: 11, 115: 11,
+		LOG: 12, 125: 12, 126: 12, 127: 12, 128: 12, 130: 12, 208: 12, 206: 12}
+	var top_patterns := {CRAFTING_TABLE: 2, CHEST: 3, BOOM: 5, 137: 6,
+		PUMPKIN: 7, 138: 8, PLANKS: 9, BIRCH_PLANKS: 9, DARK_PLANKS: 9,
+		CHERRY_PLANKS: 9, 129: 9, 131: 9, 203: 9, 204: 9, 205: 9,
+		BRICK: 10, 119: 10, 101: 11, 102: 11, 103: 11, 109: 11, 115: 11,
+		LOG: 13, 125: 13, 126: 13, 127: 13, 128: 13, 130: 13, 208: 13}
+	for pid: int in side_patterns.keys():
+		LK_PATTERN_SIDE[pid] = side_patterns[pid]
+	for pid: int in top_patterns.keys():
+		LK_PATTERN_TOP[pid] = top_patterns[pid]
 	for id in 256:
 		var spec := info(id)
 		LK_OPAQUE[id] = 1 if bool(spec.get("opaque", false)) else 0
