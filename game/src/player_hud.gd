@@ -304,6 +304,7 @@ func _ready() -> void:
 		world.survival_changed.connect(_refresh_identity)
 		world.hearts_changed.connect(_refresh_identity)
 		world.match_changed.connect(_on_match_changed)
+		world.battle_config_changed.connect(_refresh_battle_highlights)
 	Game.roster_changed.connect(_refresh_identity)
 	_refresh_identity()
 
@@ -465,9 +466,10 @@ func _build_game_tab() -> void:
 		var minutes: int = preset[0]
 		preset_btn.pressed.connect(func() -> void:
 			if Game.world != null:
-				Game.world.sv_match_config.rpc_id(1, minutes, -1)
+				Game.world.sv_match_config.rpc_id(1, minutes, -1, -1)
 			Sfx.play("tick", -8.0))
 		length_row.add_child(preset_btn)
+		_length_btns[minutes] = preset_btn
 	var size_row := HBoxContainer.new()
 	size_row.add_theme_constant_override("separation", _us(8))
 	tab.add_child(size_row)
@@ -486,6 +488,7 @@ func _build_game_tab() -> void:
 				Game.world.sv_match_config.rpc_id(1, -1, -1, blocks)
 			Sfx.play("tick", -8.0))
 		size_row.add_child(size_btn)
+		_size_btns[arena] = size_btn
 	var teams_label := Label.new()
 	teams_label.text = "Teams:"
 	teams_label.add_theme_font_size_override("font_size", _us(20))
@@ -672,6 +675,8 @@ func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color
 				image.set_pixel(px + dx, py + dy, color)
 
 var _team_box: VBoxContainer
+var _length_btns: Dictionary = {}
+var _size_btns: Dictionary = {}
 var _world_row: HBoxContainer
 var _maps_row: HBoxContainer
 var _maps_label: Label
@@ -691,6 +696,17 @@ func _on_match_changed() -> void:
 		_refresh_team_box()
 	elif _menu.visible and world.match_phase == "DROP":
 		_close_menu()
+
+## The selected battle options glow gold so everyone can see the setup.
+func _refresh_battle_highlights() -> void:
+	if world == null:
+		return
+	for minutes: int in _length_btns.keys():
+		(_length_btns[minutes] as Button).add_theme_color_override("font_color",
+			Color("ffd166") if minutes == world.client_minutes else Color.WHITE)
+	for arena: int in _size_btns.keys():
+		(_size_btns[arena] as Button).add_theme_color_override("font_color",
+			Color("ffd166") if arena == world.client_size else Color.WHITE)
 
 func _refresh_team_box() -> void:
 	if _team_box == null:

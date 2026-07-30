@@ -168,20 +168,17 @@ func get_ui_vector() -> Vector2:
 		return v
 	return get_move_vector()
 
-## Sprint (click the left stick).
+## Sprint is retired — walking is the normal pace now.
 func is_sprint_pressed() -> bool:
-	match kind:
-		Kind.GAMEPAD:
-			return Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_STICK)
 	return false
 
-## Creep like Minecraft sneak: slow and SILENT (Shift / left trigger).
+## Creep like Minecraft sneak: slow and SILENT (Shift / click left stick).
 func is_sneak_pressed() -> bool:
 	match kind:
 		Kind.KEYBOARD_WASD:
 			return Input.is_physical_key_pressed(KEY_SHIFT)
 		Kind.GAMEPAD:
-			return Input.get_joy_axis(device, JOY_AXIS_TRIGGER_LEFT) > 0.5
+			return Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_STICK)
 	return false
 
 ## Descend while flying (Shift / left trigger).

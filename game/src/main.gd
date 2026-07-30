@@ -316,8 +316,12 @@ func _on_connected() -> void:
 	world.survival_changed.connect(_refresh_survival)
 	world.match_changed.connect(_refresh_match)
 	world.match_won.connect(func(winner: int) -> void:
-		_show_banner("TEAM %s WINS THE BATTLE!" % WorldNode.TEAM_NAMES[winner].to_upper() \
-			if winner >= 0 else "The storm wins... nobody survived!"))
+		var message := "The storm wins... nobody survived!"
+		if winner >= 0:
+			message = "TEAM %s WINS THE BATTLE!" % WorldNode.TEAM_NAMES[winner].to_upper()
+		elif winner == -2:
+			message = "Everyone's out — no winner this time!"
+		_show_banner(message + "\n(jump to close)", true))
 	world.reset_vote_started.connect(func() -> void: _vote_panel.visible = true)
 	world.reset_result.connect(func(happened: bool) -> void:
 		_vote_panel.visible = false
@@ -552,11 +556,16 @@ func _refresh_survival() -> void:
 	_wave_label.text = "Wave %d!" % Game.world.survival_wave \
 		if Game.world.survival_active else ""
 
-func _show_banner(text: String) -> void:
+var _banner_sticky := false
+
+func _show_banner(text: String, sticky := false) -> void:
 	_loading_label.visible = false
 	_banner.text = text
 	_banner.visible = true
 	_banner.modulate.a = 1.0
+	_banner_sticky = sticky
+	if sticky:
+		return  # stays until a player dismisses it (jump)
 	var tween := create_tween()
 	tween.tween_interval(5.0)
 	tween.tween_property(_banner, "modulate:a", 0.0, 1.0)
@@ -606,7 +615,17 @@ func _claimed_keys() -> Dictionary:
 
 var _last_join_ms := 0
 
+func _poll_banner_dismiss() -> void:
+	if not _banner_sticky or not _banner.visible:
+		return
+	for input: InputSlot in Game.local_inputs.values():
+		if input.is_primary_pressed():
+			_banner.visible = false
+			_banner_sticky = false
+			return
+
 func _poll_join_leave(delta: float) -> void:
+	_poll_banner_dismiss()
 	# Unclaimed devices can hop in any time — but only one join per press
 	# (some pads show up twice on macOS and double-joined).
 	for slot: InputSlot in InputSlot.candidate_slots():

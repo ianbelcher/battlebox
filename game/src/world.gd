@@ -28,6 +28,10 @@ signal survival_ended(seconds: float, bonked: int)
 signal match_changed
 signal storm_changed
 signal map_list_changed
+signal battle_config_changed
+var client_minutes := 5
+var client_size := 250
+var client_loot := false
 ## player_id -> dragon critter id, replicated so everyone sees who rides.
 var riding_map: Dictionary = {}
 
@@ -270,6 +274,7 @@ func sv_hello() -> void:
 	cl_world_info.rpc_id(peer, spawn_pos, clock, source)
 	cl_map_list.rpc_id(peer, ChunkStore.list_maps())
 	cl_overview.rpc_id(peer, overview)
+	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only)
 	var payload: Array = []
 	for crate_id: int in _crates.keys():
 		payload.append([crate_id, _crates[crate_id].weapon, _crates[crate_id].pos])
@@ -1098,6 +1103,7 @@ func sv_match_config(minutes: int, loot: int, size: int = -1) -> void:
 		loot_only = loot == 1
 	if size > 0:
 		battle_size = clampf(float(size), 25.0, 400.0)
+	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only)
 
 @rpc("any_peer", "reliable")
 func sv_match_start(_slot: int) -> void:
@@ -1303,7 +1309,18 @@ func _check_match_win() -> void:
 	for id: String in _match_alive.keys():
 		if Game.roster.has(id):
 			teams_alive[int(Game.roster[id].get("team", 0))] = true
-	if teams_alive.size() <= 1 and match_phase == "BATTLE":
+	if match_phase != "BATTLE":
+		return
+	var humans_alive := false
+	for id: String in _match_alive.keys():
+		if Game.roster.has(id) and not bool(Game.roster[id].get("bot", false)) \
+				and not _downed_ids.has(id):
+			humans_alive = true
+			break
+	if not humans_alive:
+		_server_match_end(-2)  # every human is out: nobody wins
+		return
+	if teams_alive.size() <= 1:
 		var winner := -1
 		for t in teams_alive.keys():
 			winner = t
@@ -1889,6 +1906,13 @@ func send_edit(slot: int, pos: Vector3i, block: int) -> void:
 @rpc("authority", "reliable")
 func cl_overview(bytes: PackedByteArray) -> void:
 	overview = bytes
+
+@rpc("authority", "reliable")
+func cl_battle_config(minutes: int, size: int, loot: bool) -> void:
+	client_minutes = minutes
+	client_size = size
+	client_loot = loot
+	battle_config_changed.emit()
 
 @rpc("authority", "reliable")
 func cl_map_list(maps: Array) -> void:
