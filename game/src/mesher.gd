@@ -238,6 +238,8 @@ func _add_shape(block: int, shape: String, x: int, y: int, z: int, cx: int, cz: 
 	match shape:
 		"slab":
 			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.5, 1)]]
+		"carpet":
+			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.15, 1)]]
 		"stairs":
 			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.5, 1)]]
 			match Blocks.stairs_facing_of(block):

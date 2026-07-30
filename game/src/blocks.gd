@@ -116,6 +116,13 @@ const TORCH := 172
 const VINE := 173
 const LADDER := 174
 const BAMBOO := 175
+## Import-fidelity extras: thin snow, stained glass in 8 tints, and
+## species-tinted leaves so vanilla Minecraft maps read like themselves.
+const SNOW_LAYER := 176
+const GLASS_RED := 177  # ..184: red orange yellow green blue purple pink white
+const LEAVES_DARK := 185
+const LEAVES_LIGHT := 186
+const LEAVES_PINK := 187
 
 static func shape_of(id: int) -> String:
 	return str(info(id).get("shape", ""))
@@ -236,6 +243,23 @@ static func _static_init() -> void:
 	EXTRA[VINE] = {"name": "Vine", "color": Color("4a7a35"), "cross": true, "sway": 0.5}
 	EXTRA[LADDER] = {"name": "Ladder", "color": Color("9a7a4f"), "cross": true}
 	EXTRA[BAMBOO] = {"name": "Bamboo", "color": Color("6b9a3d"), "cross": true, "sway": 0.3}
+	EXTRA[SNOW_LAYER] = {"name": "Snow Layer", "color": Color("eef3f6"),
+		"solid": true, "opaque": false, "shape": "carpet", "hard": 0}
+	var glass_tints := [["Red", Color(0.85, 0.2, 0.2, 0.5)],
+		["Orange", Color(0.9, 0.55, 0.15, 0.5)], ["Yellow", Color(0.92, 0.85, 0.25, 0.5)],
+		["Green", Color(0.3, 0.75, 0.3, 0.5)], ["Blue", Color(0.25, 0.45, 0.9, 0.5)],
+		["Purple", Color(0.6, 0.3, 0.85, 0.5)], ["Pink", Color(0.9, 0.55, 0.75, 0.5)],
+		["White", Color(0.92, 0.94, 0.97, 0.42)]]
+	for gi in glass_tints.size():
+		EXTRA[GLASS_RED + gi] = {"name": str(glass_tints[gi][0]) + " Glass",
+			"color": glass_tints[gi][1], "solid": true, "opaque": false,
+			"translucent": true, "hard": 0}
+	EXTRA[LEAVES_DARK] = {"name": "Dark Leaves", "color": Color("2f5a30"),
+		"solid": true, "opaque": true, "sway": 0.35, "hard": 0}
+	EXTRA[LEAVES_LIGHT] = {"name": "Bright Leaves", "color": Color("7fbb4f"),
+		"solid": true, "opaque": true, "sway": 0.35, "hard": 0}
+	EXTRA[LEAVES_PINK] = {"name": "Blossom Leaves", "color": Color("e8a7c8"),
+		"solid": true, "opaque": true, "sway": 0.35, "hard": 0}
 
 ## Per-block info, indexed by block id:
 ##   color: base albedo
@@ -375,7 +399,8 @@ const HOTBAR: Array[int] = [
 	117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132,
 	133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148,
 	149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
-	165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175,
+	165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178,
+	179, 180, 181, 182, 183, 184, 185, 186, 187,
 ]
 
 ## Picker categories (what each tab shows).
@@ -389,7 +414,10 @@ static func family_blocks() -> Array:
 	out.append_array(mc_ids)
 	out.append_array([STAIRS_WOOD, STAIRS_STONE, STAIRS_BRICK, STAIRS_QUARTZ,
 		SLAB_WOOD, SLAB_STONE, SLAB_BRICK, SLAB_QUARTZ,
-		FENCE, WALL, GLASS_PANE, TORCH, VINE, LADDER, BAMBOO])
+		FENCE, WALL, GLASS_PANE, TORCH, VINE, LADDER, BAMBOO,
+		SNOW_LAYER, GLASS_RED, GLASS_RED + 1, GLASS_RED + 2, GLASS_RED + 3,
+		GLASS_RED + 4, GLASS_RED + 5, GLASS_RED + 6, GLASS_RED + 7,
+		LEAVES_DARK, LEAVES_LIGHT, LEAVES_PINK])
 	return out
 
 const SPECIAL_BLOCKS := [GLASS, ICE, LAVA, GLOWSTONE, LANTERN, CAMPFIRE,

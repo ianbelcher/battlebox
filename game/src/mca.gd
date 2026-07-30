@@ -297,7 +297,7 @@ const NAME_MAP := {
 	"calcite": Blocks.STONE, "smooth_stone": Blocks.STONE, "obsidian": Blocks.WOOL_BLACK,
 	"cobblestone": Blocks.COBBLE, "mossy_cobblestone": Blocks.MOSSY_COBBLE,
 	"stone_bricks": Blocks.COBBLE, "mossy_stone_bricks": Blocks.MOSSY_COBBLE,
-	"snow": Blocks.AIR, "snow_block": Blocks.SNOW, "powder_snow": Blocks.SNOW,
+	"snow": Blocks.SNOW_LAYER, "snow_block": Blocks.SNOW, "powder_snow": Blocks.SNOW,
 	"ice": Blocks.ICE, "packed_ice": Blocks.ICE, "blue_ice": Blocks.ICE, "frosted_ice": Blocks.ICE,
 	"glass": Blocks.GLASS, "tinted_glass": Blocks.GLASS,
 	"bricks": Blocks.BRICK,
@@ -315,7 +315,26 @@ const NAME_MAP := {
 	"orange_tulip": Blocks.FLOWER_YELLOW, "torchflower": Blocks.FLOWER_YELLOW,
 	"pink_tulip": Blocks.FLOWER_PINK, "peony": Blocks.FLOWER_PINK, "allium": Blocks.FLOWER_PINK,
 	"lilac": Blocks.FLOWER_PINK, "pink_petals": Blocks.FLOWER_PINK,
-	"cherry_leaves": Blocks.FLOWER_PINK,
+	"cherry_leaves": Blocks.LEAVES_PINK, "spruce_leaves": Blocks.LEAVES_DARK,
+	"dark_oak_leaves": Blocks.LEAVES_DARK, "pale_oak_leaves": Blocks.LEAVES_DARK,
+	"birch_leaves": Blocks.LEAVES_LIGHT, "mangrove_planks": Blocks.CHERRY_PLANKS,
+	"mangrove_roots": Blocks.LOG, "muddy_mangrove_roots": Blocks.LOG,
+	"netherrack": 139, "nether_wart_block": 139, "crimson_nylium": 139,
+	"warped_nylium": Blocks.WOOL_TEAL, "warped_wart_block": Blocks.WOOL_TEAL,
+	"nether_wart": Blocks.MUSHROOM, "soul_sand": 118, "soul_soil": 118,
+	"end_stone": Blocks.SANDSTONE, "end_stone_bricks": Blocks.SANDSTONE,
+	"purpur_block": Blocks.WOOL_PURPLE, "purpur_pillar": Blocks.WOOL_PURPLE,
+	"chorus_plant": Blocks.WOOL_PURPLE, "chorus_flower": Blocks.WOOL_PURPLE,
+	"dripstone_block": 117, "smithing_table": Blocks.PLANKS,
+	"fletching_table": Blocks.PLANKS, "cartography_table": Blocks.PLANKS,
+	"lectern": Blocks.PLANKS, "loom": Blocks.PLANKS, "composter": Blocks.PLANKS,
+	"beehive": Blocks.PLANKS, "bee_nest": Blocks.PLANKS,
+	"smoker": Blocks.COBBLE, "blast_furnace": Blocks.COBBLE,
+	"dispenser": Blocks.COBBLE, "dropper": Blocks.COBBLE,
+	"observer": Blocks.COBBLE, "piston": Blocks.COBBLE,
+	"sticky_piston": Blocks.COBBLE, "piston_head": Blocks.COBBLE,
+	"hopper": Blocks.STEEL, "cauldron": Blocks.STEEL, "bell": Blocks.GOLD,
+	"enchanting_table": 113, "ender_chest": 113,
 	"blue_orchid": Blocks.FLOWER_PINK, "azure_bluet": Blocks.FLOWER_PINK,
 	"oxeye_daisy": Blocks.FLOWER_YELLOW, "cornflower": Blocks.FLOWER_PINK,
 	"lily_of_the_valley": Blocks.FLOWER_PINK, "wither_rose": Blocks.MUSHROOM,
@@ -342,6 +361,18 @@ const NAME_MAP := {
 	"hay_block": Blocks.WOOL_YELLOW, "honeycomb_block": Blocks.WOOL_ORANGE,
 }
 
+## Stained glass keeps its color (16 vanilla tints onto our 8).
+const STAINED_GLASS_MAP := {
+	"red": Blocks.GLASS_RED, "orange": Blocks.GLASS_RED + 1,
+	"yellow": Blocks.GLASS_RED + 2, "lime": Blocks.GLASS_RED + 3,
+	"green": Blocks.GLASS_RED + 3, "cyan": Blocks.GLASS_RED + 4,
+	"light_blue": Blocks.GLASS_RED + 4, "blue": Blocks.GLASS_RED + 4,
+	"purple": Blocks.GLASS_RED + 5, "magenta": Blocks.GLASS_RED + 5,
+	"pink": Blocks.GLASS_RED + 6, "white": Blocks.GLASS_RED + 7,
+	"light_gray": Blocks.GLASS_RED + 7, "gray": Blocks.GLASS_RED + 7,
+	"black": Blocks.GLASS_RED + 7, "brown": Blocks.GLASS_RED + 1,
+}
+
 const WOOL_COLOR_MAP := {
 	"red": Blocks.WOOL_RED, "orange": Blocks.WOOL_ORANGE, "yellow": Blocks.WOOL_YELLOW,
 	"lime": Blocks.WOOL_GREEN, "green": Blocks.WOOL_GREEN, "cyan": Blocks.WOOL_TEAL,
@@ -355,6 +386,7 @@ const WOOL_COLOR_MAP := {
 ## these become air rather than a misleading full cube.
 const SKIP_PARTS := [
 	"rail", "button", "lever", "sign", "banner", "pressure_plate", "carpet",
+	"brewing_stand", "pointed_dripstone",
 	"tripwire", "redstone_wire", "repeater", "comparator", "candle", "pot",
 	"flower_pot", "scaffolding", "cobweb", "chain",
 	"sculk_vein", "frogspawn", "sniffer_egg", "turtle_egg",
@@ -405,8 +437,12 @@ static func map_entry(entry: Dictionary) -> int:
 		return Blocks.VINE
 	if name.begins_with("bamboo"):
 		return Blocks.BAMBOO
-	if name.ends_with("_door") or name.ends_with("_trapdoor"):
+	if name.ends_with("_trapdoor"):
+		return Blocks.SLAB_STONE if name.begins_with("iron") else Blocks.SLAB_WOOD
+	if name.ends_with("_door"):
 		return 141 if name.begins_with("iron") else Blocks.PLANKS
+	if name == "cave_vines_plant":
+		return Blocks.VINE
 	match name:
 		"wheat": return Blocks.WHEAT_PLANT
 		"carrots", "potatoes", "beetroots", "sweet_berry_bush": return Blocks.BERRY_BUSH
@@ -490,6 +526,10 @@ static func _map_block_uncached(short_name: String) -> int:
 		return 107
 	if short_name.contains("red_sandstone"):
 		return 116
+	if short_name.contains("prismarine"):
+		return Blocks.WOOL_TEAL
+	if short_name.contains("sculk"):
+		return Blocks.WOOL_BLACK
 	if short_name.contains("quartz_brick"):
 		return 115
 	if short_name.contains("quartz"):
@@ -499,7 +539,7 @@ static func _map_block_uncached(short_name: String) -> int:
 		if short_name.begins_with(color + "_"):
 			var rest := short_name.trim_prefix(color + "_")
 			if rest.contains("glass"):
-				return Blocks.GLASS
+				return STAINED_GLASS_MAP.get(color, Blocks.GLASS)
 			if rest == "wool" or rest.contains("concrete") or rest.contains("terracotta") \
 					or rest == "bed" or rest.contains("shulker"):
 				return WOOL_COLOR_MAP[color]
