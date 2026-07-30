@@ -1066,8 +1066,11 @@ func _do_world_reset(map_name := "") -> void:
 const LOBBY_SECONDS := 25.0
 const STORM_START := 360.0
 
+## Battle square side in blocks (the storm starts at its edge).
+var battle_size := 250.0
+
 func _storm_start() -> float:
-	return STORM_START
+	return battle_size * 0.5
 const STORM_END := 16.0
 var storm_minutes := 5.0
 var loot_only := false
@@ -1086,13 +1089,15 @@ func sv_set_bot_team(target_id: String, team: int) -> void:
 		Game.cl_roster.rpc(Game.roster)
 
 @rpc("any_peer", "reliable")
-func sv_match_config(minutes: int, loot: int) -> void:
-	if not multiplayer.is_server() or match_phase != "LOBBY":
+func sv_match_config(minutes: int, loot: int, size: int = -1) -> void:
+	if not multiplayer.is_server() or not (match_phase in ["IDLE", "LOBBY"]):
 		return
 	if minutes > 0:
 		storm_minutes = clampf(float(minutes), 2.0, 99.0)
 	if loot >= 0:
 		loot_only = loot == 1
+	if size > 0:
+		battle_size = clampf(float(size), 25.0, 400.0)
 
 @rpc("any_peer", "reliable")
 func sv_match_start(_slot: int) -> void:
@@ -1168,9 +1173,11 @@ func _server_match_drop() -> void:
 		var drop := Vector3(cos(angle) * dist, WorldGen.CHUNK_H - 4, sin(angle) * dist)
 		cl_drop.rpc(id, drop, loot_only)
 		i += 1
-	# Fresh loot everywhere so late matches aren't scavenged dry.
+	# Fresh loot everywhere so late matches aren't scavenged dry — the
+	# count scales with the battle square's area.
 	_crates.clear()
-	for n in 40:
+	var crate_count := clampi(int(pow(_storm_start() / 125.0, 2.0) * 40.0), 8, 60)
+	for n in crate_count:
 		var langle := randf() * TAU
 		var ldist := sqrt(randf()) * (_storm_start() * 0.85)
 		var lx := int(cos(langle) * ldist)

@@ -467,6 +467,24 @@ func _build_game_tab() -> void:
 				Game.world.sv_match_config.rpc_id(1, minutes, -1)
 			Sfx.play("tick", -8.0))
 		length_row.add_child(preset_btn)
+	var size_row := HBoxContainer.new()
+	size_row.add_theme_constant_override("separation", _us(8))
+	tab.add_child(size_row)
+	var size_label := Label.new()
+	size_label.text = "Arena size:"
+	size_label.add_theme_font_size_override("font_size", _us(20))
+	size_row.add_child(size_label)
+	for arena in [25, 100, 150, 200, 250]:
+		var size_btn := Button.new()
+		size_btn.focus_mode = Control.FOCUS_NONE
+		size_btn.text = str(arena)
+		size_btn.add_theme_font_size_override("font_size", _us(18))
+		var blocks: int = arena
+		size_btn.pressed.connect(func() -> void:
+			if Game.world != null:
+				Game.world.sv_match_config.rpc_id(1, -1, -1, blocks)
+			Sfx.play("tick", -8.0))
+		size_row.add_child(size_btn)
 	var teams_label := Label.new()
 	teams_label.text = "Teams:"
 	teams_label.add_theme_font_size_override("font_size", _us(20))
