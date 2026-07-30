@@ -109,10 +109,12 @@ static func build(kind: String, id: int) -> Node3D:
 		14:  # Flare gun: stubby wide-mouth pistol
 			root.add_child(_box(Vector3(0.1, 0.14, 0.1), Color("c94f4f"), Vector3(0, -0.04, 0.1)))
 			root.add_child(_cyl(0.09, 0.11, 0.2, Color("ff8ac2"), Vector3(0, 0.05, -0.06), Vector3(90, 0, 0)))
-		13:  # Sword
-			root.add_child(_box(Vector3(0.05, 0.05, 0.16), Color("6e523a"), Vector3(0, 0, 0.08)))
-			root.add_child(_box(Vector3(0.16, 0.04, 0.05), Color("9a9da6"), Vector3(0, 0, -0.02)))
-			root.add_child(_box(Vector3(0.06, 0.03, 0.5), Color("dfe4ea"), Vector3(0, 0, -0.3)))
+		13:  # Sword: broad bright blade, gold crossguard, leather grip
+			root.add_child(_box(Vector3(0.05, 0.05, 0.18), Color("4a3524"), Vector3(0, 0, 0.1)))
+			root.add_child(_cyl(0.04, 0.04, 0.045, Color("d9a832"), Vector3(0, 0, 0.2), Vector3(90, 0, 0)))
+			root.add_child(_box(Vector3(0.2, 0.05, 0.05), Color("d9a832"), Vector3(0, 0, -0.01)))
+			root.add_child(_box(Vector3(0.08, 0.035, 0.5), Color("e8edf4"), Vector3(0, 0, -0.3)))
+			root.add_child(_box(Vector3(0.05, 0.036, 0.1), Color("f4f8fc"), Vector3(0, 0, -0.6)))
 		5:  # Bridge gun: plank thrower
 			root.add_child(_box(Vector3(0.1, 0.1, 0.3), Color("8a6a42"), Vector3(0, 0.06, -0.06)))
 			root.add_child(_box(Vector3(0.18, 0.04, 0.2), Color("d6c396"), Vector3(0, 0.14, -0.16)))
@@ -123,6 +125,16 @@ static func build(kind: String, id: int) -> Node3D:
 			root.add_child(_box(Vector3(0.14, 0.14, 0.04), Color("3ad4c2"), Vector3(0, 0.08, -0.3), true))
 		8:  # Paint bomb: bucket
 			root.add_child(_cyl(0.11, 0.09, 0.16, Color("b07df0"), Vector3(0, 0.04, -0.06)))
+		3:  # Freeze ray: icy emitter with a glowing crystal muzzle
+			root.add_child(_box(Vector3(0.09, 0.12, 0.26), Color("5f7d8a"), Vector3(0, 0.05, -0.02)))
+			root.add_child(_cyl(0.06, 0.09, 0.12, Color("aef7f0"), Vector3(0, 0.08, -0.22), Vector3(90, 0, 0), true))
+			root.add_child(_box(Vector3(0.07, 0.12, 0.08), Color("44525c"), Vector3(0, -0.04, 0.08)))
+		4:  # Block sucker: vacuum bell on a green rig
+			root.add_child(_box(Vector3(0.1, 0.12, 0.22), Color("4c6a44"), Vector3(0, 0.05, 0.02)))
+			root.add_child(_cyl(0.13, 0.05, 0.18, Color("62a851"), Vector3(0, 0.07, -0.2), Vector3(90, 0, 0)))
+		10:  # Grump whistle: purple pipe with a mouthpiece
+			root.add_child(_cyl(0.045, 0.045, 0.2, Color("8a5fd0"), Vector3(0, 0.05, -0.05), Vector3(90, 0, 0)))
+			root.add_child(_box(Vector3(0.1, 0.1, 0.1), Color("6a44a8"), Vector3(0, 0.03, 0.08)))
 		11:  # Wings (folded)
 			for side in [-1.0, 1.0]:
 				var wing := _box(Vector3(0.26, 0.02, 0.14), Color("eceff4"), Vector3(side * 0.16, 0.1, 0))

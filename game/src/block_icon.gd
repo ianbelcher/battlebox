@@ -496,6 +496,34 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 			for i in 4:
 				_face_quad(face, 0.1 + 0.2 * i, 0.3, 0.24 + 0.2 * i, 0.7,
 					[Color("b04030"), Color("3a6ab0"), Color("3f8a4f"), Color("caa53d")][i])
+	elif b == Blocks.CRAFTING_TABLE:
+		_face_quad(0, 0.14, 0.14, 0.86, 0.86, Color(0, 0, 0, 0.0))
+		for i in 3:
+			_face_line(0, 0.2 + 0.3 * i, 0.15, 0.2 + 0.3 * i, 0.85, dark, size.x * 0.02)
+			_face_line(0, 0.15, 0.2 + 0.3 * i, 0.85, 0.2 + 0.3 * i, dark, size.x * 0.02)
+		_face_quad(1, 0.15, 0.2, 0.45, 0.55, Color("b5975f"))
+		_face_quad(2, 0.55, 0.2, 0.85, 0.55, Color("9aa0a8"))
+	elif b == Blocks.CHEST:
+		for face in [1, 2]:
+			_face_line(face, 0.0, 0.4, 1.0, 0.4, dark, size.x * 0.03)
+		_face_quad(2, 0.4, 0.3, 0.6, 0.55, Color("6c6f78"))
+		_face_quad(1, 0.4, 0.3, 0.6, 0.55, Color("6c6f78"))
+	elif b == Blocks.FURNACE:
+		_face_quad(2, 0.2, 0.35, 0.8, 0.85, Color(0.08, 0.08, 0.1, 0.95))
+		_face_quad(2, 0.3, 0.55, 0.7, 0.8, Color("ff7a3d"))
+		_face_line(1, 0.2, 0.3, 0.8, 0.3, dark, size.x * 0.03)
+	elif b in [Blocks.MARBLE, 114, 115, 111, Blocks.SLATE, 104, 106]:
+		_face_line(1, 0.15, 0.25, 0.7, 0.6, faint, size.x * 0.02)
+		_face_line(2, 0.3, 0.4, 0.85, 0.7, faint, size.x * 0.02)
+		_face_line(0, 0.2, 0.55, 0.75, 0.3, faint, size.x * 0.02)
+	elif b in [Blocks.SANDSTONE, 116]:
+		for face in [1, 2]:
+			_face_line(face, 0.0, 0.35, 1.0, 0.35, faint, size.x * 0.025)
+			_face_line(face, 0.0, 0.7, 1.0, 0.7, faint, size.x * 0.025)
+	elif b in [108, 110, 112, Blocks.CHARRED]:
+		for face in [1, 2]:
+			for i in 2:
+				_face_line(face, 0.15 + 0.5 * i, 0.1, 0.3 + 0.5 * i, 0.9, faint, size.x * 0.02)
 	elif b == Blocks.SAND or b == 124 or b == Blocks.DIRT or b == Blocks.PATH:
 		for face in [0, 1, 2]:
 			for i in 4:

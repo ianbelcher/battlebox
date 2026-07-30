@@ -4,9 +4,6 @@ A live list of OPEN work only (git history is the record of done).
 
 - [ ] ALL VANILLA BLOCKS (confirmed again): every main Minecraft block
       minus redstone-circuitry — imported maps should look right
-- [ ] ICONS round 2: face patterns shipped for the big families —
-      sweep the stragglers (marble/slate/quartz/deepslate variants,
-      shaped-block colors per material) and keep tightening
 - [ ] ICONS MEGA-REDO (BIG — asked multiple times): every block icon
       redrawn to read like Minecraft's actual iconography — kids can't
       read, the picture must say what it is (leaves ≠ plain green cube:

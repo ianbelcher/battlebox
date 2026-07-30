@@ -124,6 +124,9 @@ const LEAVES_DARK := 185
 const LEAVES_LIGHT := 186
 const LEAVES_PINK := 187
 const CARPET_RED := 188  # ..195: 8 wool-colored floor carpets
+const CRAFTING_TABLE := 196
+const CHEST := 197
+const FURNACE := 198
 
 static func shape_of(id: int) -> String:
 	return str(info(id).get("shape", ""))
@@ -269,6 +272,12 @@ static func _static_init() -> void:
 		EXTRA[CARPET_RED + ci] = {"name": str(carpet_tints[ci][0]) + " Carpet",
 			"color": carpet_tints[ci][1], "solid": true, "opaque": false,
 			"shape": "carpet", "hard": 0}
+	EXTRA[CRAFTING_TABLE] = {"name": "Crafting Table", "color": Color("9a6b3f"),
+		"top": Color("7a5230"), "solid": true, "opaque": true, "hard": 1}
+	EXTRA[CHEST] = {"name": "Chest", "color": Color("a5762f"),
+		"top": Color("8a6228"), "solid": true, "opaque": true, "hard": 1}
+	EXTRA[FURNACE] = {"name": "Furnace", "color": Color("7e8188"),
+		"solid": true, "opaque": true, "hard": 2}
 
 ## Per-block info, indexed by block id:
 ##   color: base albedo
@@ -410,7 +419,7 @@ const HOTBAR: Array[int] = [
 	149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
 	165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178,
 	179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192,
-	193, 194, 195,
+	193, 194, 195, 196, 197, 198,
 ]
 
 ## Picker categories (what each tab shows).
@@ -473,7 +482,8 @@ static func picker_category(cat: String) -> Array:
 				out.append(CARPET_RED + i)
 		"lights":
 			out = [TORCH, LANTERN, GLOWSTONE, CAMPFIRE, 147, 148,
-				CRYSTAL_PINK, CRYSTAL_BLUE, CRYSTAL_GREEN, LADDER, 132, 136]
+				CRYSTAL_PINK, CRYSTAL_BLUE, CRYSTAL_GREEN, LADDER, 132, 136,
+				CRAFTING_TABLE, CHEST, FURNACE]
 		"special":
 			out = SPECIAL_BLOCKS.duplicate()
 	return out
