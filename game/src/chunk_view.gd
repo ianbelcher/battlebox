@@ -79,7 +79,7 @@ func _mesh_worker() -> void:
 		_mesh_mutex.unlock()
 
 func _ready() -> void:
-	for i in 4:
+	for i in 3:
 		var worker := Thread.new()
 		worker.start(_mesh_worker)
 		_mesh_threads.append(worker)
@@ -299,10 +299,16 @@ func _process(_delta: float) -> void:
 		_mesh_mutex.unlock()
 		_mesh_sem.post()
 		backlog += 1
-	# ...and upload whatever it finished (cheap: mesh creation only).
+	# ...and upload whatever it finished — at most a few per frame.
+	# Mesh creation happens on the MAIN thread; when a join streams in
+	# hundreds of chunks, uploading every finished result in one frame
+	# froze the game solid for seconds.
 	_mesh_mutex.lock()
-	var done: Array = _mesh_results
-	_mesh_results = []
+	var done: Array = []
+	var budget := 3
+	while not _mesh_results.is_empty() and budget > 0:
+		done.append(_mesh_results.pop_front())
+		budget -= 1
 	_mesh_mutex.unlock()
 	for result: Dictionary in done:
 		var rpos: Vector2i = result.cpos
