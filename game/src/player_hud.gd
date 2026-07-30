@@ -35,9 +35,9 @@ var _groups: TabContainer
 var _build_tabs: TabContainer
 var _game_tabs: TabContainer
 var _opt_tabs: TabContainer
-const PAGE_PLAYERS := 5
-const PAGE_CHARACTER := 7
-const _PAGES := [[0, 0], [0, 1], [0, 2], [0, 3],
+const PAGE_PLAYERS := 8
+const PAGE_CHARACTER := 10
+const _PAGES := [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6],
 	[1, 0], [1, 1], [1, 2], [2, 0], [2, 1]]
 var _prev_picker := false
 var _prev_menu := false
@@ -279,7 +279,9 @@ func _ready() -> void:
 	add_child(_crosshair)
 
 	_pickers = []
-	for spec in [["Tools", "tools"], ["Blocks", "blocks"], ["Special", "special"], ["Kits", "kits"]]:
+	for spec in [["Tools", "tools"], ["Building", "building"],
+			["Nature", "nature"], ["Colors", "colors"], ["Lights", "lights"],
+			["Special", "special"], ["Kits", "kits"]]:
 		var picker := BlockPicker.new(spec[1])
 		picker.name = spec[0]
 		picker.picked.connect(_on_picked)
@@ -1159,7 +1161,7 @@ func _process(_delta: float) -> void:
 			if input.is_view_toggle_pressed():
 				_close_menu()
 			var page := _current_page()
-			if page < 4:
+			if page < _pickers.size():
 				_pickers[page].poll(input, _delta)
 			else:
 				_poll_page_nav(input, _delta)

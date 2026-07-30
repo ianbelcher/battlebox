@@ -233,6 +233,18 @@ func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String
 
 ## Shaped blocks: a list of sub-boxes per shape, every face emitted (no
 ## culling/AO — these are small and partial, overdraw is negligible).
+## Does a fence/wall/pane arm reach toward this neighbor?
+func _shape_connects(shape: String, nx: int, ny: int, nz: int) -> bool:
+	var n := _block_at(nx, ny, nz)
+	if n <= 0:
+		return false
+	var n_shape := Blocks.shape_of(n)
+	if shape == "pane":
+		return n_shape == "pane" or bool(Blocks.info(n).get("opaque", false))
+	if n_shape == "fence" or n_shape == "wall":
+		return true
+	return bool(Blocks.info(n).get("opaque", false))
+
 func _add_shape(block: int, shape: String, x: int, y: int, z: int, cx: int, cz: int) -> void:
 	var boxes: Array = []
 	match shape:
@@ -248,18 +260,47 @@ func _add_shape(block: int, shape: String, x: int, y: int, z: int, cx: int, cz: 
 				2: boxes.append([Vector3(0, 0.5, 0.5), Vector3(1, 1, 1)])
 				3: boxes.append([Vector3(0, 0.5, 0), Vector3(0.5, 1, 1)])
 		"fence":
-			boxes = [[Vector3(0.4, 0, 0.4), Vector3(0.6, 1.0, 0.6)],
-				[Vector3(0, 0.42, 0.45), Vector3(1, 0.56, 0.55)],
-				[Vector3(0.45, 0.42, 0), Vector3(0.55, 0.56, 1)],
-				[Vector3(0, 0.76, 0.45), Vector3(1, 0.9, 0.55)],
-				[Vector3(0.45, 0.76, 0), Vector3(0.55, 0.9, 1)]]
+			# Post always; rails only toward connected neighbors.
+			boxes = [[Vector3(0.4, 0, 0.4), Vector3(0.6, 1.0, 0.6)]]
+			for rail_y: Array in [[0.42, 0.56], [0.76, 0.9]]:
+				if _shape_connects(shape, x + 1, y, z):
+					boxes.append([Vector3(0.6, rail_y[0], 0.45), Vector3(1, rail_y[1], 0.55)])
+				if _shape_connects(shape, x - 1, y, z):
+					boxes.append([Vector3(0, rail_y[0], 0.45), Vector3(0.4, rail_y[1], 0.55)])
+				if _shape_connects(shape, x, y, z + 1):
+					boxes.append([Vector3(0.45, rail_y[0], 0.6), Vector3(0.55, rail_y[1], 1)])
+				if _shape_connects(shape, x, y, z - 1):
+					boxes.append([Vector3(0.45, rail_y[0], 0), Vector3(0.55, rail_y[1], 0.4)])
 		"wall":
-			boxes = [[Vector3(0.25, 0, 0.25), Vector3(0.75, 1.0, 0.75)],
-				[Vector3(0, 0, 0.3), Vector3(1, 0.82, 0.7)],
-				[Vector3(0.3, 0, 0), Vector3(0.7, 0.82, 1)]]
+			boxes = [[Vector3(0.25, 0, 0.25), Vector3(0.75, 1.0, 0.75)]]
+			if _shape_connects(shape, x + 1, y, z):
+				boxes.append([Vector3(0.75, 0, 0.3), Vector3(1, 0.82, 0.7)])
+			if _shape_connects(shape, x - 1, y, z):
+				boxes.append([Vector3(0, 0, 0.3), Vector3(0.25, 0.82, 0.7)])
+			if _shape_connects(shape, x, y, z + 1):
+				boxes.append([Vector3(0.3, 0, 0.75), Vector3(0.7, 0.82, 1)])
+			if _shape_connects(shape, x, y, z - 1):
+				boxes.append([Vector3(0.3, 0, 0.25), Vector3(0.7, 0.82, 0.75)])
 		"pane":
-			boxes = [[Vector3(0, 0, 0.44), Vector3(1, 1, 0.56)],
-				[Vector3(0.44, 0, 0), Vector3(0.56, 1, 1)]]
+			# Small core plus arms toward whatever the pane joins onto; a
+			# lone pane keeps the old full cross so it isn't invisible.
+			var east := _shape_connects(shape, x + 1, y, z)
+			var west := _shape_connects(shape, x - 1, y, z)
+			var south := _shape_connects(shape, x, y, z + 1)
+			var north := _shape_connects(shape, x, y, z - 1)
+			if not (east or west or south or north):
+				boxes = [[Vector3(0, 0, 0.44), Vector3(1, 1, 0.56)],
+					[Vector3(0.44, 0, 0), Vector3(0.56, 1, 1)]]
+			else:
+				boxes = [[Vector3(0.44, 0, 0.44), Vector3(0.56, 1, 0.56)]]
+				if east:
+					boxes.append([Vector3(0.56, 0, 0.44), Vector3(1, 1, 0.56)])
+				if west:
+					boxes.append([Vector3(0, 0, 0.44), Vector3(0.44, 1, 0.56)])
+				if south:
+					boxes.append([Vector3(0.44, 0, 0.56), Vector3(0.56, 1, 1)])
+				if north:
+					boxes.append([Vector3(0.44, 0, 0), Vector3(0.56, 1, 0.44)])
 	var key := "trans" if shape == "pane" else "opaque"
 	var color := Blocks.color_of(block)
 	var jitter := _jitter(x, y, z, cx, cz)

@@ -20,7 +20,7 @@ const EYE_HEIGHT := 1.62  # Minecraft's exact eye line
 ## spins so "stick up" always moves away from the camera.
 const ISO_ROT := PI / 4.0
 
-enum Anim { IDLE, WALK, AIR, SWIM, FLY }
+enum Anim { IDLE, WALK, AIR, SWIM, FLY, SNEAK }
 
 var player_id := ""
 var slot := -1
@@ -567,6 +567,8 @@ func _local_move(delta: float) -> void:
 		anim = Anim.SWIM
 	elif not on_floor:
 		anim = Anim.AIR
+	elif input.is_sneak_pressed() and not downed:
+		anim = Anim.SNEAK
 	elif dir.length_squared() > 0.01:
 		anim = Anim.WALK
 	else:
@@ -862,6 +864,11 @@ func _animate(delta: float) -> void:
 			_avatar.position.y = 0.15 + sin(_bob_time * 2.6) * 0.05
 			_avatar.scale = _avatar.scale.lerp(Vector3.ONE, minf(1.0, delta * 6.0))
 			arms_up = 1.35
+		Anim.SNEAK:
+			# Crouch: hunker down and lean into it.
+			_avatar.position.y = -0.16
+			_avatar.scale = _avatar.scale.lerp(Vector3(1.04, 0.82, 1.04), minf(1.0, delta * 8.0))
+			swing = sin(_bob_time * 6.0) * 0.3
 		_:
 			_avatar.position.y = sin(_bob_time * 2.2) * 0.015
 			_avatar.scale = _avatar.scale.lerp(Vector3.ONE, minf(1.0, delta * 8.0))
@@ -870,6 +877,15 @@ func _animate(delta: float) -> void:
 	_swing_limb("LegR", -swing, delta)
 	_swing_limb("ArmL", -swing, delta, arms_up)
 	_swing_limb("ArmR", swing, delta, arms_up)
+	# Body lean: crouchers hunch forward, fliers pitch into their travel
+	# direction (nose down moving forward, nose up climbing).
+	var lean := 0.0
+	if anim == Anim.SNEAK:
+		lean = 0.42
+	elif anim == Anim.FLY:
+		lean = clampf(Vector2(velocity.x, velocity.z).length() * 0.055 \
+			- velocity.y * 0.03, -0.5, 1.15)
+	_avatar.rotation.x = lerpf(_avatar.rotation.x, lean, minf(1.0, delta * 6.0))
 	# A real sword swing overrides the walk cycle on the sword arm: a fast
 	# wind-up over the shoulder, then a diagonal chop across the body.
 	if swing_time > 0.0:

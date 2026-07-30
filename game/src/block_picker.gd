@@ -22,8 +22,8 @@ func _init(p_category := "blocks") -> void:
 	category = p_category
 	if category == "tools":
 		COLUMNS = 7
-	elif category == "blocks":
-		COLUMNS = 8  # one material family per line
+	elif category == "lights" or category == "special":
+		COLUMNS = 6
 	elif category == "kits":
 		COLUMNS = 4  # big preview chips
 	visible = false
@@ -42,19 +42,15 @@ func _init(p_category := "blocks") -> void:
 			for w in Weapons.WEAPONS:
 				if not w.get("hidden", false):
 					entries.append({"kind": "weapon", "id": w.id, "name": w.name, "color": w.color})
-		"blocks":
-			for block in Blocks.family_blocks():
-				entries.append({"kind": "block", "id": block,
-					"name": Blocks.display_name(block), "color": Blocks.color_of(block)})
-		"special":
-			for block in Blocks.SPECIAL_BLOCKS:
-				entries.append({"kind": "block", "id": block,
-					"name": Blocks.display_name(block), "color": Blocks.color_of(block)})
 		"kits":
 			for i in Structures.count():
 				var spec := Structures.spec(i)
 				entries.append({"kind": "structure", "id": i,
 					"name": spec.name, "color": spec.color})
+		_:
+			for block in Blocks.picker_category(category):
+				entries.append({"kind": "block", "id": block,
+					"name": Blocks.display_name(block), "color": Blocks.color_of(block)})
 
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)

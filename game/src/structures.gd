@@ -20,6 +20,9 @@ const STRUCTURES := [
 	{"id": "bunker", "name": "Steel Bunker", "color": Color("aab4c2")},
 	{"id": "sniper", "name": "Sniper Tower", "color": Color("5d4430")},
 	{"id": "barricade", "name": "Barricade", "color": Color("e6d29a")},
+	{"id": "treehouse", "name": "Treehouse", "color": Color("7a9a3d")},
+	{"id": "windmill", "name": "Windmill", "color": Color("d9c9a8")},
+	{"id": "castle_gate", "name": "Castle Gate", "color": Color("9aa0ab")},
 ]
 
 static func count() -> int:
@@ -74,7 +77,75 @@ static func _cells_raw(index: int, roll: int) -> Array:
 			return _sniper()
 		"barricade":
 			return _barricade()
+		"treehouse":
+			return _treehouse()
+		"windmill":
+			return _windmill()
+		"castle_gate":
+			return _castle_gate()
 	return []
+
+## A leafy platform house up a thick trunk, with a ladder run.
+static func _treehouse() -> Array:
+	var list: Array = []
+	for y in range(0, 6):
+		_put(list, 0, y, 0, Blocks.LOG)
+		_put(list, 1, y, 0, Blocks.LADDER)
+	for x in range(-2, 3):
+		for z in range(-2, 3):
+			_put(list, x, 6, z, Blocks.PLANKS)
+	for x in range(-2, 3):
+		for z in range(-2, 3):
+			var edge: bool = absi(x) == 2 or absi(z) == 2
+			if edge and not (x == 1 and z == 0):
+				_put(list, x, 7, z, Blocks.FENCE)
+	for x in range(-3, 4):
+		for z in range(-3, 4):
+			if absi(x) + absi(z) <= 4:
+				_put(list, x, 9, z, Blocks.LEAVES)
+	for x in range(-2, 3):
+		for z in range(-2, 3):
+			if absi(x) + absi(z) <= 2:
+				_put(list, x, 10, z, Blocks.LEAVES_LIGHT)
+	return list
+
+## Stone base, plank cap and four wool sail arms.
+static func _windmill() -> Array:
+	var list: Array = []
+	for y in range(0, 7):
+		for x in range(-1, 2):
+			for z in range(-1, 2):
+				if absi(x) == 1 or absi(z) == 1:
+					_put(list, x, y, z, Blocks.COBBLE if y < 4 else Blocks.PLANKS)
+	_put(list, 0, 0, -1, Blocks.AIR)
+	for arm in range(1, 4):
+		_put(list, 0, 6 + arm, -2, Blocks.WOOL_WHITE)
+		_put(list, 0, 6 - arm, -2, Blocks.WOOL_WHITE)
+		_put(list, arm, 6, -2, Blocks.WOOL_WHITE)
+		_put(list, -arm, 6, -2, Blocks.WOOL_WHITE)
+	_put(list, 0, 6, -2, Blocks.LOG)
+	return list
+
+## Twin round towers flanking a portcullis arch.
+static func _castle_gate() -> Array:
+	var list: Array = []
+	for side in [-3, 3]:
+		for y in range(0, 6):
+			for x in range(side - 1, side + 2):
+				for z in range(-1, 2):
+					if absi(x - side) == 1 or absi(z) == 1:
+						_put(list, x, y, z, Blocks.STONE)
+			_put(list, side, y, 0, Blocks.AIR)
+		for x in range(side - 1, side + 2):
+			for z in range(-1, 2):
+				if (absi(x - side) + absi(z)) % 2 == 0:
+					_put(list, x, 6, z, Blocks.COBBLE)
+	for x in range(-2, 3):
+		_put(list, x, 4, 0, Blocks.STONE)
+		_put(list, x, 5, 0, Blocks.COBBLE)
+		if x != 0:
+			_put(list, x, 3, 0, Blocks.WALL)
+	return list
 
 ## 9x9 crenellated cobble fort with corner posts and a gate.
 static func _fort() -> Array:

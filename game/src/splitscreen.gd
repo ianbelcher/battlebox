@@ -12,6 +12,8 @@ extends Control
 ## things), and stepped zoom. Both tween smoothly toward their snap targets.
 const CAM_DISTANCE := 42.4
 const CAM_HEIGHT := 37.0
+## Default orbit elevation angle — matches the old fixed iso framing.
+const DEFAULT_PITCH := 0.718  # atan(37 / 42.4)
 ## From nearly-on-your-shoulder to a big map-like overview.
 const ZOOM_SIZES: Array[float] = [5.0, 7.0, 10.0, 15.0, 22.0, 32.0, 48.0, 70.0, 100.0]
 const FP_FOVS: Array[float] = [78.0, 45.0, 20.0, 8.0]
@@ -297,6 +299,12 @@ func _process(delta: float) -> void:
 				spin = float(input.rotate_direction())
 			if absf(spin) > 0.08:
 				cell.yaw = fposmod(float(cell.yaw) - spin * delta * 2.6, TAU)
+			# Right stick up/down orbits vertically too — all the way down
+			# to a worm's-eye view from below the character.
+			var tilt := -input.get_look_vector().y
+			if input.kind == InputSlot.Kind.GAMEPAD and absf(tilt) > 0.08:
+				cell.pitch = clampf(float(cell.get("pitch", DEFAULT_PITCH)) \
+					+ tilt * delta * 1.6, -0.45, 1.35)
 			var zoom := input.zoom_direction()
 			if zoom != 0 and cell.prev_zoom == 0:
 				cell.zoom_index = clampi(int(cell.zoom_index) - zoom, 0, ZOOM_SIZES.size() - 1)
@@ -313,7 +321,9 @@ func _process(delta: float) -> void:
 				rig.position, Vector3(0, 0, -1))
 			continue
 		var yaw: float = cell.yaw
-		var offset := Vector3(sin(yaw) * CAM_DISTANCE, CAM_HEIGHT, cos(yaw) * CAM_DISTANCE)
+		var pitch := float(cell.get("pitch", DEFAULT_PITCH))
+		var orbit_r := sqrt(CAM_DISTANCE * CAM_DISTANCE + CAM_HEIGHT * CAM_HEIGHT)
+		var offset := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * orbit_r
 		cam.look_at_from_position(rig.position + offset, rig.position + Vector3(0, 1.0, 0), Vector3.UP)
 	# Stream more chunks when someone is zoomed way out.
 	if world != null and world.chunks != null:

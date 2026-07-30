@@ -420,8 +420,51 @@ static func family_blocks() -> Array:
 		LEAVES_DARK, LEAVES_LIGHT, LEAVES_PINK])
 	return out
 
-const SPECIAL_BLOCKS := [GLASS, ICE, LAVA, GLOWSTONE, LANTERN, CAMPFIRE,
-	BOOM, BOUNCY, LAUNCHER, NOTE, SPONGE, TELEPORT, CONFETTI]
+## Special = OUR inventions only; everything vanilla lives in the
+## Minecraft-style categories below.
+const SPECIAL_BLOCKS := [BOOM, FIREWORK, BOUNCY, LAUNCHER, NOTE, SPONGE,
+	TELEPORT, CONFETTI, LAVA]
+
+## Minecraft-style Build tabs: what each picker page shows.
+static func picker_category(cat: String) -> Array:
+	var out: Array = []
+	match cat:
+		"building":
+			out = [PLANKS, BIRCH_PLANKS, DARK_PLANKS, CHERRY_PLANKS, 129, 131,
+				LOG, 125, 126, 127, 128, 130,
+				COBBLE, MOSSY_COBBLE, STONE, MARBLE, SLATE, BRICK, SANDSTONE,
+				101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112,
+				113, 114, 115, 116, 117, 119, 121, 132, BEDROCK,
+				STEEL, CHARRED, GOLD, DIAMOND, 141, 142, 143, 144, 145, 146]
+			for row in [M_STEEL, M_STONE]:
+				for i in 8:
+					out.append(row + i)
+			out.append_array([STAIRS_WOOD, STAIRS_STONE, STAIRS_BRICK,
+				STAIRS_QUARTZ, SLAB_WOOD, SLAB_STONE, SLAB_BRICK, SLAB_QUARTZ,
+				FENCE, WALL, LADDER])
+		"nature":
+			out = [GRASS, DIRT, PATH, SAND, 124, 118, 120, 122, 123, SHELL,
+				LEAVES, LEAVES_DARK, LEAVES_LIGHT, LEAVES_PINK, 133,
+				SNOW, SNOW_LAYER, ICE, 134, 135,
+				PUMPKIN, 136, 137, 138, 139, 140,
+				FLOWER_RED, FLOWER_YELLOW, FLOWER_PINK, MUSHROOM, TALL_GRASS,
+				SAPLING, BERRY_BUSH, FERN, DEAD_BUSH, CATTAIL, DAISY,
+				BLUEBELL, WHEAT_PLANT, VINE, BAMBOO]
+			for row in [M_SOIL, M_SNOW]:
+				for i in 8:
+					out.append(row + i)
+		"colors":
+			out = [WOOL_WHITE, WOOL_BLACK, WOOL_BROWN, WOOL_RED, WOOL_ORANGE,
+				WOOL_YELLOW, WOOL_GREEN, WOOL_TEAL, WOOL_BLUE, WOOL_PURPLE,
+				WOOL_PINK, GLASS, GLASS_PANE]
+			for i in 8:
+				out.append(GLASS_RED + i)
+		"lights":
+			out = [TORCH, LANTERN, GLOWSTONE, CAMPFIRE, 147, 148,
+				CRYSTAL_PINK, CRYSTAL_BLUE, CRYSTAL_GREEN]
+		"special":
+			out = SPECIAL_BLOCKS.duplicate()
+	return out
 
 static func info(id: int) -> Dictionary:
 	if id >= M_STEEL:
