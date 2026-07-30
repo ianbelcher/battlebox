@@ -255,7 +255,22 @@ func _add_shape(block: int, shape: String, x: int, y: int, z: int, cx: int, cz: 
 		"slab":
 			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.5, 1)]]
 		"carpet":
-			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.15, 1)]]
+			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.15, 1)]] \
+				if block != Blocks.LILY_PAD \
+				else [[Vector3(0.12, 0, 0.12), Vector3(0.88, 0.05, 0.88)]]
+		"door":
+			# Thin full-height panel hugging whichever neighbor is solid
+			# (a lone door faces north).
+			if _shape_connects("door", x, y, z - 1) or not (
+					_shape_connects("door", x - 1, y, z) or _shape_connects("door", x + 1, y, z)):
+				boxes = [[Vector3(0, 0, 0), Vector3(1, 1, 0.14)]]
+			elif _shape_connects("door", x - 1, y, z):
+				boxes = [[Vector3(0, 0, 0), Vector3(0.14, 1, 1)]]
+			else:
+				boxes = [[Vector3(0.86, 0, 0), Vector3(1, 1, 1)]]
+		"bed":
+			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.32, 1)],
+				[Vector3(0.05, 0.32, 0.05), Vector3(0.95, 0.55, 0.95)]]
 		"stairs":
 			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.5, 1)]]
 			match Blocks.stairs_facing_of(block):

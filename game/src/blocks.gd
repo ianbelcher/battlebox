@@ -127,6 +127,10 @@ const CARPET_RED := 188  # ..195: 8 wool-colored floor carpets
 const CRAFTING_TABLE := 196
 const CHEST := 197
 const FURNACE := 198
+const DOOR_WOOD := 199
+const DOOR_IRON := 200
+const BED := 201
+const LILY_PAD := 202
 
 static func shape_of(id: int) -> String:
 	return str(info(id).get("shape", ""))
@@ -278,6 +282,15 @@ static func _static_init() -> void:
 		"top": Color("8a6228"), "solid": true, "opaque": true, "hard": 1}
 	EXTRA[FURNACE] = {"name": "Furnace", "color": Color("7e8188"),
 		"solid": true, "opaque": true, "hard": 2}
+	EXTRA[DOOR_WOOD] = {"name": "Door", "color": Color("a5793f"),
+		"solid": true, "opaque": false, "shape": "door", "hard": 1}
+	EXTRA[DOOR_IRON] = {"name": "Iron Door", "color": Color("c2c8d2"),
+		"solid": true, "opaque": false, "shape": "door", "hard": 2}
+	EXTRA[BED] = {"name": "Bed", "color": Color("c94040"),
+		"top": Color("e8e8ea"), "solid": true, "opaque": false,
+		"shape": "bed", "hard": 1}
+	EXTRA[LILY_PAD] = {"name": "Lily Pad", "color": Color("3f7a33"),
+		"solid": false, "opaque": false, "shape": "carpet", "hard": 0}
 
 ## Per-block info, indexed by block id:
 ##   color: base albedo
@@ -419,7 +432,7 @@ const HOTBAR: Array[int] = [
 	149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
 	165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178,
 	179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192,
-	193, 194, 195, 196, 197, 198,
+	193, 194, 195, 196, 197, 198, 199, 200, 201, 202,
 ]
 
 ## Picker categories (what each tab shows).
@@ -463,6 +476,7 @@ static func picker_category(cat: String) -> Array:
 				FENCE, WALL, LADDER])
 		"nature":
 			out = [GRASS, DIRT, PATH, SAND, 124, 118, 120, 122, 123, SHELL,
+				LILY_PAD,
 				LEAVES, LEAVES_DARK, LEAVES_LIGHT, LEAVES_PINK, 133,
 				SNOW, SNOW_LAYER, ICE, 134, 135,
 				PUMPKIN, 136, 137, 138, 139, 140,
@@ -483,7 +497,7 @@ static func picker_category(cat: String) -> Array:
 		"lights":
 			out = [TORCH, LANTERN, GLOWSTONE, CAMPFIRE, 147, 148,
 				CRYSTAL_PINK, CRYSTAL_BLUE, CRYSTAL_GREEN, LADDER, 132, 136,
-				CRAFTING_TABLE, CHEST, FURNACE]
+				CRAFTING_TABLE, CHEST, FURNACE, DOOR_WOOD, DOOR_IRON, BED]
 		"special":
 			out = SPECIAL_BLOCKS.duplicate()
 	return out

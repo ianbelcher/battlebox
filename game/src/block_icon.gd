@@ -211,6 +211,28 @@ func _draw() -> void:
 				draw_rect(Rect2(mid.x - w * 0.08, h * (0.24 + i * 0.24), w * 0.16, h * 0.035), stalk.darkened(0.3))
 			draw_line(Vector2(mid.x, h * 0.2), Vector2(mid.x + w * 0.22, h * 0.1), stalk.lightened(0.2), w * 0.05)
 			return
+	match block_id:
+		Blocks.DOOR_WOOD, Blocks.DOOR_IRON:
+			var door_c := _dim(Blocks.color_of(block_id))
+			draw_rect(Rect2(w * 0.26, h * 0.06, w * 0.48, h * 0.88), door_c)
+			draw_rect(Rect2(w * 0.26, h * 0.06, w * 0.48, h * 0.88),
+				door_c.darkened(0.35), false, w * 0.025)
+			draw_rect(Rect2(w * 0.33, h * 0.14, w * 0.34, h * 0.3), door_c.darkened(0.2))
+			draw_rect(Rect2(w * 0.33, h * 0.52, w * 0.34, h * 0.3), door_c.darkened(0.2))
+			draw_circle(Vector2(w * 0.66, h * 0.5), w * 0.04, Color("ffd166"))
+			return
+		Blocks.BED:
+			draw_rect(Rect2(w * 0.1, h * 0.5, w * 0.8, h * 0.24), _dim(Blocks.color_of(block_id)))
+			draw_rect(Rect2(w * 0.1, h * 0.38, w * 0.26, h * 0.16), Color(0.95, 0.95, 0.97))
+			draw_rect(Rect2(w * 0.08, h * 0.72, w * 0.06, h * 0.18), Color("6b4a2f"))
+			draw_rect(Rect2(w * 0.86, h * 0.72, w * 0.06, h * 0.18), Color("6b4a2f"))
+			return
+		Blocks.LILY_PAD:
+			draw_circle(Vector2(w * 0.5, h * 0.55), w * 0.3, _dim(Blocks.color_of(block_id)))
+			draw_colored_polygon(PackedVector2Array([Vector2(w * 0.5, h * 0.55),
+				Vector2(w * 0.78, h * 0.42), Vector2(w * 0.72, h * 0.6)]),
+				Color(0.16, 0.24, 0.4))
+			return
 	var icon_shape := Blocks.shape_of(block_id)
 	if icon_shape != "" and icon_shape != "stairs":
 		var c := _dim(Blocks.color_of(block_id))

@@ -358,7 +358,7 @@ const NAME_MAP := {
 	"chest": Blocks.CHEST, "trapped_chest": Blocks.CHEST,
 	"barrel": Blocks.CHEST, "furnace": Blocks.FURNACE, "cactus": Blocks.WOOL_GREEN,
 	"pumpkin_stem": Blocks.SAPLING, "melon_stem": Blocks.SAPLING, "bamboo": Blocks.SAPLING,
-	"lily_pad": Blocks.WOOL_GREEN, "moss_block": Blocks.GRASS, "moss_carpet": Blocks.AIR,
+	"lily_pad": Blocks.LILY_PAD, "moss_block": Blocks.GRASS, "moss_carpet": Blocks.AIR,
 	"hay_block": Blocks.WOOL_YELLOW, "honeycomb_block": Blocks.WOOL_ORANGE,
 }
 
@@ -452,7 +452,7 @@ static func map_entry(entry: Dictionary) -> int:
 	if name.ends_with("_trapdoor"):
 		return Blocks.SLAB_STONE if name.begins_with("iron") else Blocks.SLAB_WOOD
 	if name.ends_with("_door"):
-		return 141 if name.begins_with("iron") else Blocks.PLANKS
+		return Blocks.DOOR_IRON if name.begins_with("iron") else Blocks.DOOR_WOOD
 	if name == "cave_vines_plant":
 		return Blocks.VINE
 	match name:
@@ -554,8 +554,10 @@ static func _map_block_uncached(short_name: String) -> int:
 				return STAINED_GLASS_MAP.get(color, Blocks.GLASS)
 			if rest == "carpet":
 				return CARPET_COLOR_MAP.get(color, Blocks.CARPET_RED + 7)
+			if rest == "bed":
+				return Blocks.BED
 			if rest == "wool" or rest.contains("concrete") or rest.contains("terracotta") \
-					or rest == "bed" or rest.contains("shulker"):
+					or rest.contains("shulker"):
 				return WOOL_COLOR_MAP[color]
 	for part: String in SKIP_PARTS:
 		if short_name == part or short_name.ends_with("_" + part) or short_name.begins_with(part + "_"):
