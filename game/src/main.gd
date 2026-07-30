@@ -315,6 +315,9 @@ func _on_connected() -> void:
 	Game.video_changed.connect(_apply_video)
 	world.survival_changed.connect(_refresh_survival)
 	world.match_changed.connect(_refresh_match)
+	world.match_changed.connect(func() -> void:
+		if Game.world != null and Game.world.match_phase == "COUNTDOWN":
+			_show_banner("Next battle starting soon — fresh map incoming!"))
 	world.match_won.connect(func(winner: int) -> void:
 		var message := "The storm wins... nobody survived!"
 		if winner >= 0:

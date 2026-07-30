@@ -187,10 +187,13 @@ func reset_world(new_seed: int, map_name := "") -> void:
 func set_map(map_name: String, new_seed: int) -> void:
 	reset_world(new_seed, map_name)
 
+var current_map_key := ""
+
 func _apply_map(map_name: String, new_seed: int) -> void:
 	if map_name.is_empty():
 		var themes := ["classic", "desert", "isles", "castles", "city", "sky"]
 		map_name = themes[randi() % themes.size()]
+	current_map_key = map_name
 	if map_name == "mca" or map_name.begins_with("mca:"):
 		source = "mca"
 		var mca_dir := maps_root()

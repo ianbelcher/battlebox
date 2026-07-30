@@ -64,6 +64,8 @@ var roster: Dictionary = {}
 ## This machine's local players: slot int -> InputSlot.
 var local_inputs: Dictionary = {}
 var world: Node = null
+## The first human to join is the battle host (their peer id).
+var host_peer := 0
 ## Which saved character (characters.cfg section) each local slot is using.
 var profile_keys: Dictionary = {}
 
@@ -158,6 +160,8 @@ func sv_register_player(slot: int, pname: String, style: Dictionary, bot := fals
 		pname = _pick_name()
 	roster[id] = {"peer": peer, "slot": slot, "name": pname,
 		"style": AvatarFactory.normalize_style(style), "team": -1, "bot": bot}
+	if host_peer == 0 and not bot:
+		host_peer = peer
 	print("Player joined: %s (%s), %d in world" % [pname, id, roster.size()])
 	_broadcast_roster()
 
@@ -289,6 +293,12 @@ func _on_peer_disconnected(peer: int) -> void:
 	for id: String in roster.keys().duplicate():
 		if roster[id].peer == peer:
 			roster.erase(id)
+	if peer == host_peer:
+		host_peer = 0
+		for id: String in roster.keys():
+			if not bool(roster[id].get("bot", false)):
+				host_peer = int(roster[id].peer)
+				break
 	_broadcast_roster()
 
 ## All saved characters (sections in characters.cfg), for the picker.

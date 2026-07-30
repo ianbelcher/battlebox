@@ -1073,6 +1073,18 @@ const STORM_START := 360.0
 
 ## Battle square side in blocks (the storm starts at its edge).
 var battle_size := 250.0
+## Game-loop mode: matches chain with a countdown + fresh map between.
+var match_loop := true
+
+func _is_host(sender: int) -> bool:
+	var peer := sender if sender != 0 else multiplayer.get_unique_id()
+	return Game.host_peer == 0 or peer == Game.host_peer
+
+@rpc("any_peer", "call_local", "reliable")
+func sv_set_loop(on: bool) -> void:
+	if not multiplayer.is_server() or not _is_host(multiplayer.get_remote_sender_id()):
+		return
+	match_loop = on
 
 func _storm_start() -> float:
 	return battle_size * 0.5
@@ -1095,7 +1107,8 @@ func sv_set_bot_team(target_id: String, team: int) -> void:
 
 @rpc("any_peer", "reliable")
 func sv_match_config(minutes: int, loot: int, size: int = -1) -> void:
-	if not multiplayer.is_server() or not (match_phase in ["IDLE", "LOBBY"]):
+	if not multiplayer.is_server() or not (match_phase in ["IDLE", "LOBBY"]) \
+			or not _is_host(multiplayer.get_remote_sender_id()):
 		return
 	if minutes > 0:
 		storm_minutes = clampf(float(minutes), 2.0, 99.0)
@@ -1107,7 +1120,8 @@ func sv_match_config(minutes: int, loot: int, size: int = -1) -> void:
 
 @rpc("any_peer", "reliable")
 func sv_match_start(_slot: int) -> void:
-	if not multiplayer.is_server() or match_phase != "IDLE" or Game.roster.is_empty():
+	if not multiplayer.is_server() or match_phase != "IDLE" or Game.roster.is_empty() \
+			or not _is_host(multiplayer.get_remote_sender_id()):
 		return
 	match_phase = "LOBBY"
 	_match_timer = LOBBY_SECONDS
@@ -1143,8 +1157,25 @@ func _server_tick_match(delta: float) -> void:
 				_server_match_end(-1)
 		"END":
 			if _match_timer <= 0.0:
-				match_phase = "IDLE"
-				cl_match.rpc("IDLE", 0.0)
+				var humans := false
+				for id: String in Game.roster.keys():
+					if not bool(Game.roster[id].get("bot", false)):
+						humans = true
+						break
+				if match_loop and humans:
+					match_phase = "COUNTDOWN"
+					_match_timer = 20.0
+					cl_match.rpc("COUNTDOWN", 20.0)
+				else:
+					match_phase = "IDLE"
+					cl_match.rpc("IDLE", 0.0)
+		"COUNTDOWN":
+			if _match_timer <= 0.0:
+				# Fresh copy of the SAME map, then straight into a new lobby.
+				_do_world_reset(store.current_map_key)
+				match_phase = "LOBBY"
+				_match_timer = LOBBY_SECONDS
+				cl_match.rpc("LOBBY", LOBBY_SECONDS)
 
 ## Everyone gets a team (auto-balanced if unpicked), full hearts, and a drop
 ## point high above a spread ring. Gliding down is automatic.

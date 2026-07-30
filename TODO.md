@@ -18,8 +18,7 @@ Ian's playtest list (2026-07-29 evening):
 - [ ] Computer players need to be MUCH smarter: pathing around
       obstacles, target selection, weapon choice by range, retreat when
       low, loot when unarmed, revive teammates reliably
-- [ ] BATTLE FLOW rework (banner + no-winner SHIPPED): countdown to the
-      NEXT game after each match; map recreated/reset between games
-      (game-loop as the normal mode); the FIRST human to join controls
-      the battle settings and can stop the loop
+- [ ] Verify the game-loop live (shipped: END -> 20s countdown -> fresh
+      copy of the same map -> new lobby; host = first human, only the
+      host can change settings/start/stop the loop)
 - [ ] Sword should swing like a real sword (proper arc animation)

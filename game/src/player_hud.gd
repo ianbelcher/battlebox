@@ -489,6 +489,18 @@ func _build_game_tab() -> void:
 			Sfx.play("tick", -8.0))
 		size_row.add_child(size_btn)
 		_size_btns[arena] = size_btn
+	var loop_btn := Button.new()
+	loop_btn.focus_mode = Control.FOCUS_NONE
+	loop_btn.text = "⏹  Stop after this battle (host only)"
+	loop_btn.add_theme_font_size_override("font_size", _us(18))
+	loop_btn.toggle_mode = true
+	loop_btn.toggled.connect(func(on: bool) -> void:
+		if Game.world != null:
+			Game.world.sv_set_loop.rpc_id(1, not on)
+		loop_btn.text = ("▶  Battles resume (host only)" if on \
+			else "⏹  Stop after this battle (host only)")
+		Sfx.play("tick", -8.0))
+	tab.add_child(loop_btn)
 	var teams_label := Label.new()
 	teams_label.text = "Teams:"
 	teams_label.add_theme_font_size_override("font_size", _us(20))
