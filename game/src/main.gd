@@ -132,15 +132,38 @@ func _build_connect_screen() -> void:
 	_connect_screen.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_connect_screen.add_child(_gradient_bg())
 	add_child(_connect_screen)
+	# A slow drift of voxel blocks behind the title — first impressions.
+	_backdrop = Control.new()
+	_backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_connect_screen.add_child(_backdrop)
+	var drift_ids := [Blocks.GRASS, Blocks.BRICK, Blocks.GOLD, Blocks.WOOL_RED,
+		Blocks.GLASS, Blocks.LEAVES, Blocks.WOOL_BLUE, Blocks.PUMPKIN,
+		Blocks.DIAMOND, Blocks.WOOL_PURPLE, Blocks.SANDSTONE, Blocks.ICE,
+		Blocks.LANTERN, Blocks.WOOL_TEAL]
+	for i in 14:
+		var cube := BlockIcon.new(drift_ids[i % drift_ids.size()])
+		var px := 30 + (i * 37) % 46
+		cube.size = Vector2(px, px)
+		cube.position = Vector2(fmod(i * 461.7, 1.0) * 1200.0 + 20.0,
+			fmod(i * 173.3, 1.0) * 700.0)
+		cube.modulate = Color(1, 1, 1, 0.16 + fmod(i * 0.618, 1.0) * 0.2)
+		cube.pivot_offset = cube.size / 2.0
+		cube.set_meta("speed", 8.0 + fmod(i * 0.37, 1.0) * 16.0)
+		cube.set_meta("spin", (fmod(i * 0.73, 1.0) - 0.5) * 0.5)
+		_backdrop.add_child(cube)
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_connect_screen.add_child(center)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 18)
 	center.add_child(box)
-	box.add_child(_make_label(TITLE, 72, GOLD, 10))
-	box.add_child(_make_label("One world, always on. Type the server address and hop in.",
-		20, Color(1, 1, 1, 0.65)))
+	box.add_child(_make_label(TITLE, 84, GOLD, 12))
+	box.add_child(_make_label("Build. Battle. Be the last one standing.",
+		22, Color(1, 1, 1, 0.8)))
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 10)
+	box.add_child(spacer)
 	_address_edit = LineEdit.new()
 	_address_edit.text = Net.default_server_url()
 	_address_edit.add_theme_font_size_override("font_size", 22)
@@ -149,12 +172,28 @@ func _build_connect_screen() -> void:
 	box.add_child(_address_edit)
 	var button := Button.new()
 	button.focus_mode = Control.FOCUS_NONE
-	button.text = "  Connect  "
-	button.add_theme_font_size_override("font_size", 30)
+	button.text = "  ▶  Play  "
+	button.add_theme_font_size_override("font_size", 34)
+	var play_style := StyleBoxFlat.new()
+	play_style.bg_color = GOLD
+	play_style.set_corner_radius_all(12)
+	play_style.content_margin_left = 44
+	play_style.content_margin_right = 44
+	play_style.content_margin_top = 10
+	play_style.content_margin_bottom = 10
+	var play_hover: StyleBoxFlat = play_style.duplicate()
+	play_hover.bg_color = GOLD.lightened(0.15)
+	button.add_theme_stylebox_override("normal", play_style)
+	button.add_theme_stylebox_override("hover", play_hover)
+	button.add_theme_stylebox_override("pressed", play_hover)
+	button.add_theme_color_override("font_color", Color("1c2333"))
+	button.add_theme_color_override("font_hover_color", Color("1c2333"))
+	button.add_theme_color_override("font_pressed_color", Color("1c2333"))
 	button.pressed.connect(_on_connect_pressed)
 	var holder := CenterContainer.new()
 	holder.add_child(button)
 	box.add_child(holder)
+	box.add_child(_make_label("or press Ⓐ on a controller", 16, Color(1, 1, 1, 0.5)))
 	_address_edit.text_submitted.connect(func(_t: String) -> void: _on_connect_pressed())
 	_status_label = _make_label("", 18, Color("ff8888"))
 	box.add_child(_status_label)
@@ -615,8 +654,30 @@ func _on_roster_changed() -> void:
 # Per-frame: join/leave polling, clock display, ambient audio
 # ------------------------------------------------------------------
 
+var _connect_a_latch := true
+var _backdrop: Control
+
 func _process(_delta: float) -> void:
-	if Net.is_server or not _in_world:
+	if Net.is_server:
+		return
+	if _connect_screen != null and _connect_screen.visible:
+		# Blocks drift gently up the title screen; Ⓐ on any pad connects.
+		if _backdrop != null:
+			var view_h := float(DisplayServer.window_get_size().y)
+			for cube: Control in _backdrop.get_children():
+				cube.position.y -= float(cube.get_meta("speed")) * _delta
+				cube.rotation += float(cube.get_meta("spin")) * _delta
+				if cube.position.y < -90.0:
+					cube.position.y = view_h + 40.0
+		var a_down := false
+		for pad in Input.get_connected_joypads():
+			if Input.is_joy_button_pressed(pad, JOY_BUTTON_A):
+				a_down = true
+				break
+		if a_down and not _connect_a_latch:
+			_on_connect_pressed()
+		_connect_a_latch = a_down
+	if not _in_world:
 		return
 	_poll_join_leave(_delta)
 	var world := Game.world
