@@ -27,6 +27,7 @@ var _menu_slot_buttons: Array = []
 func _uscale() -> float:
 	return clampf(DisplayServer.window_get_size().x / 1100.0, 1.15, 3.0)
 var _menu: PanelContainer
+var _menu_dim: ColorRect
 # Two-level menu: a top row of groups, each holding a row of small tabs.
 # Pages are addressed by a flat index so controllers can just bump LB/RB
 # through everything: 0-3 pickers, 4 Battle, 5 Players, 6 World,
@@ -157,6 +158,12 @@ func _ready() -> void:
 
 	# Tabbed menu (Esc / Start), also home of the block picker (E jumps
 	# straight to the Blocks tab). Minecraft brains expected this.
+	_menu_dim = ColorRect.new()
+	_menu_dim.color = Color(0, 0, 0, 0.38)
+	_menu_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_menu_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_menu_dim.visible = false
+	add_child(_menu_dim)
 	_menu = PanelContainer.new()
 	var menu_style := StyleBoxFlat.new()
 	menu_style.bg_color = Color(0.05, 0.06, 0.1, 0.94)
@@ -456,6 +463,7 @@ func _toggle_menu(player: Player, open_tab: int) -> void:
 		_close_menu()
 		return
 	_menu.visible = true
+	_menu_dim.visible = true
 	_build_tabs.set_tab_disabled(0, world != null and world.match_phase != "IDLE")
 	_refresh_preview()
 	player.ui_locked = true
@@ -1132,6 +1140,7 @@ func _add_video_slider(tab: Control, label_text: String, key: String,
 
 func _close_menu() -> void:
 	_menu.visible = false
+	_menu_dim.visible = false
 	_set_nav_focus(null)
 	_prev_nav_select = true
 	var player := _player()

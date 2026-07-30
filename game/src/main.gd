@@ -331,6 +331,13 @@ func _build_game_screen() -> void:
 	_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_banner.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_banner.visible = false
+	var banner_bg := StyleBoxFlat.new()
+	banner_bg.bg_color = Color(0.05, 0.06, 0.1, 0.92)
+	banner_bg.set_corner_radius_all(18)
+	banner_bg.set_content_margin_all(int(26 * ui_scale()))
+	banner_bg.border_color = GOLD
+	banner_bg.set_border_width_all(2)
+	_banner.add_theme_stylebox_override("normal", banner_bg)
 	_game_screen.add_child(_banner)
 
 # ------------------------------------------------------------------
@@ -369,7 +376,11 @@ func _on_connected() -> void:
 	world.match_won.connect(func(winner: int) -> void:
 		var message := "The storm wins... nobody survived!"
 		if winner >= 0:
-			message = "TEAM %s WINS THE BATTLE!" % WorldNode.TEAM_NAMES[winner].to_upper()
+			var team_label := str(winner + 1)
+			if winner < world.client_team_names.size():
+				team_label = str(world.client_team_names[winner]).to_upper()
+			message = "🏆  TEAM %s WINS THE BATTLE!  🏆" % team_label
+			Sfx.play("cheer", -4.0)
 		elif winner == -2:
 			message = "Everyone's out — no winner this time!"
 		_show_banner(message + "\n(Ⓐ to close)", true))
