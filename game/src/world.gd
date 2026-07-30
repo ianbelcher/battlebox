@@ -182,6 +182,7 @@ func _server_setup() -> void:
 	clock = float(config.get_value("world", "clock", 0.35))
 	print("World spawn at %s, clock %.2f" % [spawn_pos, clock])
 	_load_player_file()
+	_load_battle_setup()
 	var autosave := Timer.new()
 	autosave.wait_time = AUTOSAVE_SECONDS
 	autosave.timeout.connect(_server_autosave)
@@ -1105,6 +1106,12 @@ func sv_add_bot() -> void:
 		return
 	if Game.roster.size() >= 24:
 		return
+	_spawn_bot()
+	_save_battle_setup()
+
+func _spawn_bot() -> void:
+	if Game.roster.size() >= 24:
+		return
 	var slot := _next_bot_slot
 	_next_bot_slot += 1
 	var id := Game.player_id(1, slot)
@@ -1131,6 +1138,7 @@ func sv_remove_bot(target_id: String = "") -> void:
 	_match_alive.erase(id)
 	Game.roster.erase(id)
 	Game.cl_roster.rpc(Game.roster)
+	_save_battle_setup()
 
 ## Teams are managed from the Players view: add/remove columns, rename.
 ## Computer players redistribute into contiguous, even groups (1,2,3 on
@@ -1146,6 +1154,7 @@ func sv_add_team() -> void:
 	team_names.append(char(65 + (team_count - 1) % 24))
 	_redistribute_bots()
 	cl_teams.rpc(team_names)
+	_save_battle_setup()
 
 @rpc("any_peer", "call_local", "reliable")
 func sv_remove_team(index: int = -1) -> void:
@@ -1164,6 +1173,7 @@ func sv_remove_team(index: int = -1) -> void:
 			Game.roster[id].team = team - 1
 	_redistribute_bots()
 	cl_teams.rpc(team_names)
+	_save_battle_setup()
 
 @rpc("any_peer", "call_local", "reliable")
 func sv_rename_team(index: int, new_name: String) -> void:
@@ -1172,6 +1182,7 @@ func sv_rename_team(index: int, new_name: String) -> void:
 	if index >= 0 and index < team_names.size() and not new_name.strip_edges().is_empty():
 		team_names[index] = new_name.strip_edges().left(10)
 		cl_teams.rpc(team_names)
+		_save_battle_setup()
 
 @rpc("authority", "call_local", "reliable")
 func cl_teams(names: Array) -> void:
@@ -1260,6 +1271,7 @@ func _server_tick_bots(delta: float) -> void:
 		if not Game.roster.has(id):
 			continue
 		var bot: Dictionary = _bots[id]
+		bot.send_t = float(bot.get("send_t", 0.0)) - delta
 		bot.shoot_cd = maxf(0.0, float(bot.shoot_cd) - delta)
 		bot.think = float(bot.think) - delta
 		var pos: Vector3 = bot.pos
@@ -1316,7 +1328,39 @@ func _server_tick_bots(delta: float) -> void:
 					bot.shoot_cd = 0.8
 					cl_pos.rpc(id, pos, bot.yaw, 9)
 					_match_hurt(enemy, 1, epos)
-		cl_pos.rpc(id, pos, bot.yaw, 1)
+		if bot.send_t <= 0.0:
+			bot.send_t = 1.0 / 12.0
+			cl_pos.rpc(id, pos, bot.yaw, 1)
+
+## Battle SETTINGS survive restarts (the world itself never does):
+## length, size, loot mode, team layout and the computer players.
+func _save_battle_setup() -> void:
+	if store == null:
+		return
+	var cfg := ConfigFile.new()
+	cfg.set_value("battle", "minutes", storm_minutes)
+	cfg.set_value("battle", "size", battle_size)
+	cfg.set_value("battle", "loot", loot_only)
+	cfg.set_value("battle", "team_names", team_names)
+	cfg.set_value("battle", "bots", _bots.size())
+	cfg.save(store.data_dir.path_join("battle.cfg"))
+
+func _load_battle_setup() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(store.data_dir.path_join("battle.cfg")) != OK:
+		return
+	storm_minutes = float(cfg.get_value("battle", "minutes", storm_minutes))
+	battle_size = float(cfg.get_value("battle", "size", battle_size))
+	loot_only = bool(cfg.get_value("battle", "loot", loot_only))
+	var names: Array = cfg.get_value("battle", "team_names", team_names)
+	if names.size() >= 2:
+		team_names = names
+		team_count = names.size()
+	var bot_count := int(cfg.get_value("battle", "bots", 0))
+	for i in mini(bot_count, 23):
+		_spawn_bot()
+	print("Battle setup restored: %d min, %d blocks, %d teams, %d bots" % [
+		int(storm_minutes), int(battle_size), team_count, _bots.size()])
 
 func _is_host(sender: int) -> bool:
 	var peer := sender if sender != 0 else multiplayer.get_unique_id()
@@ -1359,6 +1403,7 @@ func sv_match_config(minutes: int, loot: int, size: int = -1) -> void:
 	if size > 0:
 		battle_size = clampf(float(size), 25.0, 400.0)
 	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only)
+	_save_battle_setup()
 
 @rpc("any_peer", "reliable")
 func sv_match_start(_slot: int) -> void:
@@ -1447,9 +1492,13 @@ func _server_match_drop() -> void:
 			entry.team = best
 			counts[best] += 1
 		_match_alive[id] = true
-		var state: Dictionary = _player_state.get(id, {})
-		if not state.is_empty():
-			state.hp = 5
+		# World resets between battles can drop server-side state for
+		# bots — recreate instead of crashing the match start.
+		if not _player_state.has(id):
+			_player_state[id] = {"pos": Vector3(spawn_pos), "treasures": 0,
+				"name": str(entry.get("name", "?")), "hp": 5}
+		var state: Dictionary = _player_state[id]
+		state.hp = 5
 		cl_hearts.rpc(id, 5)
 		var angle := float(i) * TAU / maxf(Game.roster.size(), 1.0) + randf() * 0.3
 		var dist := randf_range(_storm_start() * 0.25, _storm_start() * 0.42)
@@ -1463,7 +1512,8 @@ func _server_match_drop() -> void:
 	# Fresh loot everywhere so late matches aren't scavenged dry — the
 	# count scales with the battle square's area.
 	_crates.clear()
-	var crate_count := clampi(int(pow(_storm_start() / 125.0, 2.0) * 40.0), 8, 60)
+	var crate_count := clampi(maxi(int(pow(_storm_start() / 125.0, 2.0) * 40.0),
+		Game.roster.size() * 4), 8, 140)
 	for n in crate_count:
 		var langle := randf() * TAU
 		var ldist := sqrt(randf()) * (_storm_start() * 0.85)
@@ -2234,6 +2284,15 @@ func cl_pos(id: String, pos: Vector3, yaw: float, anim: int) -> void:
 		if child is Player and child.player_id == id and not child.is_local:
 			child.remote_update(pos, yaw, anim)
 
+func _nearest_local_dist(pos: Vector3) -> float:
+	var best := 999.0
+	if players == null:
+		return best
+	for child in players.get_children():
+		if child is Player and child.is_local:
+			best = minf(best, child.position.distance_to(pos))
+	return best
+
 @rpc("authority", "reliable")
 func cl_edit(pos: Vector3i, block: int, by_id: String) -> void:
 	if chunks == null:
@@ -2242,21 +2301,26 @@ func cl_edit(pos: Vector3i, block: int, by_id: String) -> void:
 	edit_applied.emit(pos, block, by_id)
 	if by_id.is_empty():
 		return  # world magic (tree growth, dawn flowers) is quiet
+	# Block sounds fall off with distance from the nearest local player
+	# (the storm chews terrain constantly — it should be a distant
+	# rumble, not a full-volume drumbeat everywhere).
+	var edit_dist := _nearest_local_dist(Vector3(pos))
+	var edit_vol := -edit_dist * 0.7
 	if block == Blocks.AIR:
 		if old == Blocks.CONFETTI:
 			# Party popper! Confetti everywhere and a little cheer.
-			Sfx.play("cheer")
+			Sfx.play("cheer", edit_vol)
 			for color in [Color("ff6b6b"), Color("ffd166"), Color("4a9df8"), Color("ef8fc0")]:
 				_burst_particles(pos, color)
 			_flash_light(Vector3(pos) + Vector3(0.5, 0.5, 0.5), Color("ffd166"), 3.0)
 		elif old > 0 and Blocks.is_collectible(old):
-			Sfx.play("collect")
-		else:
-			Sfx.play("dig")
+			Sfx.play("collect", edit_vol)
+		elif edit_dist < 55.0:
+			Sfx.play("dig", edit_vol)
 		if old > 0 and old != Blocks.CONFETTI:
 			_burst_particles(pos, Blocks.color_of(old))
-	else:
-		Sfx.play("place")
+	elif edit_dist < 55.0:
+		Sfx.play("place", edit_vol)
 
 ## Mixed-block bulk change (structure stamps).
 @rpc("authority", "reliable")
@@ -2345,17 +2409,20 @@ func cl_hearts(id: String, hp: int) -> void:
 	hearts[id] = hp
 	hearts_changed.emit()
 
+signal local_hurt(id: String, from_pos: Vector3)
+
 @rpc("authority", "reliable")
 func cl_bonk(id: String, monster_pos: Vector3) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id and child.is_local:
+			# A hit should HURT on screen, not launch you across the map.
 			var away: Vector3 = child.position - monster_pos
 			away.y = 0
-			child.velocity += away.normalized() * 8.0 + Vector3.UP * 7.0
-			child.velocity = child.velocity.limit_length(30.0)
-			child.carry_time = 0.6
-			child.on_floor = false
-			Sfx.play("bonk")
+			child.velocity += away.normalized() * 3.0 + Vector3.UP * 2.0
+			child.velocity = child.velocity.limit_length(18.0)
+			child.carry_time = 0.25
+			Sfx.play("bonk", 2.0, 0.8)
+			local_hurt.emit(id, monster_pos)
 
 @rpc("authority", "reliable")
 func cl_downed(id: String) -> void:

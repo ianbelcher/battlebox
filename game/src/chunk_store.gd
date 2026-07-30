@@ -54,14 +54,14 @@ func _init() -> void:
 	config.set_value("world", "source", source)
 	config.set_value("world", "theme", theme)
 	config.save(data_dir.path_join("world.cfg"))
-	# Remember which chunks already have edit files so misses stay cheap.
+	# Worlds are ephemeral: block edits never survive a restart — every
+	# boot starts from clean generation (only SETTINGS persist). This
+	# also means a crash can't strand everyone in a half-eaten map.
 	var dir := DirAccess.open(data_dir.path_join("chunks"))
 	if dir != null:
 		for file in dir.get_files():
 			if file.begins_with("c_") and file.ends_with(".bin"):
-				var parts := file.trim_suffix(".bin").split("_")
-				if parts.size() == 3:
-					_edited[Vector2i(parts[1].to_int(), parts[2].to_int())] = true
+				dir.remove(file)
 	print("World store: source=%s seed=%d data=%s edited_chunks=%d" % [
 		source, seed_value, data_dir, _edited.size()])
 

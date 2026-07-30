@@ -2,35 +2,33 @@
 
 A live list of OPEN work only (git history is the record of done).
 
-Ian's playtest list (2026-07-29 evening):
-- [ ] Icons: keep improving toward Minecraft look
-- [ ] ALL-NIGHT DIRECTIVE: act as principal game designer/engineer —
-      screenshot-driven UI polish until it looks like a well-designed
-      website inside; Steam-store quality bar
-- [ ] OVERNIGHT DIRECTIVE (Ian, before bed 2026-07-29): after all items
-      are done, iterate on the overall UI and feel of the app and tune
-      it as much as possible for the best user experience
-- [ ] VERIFY with Ian: freeze fix (mesh fallback capped — the "crash"
-      was a sync-meshing death spiral), dragon v3 (Aerodactyl shape,
-      neck seat, look-steering + look-fire, ride hints), wall-flat
-      vines/ladders, real held items, "Flying in..." gone
-- [ ] VERIFY with Ian: picker categories (Building/Nature/Colors/
-      Lights/Special/Kits), real torch/vine/ladder/bamboo + shaped
-      icons, connected fences/walls/panes, 3 new kits, vertical orbit,
-      crouch pose, fly lean
-- [ ] VERIFY with Ian: teams redesign (add/remove/rename teams, numbered
-      bots with contiguous distribution, X controls, lobby countdown on
-      the Players page, LT/RT group switch)
-- [ ] VERIFY with Ian: fling bug (storm knockback feedback loop removed
-      + 60 m/s speed clamp + world-bounds clamp), phantom join (buttons-
-      only divergence), disconnect crash guard, banner "Ⓐ to close"
-- [ ] VERIFY with Ian: phantom 2nd player from one controller is dead
-      (rebuilt as real logic: an unclaimed pad is only join-eligible
-      once its full input state DIVERGES from every claimed pad — a
-      ghost mirrors forever and can never join; a real 2nd controller
-      proves itself the instant someone touches it)
-- [ ] VERIFY with Ian: team matrix, menu centering, controller stick+A
-      navigation of all menu pages
-- [ ] VERIFY with Ian: import fidelity pass — stained glass tints,
-      species leaf colors, thin snow layers, trapdoor slabs, nether/end
-      stand-ins (re-import a map and check it reads right)
+- [ ] ICONS MEGA-REDO (BIG — asked multiple times): every block icon
+      redrawn to read like Minecraft's actual iconography — kids can't
+      read, the picture must say what it is (leaves ≠ plain green cube:
+      mottled leaf texture; recognizable flowers; log with bark + ring;
+      etc). Exceptions: Special (ours), Kits (fine), Tools (fine as
+      icons — but the 3D held tool models "kind of suck", improve them)
+- [ ] MISSING BLOCKS: add the ground "plates" (carpets in wool colors,
+      pressure-plate look) and sweep for other common vanilla blocks
+      still absent
+- [ ] CATEGORY TAXONOMY: use Minecraft's own creative taxonomy —
+      Building Blocks / Colored Blocks / Natural / Functional — instead
+      of our invented Building/Nature/Colors/Lights split
+- [ ] BATTLE FLOW REWORK:
+      · Start button lives at the TOP of the Game group with the
+        countdown shown in it once clicked; tabs (Battle/Players/World)
+        sit under it
+      · World page = SELECT the world for the next battle (gold
+        highlight on the currently selected world, persisted) — do NOT
+        instantly switch the world and slam the menu shut
+      · starting must not yank everyone to the Players tab; humans are
+        auto-assigned a team the moment the lobby opens (never
+        team-less), anyone can still switch
+- [ ] UI PROFESSIONAL PASS:
+      · padding inside every tab view (content is flush to the edges)
+      · hover turns button text white which hides the selected state —
+        selected must stay YELLOW, hover must not mask it
+      · Players list: rows far too tall (chevron + name + robot icon
+        huge) — compact rows, no scrolling for a full 24 lobby
+      · hide "+ Computer player" at 24 players; add "− Computer player"
+        (removes the most recent)

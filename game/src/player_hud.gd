@@ -104,8 +104,10 @@ func _ready() -> void:
 	_treasure_label.add_theme_color_override("font_color", Color("ffd166"))
 	row.add_child(_treasure_label)
 	_hearts_label = Label.new()
-	_hearts_label.add_theme_font_size_override("font_size", _us(22))
-	_hearts_label.add_theme_color_override("font_color", Color("ff6b6b"))
+	_hearts_label.add_theme_font_size_override("font_size", _us(30))
+	_hearts_label.add_theme_color_override("font_color", Color("ff4438"))
+	_hearts_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_hearts_label.add_theme_constant_override("outline_size", 6)
 	row.add_child(_hearts_label)
 
 	# Bottom: hotbar.
@@ -287,6 +289,22 @@ func _ready() -> void:
 	_center_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_center_note.visible = false
 	add_child(_center_note)
+	_damage_flash = ColorRect.new()
+	_damage_flash.color = Color(0.9, 0.1, 0.05, 0.0)
+	_damage_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_damage_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_damage_flash)
+	_damage_arrow = Label.new()
+	_damage_arrow.text = "⌃"
+	_damage_arrow.add_theme_font_size_override("font_size", _us(46))
+	_damage_arrow.add_theme_color_override("font_color", Color("ff3b2f"))
+	_damage_arrow.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_damage_arrow.add_theme_constant_override("outline_size", 8)
+	_damage_arrow.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_damage_arrow.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_damage_arrow.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_damage_arrow.visible = false
+	add_child(_damage_arrow)
 	_ride_hint = Label.new()
 	_ride_hint.add_theme_font_size_override("font_size", _us(17))
 	_ride_hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
@@ -360,6 +378,10 @@ func _ready() -> void:
 		_menu_slot_buttons.append(slot_btn)
 
 	if world != null:
+		world.local_hurt.connect(func(hurt_id: String, from_pos: Vector3) -> void:
+			if hurt_id == Game.player_id(multiplayer.get_unique_id(), slot):
+				_damage_t = 0.7
+				_damage_from = from_pos)
 		world.treasures_changed.connect(_refresh_identity)
 		world.survival_changed.connect(_refresh_identity)
 		world.hearts_changed.connect(_refresh_identity)
@@ -869,6 +891,10 @@ var _size_btns: Dictionary = {}
 var _lobby_countdown: Label
 var _center_note: Label
 var _ride_hint: Label
+var _damage_flash: ColorRect
+var _damage_arrow: Label
+var _damage_t := 0.0
+var _damage_from := Vector3.ZERO
 var _world_row: HBoxContainer
 var _maps_row: HBoxContainer
 var _maps_label: Label
@@ -1291,6 +1317,17 @@ func _process(_delta: float) -> void:
 			_center_note.text = "🏆  Battle in %d — open the menu to pick your team" % secs
 		else:
 			_center_note.visible = false
+	if _damage_flash != null:
+		_damage_t = maxf(0.0, _damage_t - _delta)
+		_damage_flash.color.a = minf(_damage_t, 0.45) * 0.8
+		_damage_arrow.visible = _damage_t > 0.0
+		if _damage_arrow.visible:
+			var to_threat := _damage_from - player.position
+			var threat_angle := atan2(to_threat.x, -to_threat.z) - player.camera_yaw
+			_damage_arrow.rotation = threat_angle
+			_damage_arrow.pivot_offset = _damage_arrow.size / 2.0
+			_damage_arrow.position = size / 2.0 - _damage_arrow.size / 2.0 \
+				+ Vector2(sin(threat_angle), -cos(threat_angle)) * _us(90)
 	_crosshair.visible = player.fp_mode and not _menu.visible
 	_crosshair.add_theme_font_size_override("font_size", _us(int(30 * (1.0 + player.fp_zoom * 0.8))))
 	if size.x != _last_width:
