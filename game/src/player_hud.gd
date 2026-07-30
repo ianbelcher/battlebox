@@ -53,6 +53,7 @@ var _last_held := ""
 var _slots_dirty := true
 var _prev_slot_pick_menu := -1
 var _menu_tab_latch := false
+var _menu_group_latch := false
 var _preview_viewport: SubViewport
 var _preview_avatar: Node3D
 var _preview_angle := PI
@@ -595,24 +596,6 @@ func _build_game_tab() -> void:
 			Sfx.play("tick", -8.0))
 		size_row.add_child(size_btn)
 		_size_btns[arena] = size_btn
-	var teams_row := HBoxContainer.new()
-	teams_row.add_theme_constant_override("separation", _us(6))
-	tab.add_child(teams_row)
-	var teams_tag := Label.new()
-	teams_tag.text = "Teams:"
-	teams_tag.add_theme_font_size_override("font_size", _us(18))
-	teams_row.add_child(teams_tag)
-	for teams: int in [2, 3, 4, 6, 8, 12, 24]:
-		var teams_btn := Button.new()
-		teams_btn.focus_mode = Control.FOCUS_NONE
-		teams_btn.text = " Solo " if teams == 24 else " %d " % teams
-		teams_btn.add_theme_font_size_override("font_size", _us(18))
-		teams_btn.pressed.connect(func() -> void:
-			if Game.world != null:
-				Game.world.sv_match_config.rpc_id(1, -1, -1, -1, teams)
-			Sfx.play("click"))
-		teams_row.add_child(teams_btn)
-		_teams_btns[teams] = teams_btn
 	var loop_btn := Button.new()
 	loop_btn.focus_mode = Control.FOCUS_NONE
 	loop_btn.text = "⏹  Stop after this battle (host only)"
@@ -627,50 +610,33 @@ func _build_game_tab() -> void:
 	tab.add_child(loop_btn)
 	tab = _scrolled_tab("Players", _game_tabs)
 	tab.add_theme_constant_override("separation", _us(10))
-	_add_section(tab, "🚩  TEAMS")
+	_lobby_countdown = Label.new()
+	_lobby_countdown.add_theme_font_size_override("font_size", _us(22))
+	_lobby_countdown.add_theme_color_override("font_color", Color("ffd166"))
+	_lobby_countdown.visible = false
+	tab.add_child(_lobby_countdown)
+	var manage_row := HBoxContainer.new()
+	manage_row.add_theme_constant_override("separation", _us(8))
+	tab.add_child(manage_row)
+	for spec in [["➕ Team", "add_team"], ["➖ Team", "remove_team"],
+			["➕ Computer player", "add_bot"]]:
+		var manage_btn := Button.new()
+		manage_btn.focus_mode = Control.FOCUS_NONE
+		manage_btn.text = str(spec[0])
+		manage_btn.add_theme_font_size_override("font_size", _us(19))
+		var action := str(spec[1])
+		manage_btn.pressed.connect(func() -> void:
+			if Game.world == null:
+				return
+			match action:
+				"add_team": Game.world.sv_add_team.rpc_id(1)
+				"remove_team": Game.world.sv_remove_team.rpc_id(1, -1)
+				"add_bot": Game.world.sv_add_bot.rpc_id(1)
+			Sfx.play("tick", -8.0))
+		manage_row.add_child(manage_btn)
 	_team_box = VBoxContainer.new()
 	_team_box.add_theme_constant_override("separation", _us(4))
 	tab.add_child(_team_box)
-	_add_section(tab, "🤖  COMPUTER PLAYERS")
-	var bot_row := HBoxContainer.new()
-	bot_row.add_theme_constant_override("separation", _us(8))
-	tab.add_child(bot_row)
-	var bot_btn := Button.new()
-	bot_btn.focus_mode = Control.FOCUS_NONE
-	bot_btn.text = "➕  Add computer player"
-	bot_btn.add_theme_font_size_override("font_size", _us(20))
-	bot_btn.pressed.connect(func() -> void:
-		if Game.world != null:
-			Game.world.sv_add_bot.rpc_id(1)
-		Sfx.play("join"))
-	bot_row.add_child(bot_btn)
-	var bot_off := Button.new()
-	bot_off.focus_mode = Control.FOCUS_NONE
-	bot_off.text = "➖  Remove computer player"
-	bot_off.add_theme_font_size_override("font_size", _us(20))
-	bot_off.pressed.connect(func() -> void:
-		if Game.world != null:
-			Game.world.sv_remove_bot.rpc_id(1)
-		Sfx.play("pop"))
-	bot_row.add_child(bot_off)
-	var per_row := HBoxContainer.new()
-	per_row.add_theme_constant_override("separation", _us(6))
-	tab.add_child(per_row)
-	var per_tag := Label.new()
-	per_tag.text = "Bots per team:"
-	per_tag.add_theme_font_size_override("font_size", _us(18))
-	per_row.add_child(per_tag)
-	for n: int in [0, 1, 2, 3, 4]:
-		var per_btn := Button.new()
-		per_btn.focus_mode = Control.FOCUS_NONE
-		per_btn.text = " %d " % n
-		per_btn.add_theme_font_size_override("font_size", _us(18))
-		per_btn.pressed.connect(func() -> void:
-			if Game.world != null:
-				Game.world.sv_set_bots_per_team.rpc_id(1, n)
-			Sfx.play("click"))
-		per_row.add_child(per_btn)
-		_bots_btns[n] = per_btn
 	tab = _scrolled_tab("World", _game_tabs)
 	tab.add_theme_constant_override("separation", _us(10))
 	_add_section(tab, "🌍  WORLD")
@@ -847,8 +813,7 @@ func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color
 var _team_box: VBoxContainer
 var _length_btns: Dictionary = {}
 var _size_btns: Dictionary = {}
-var _teams_btns: Dictionary = {}
-var _bots_btns: Dictionary = {}
+var _lobby_countdown: Label
 var _world_row: HBoxContainer
 var _maps_row: HBoxContainer
 var _maps_label: Label
@@ -879,12 +844,6 @@ func _refresh_battle_highlights() -> void:
 	for arena: int in _size_btns.keys():
 		(_size_btns[arena] as Button).add_theme_color_override("font_color",
 			Color("ffd166") if arena == world.client_size else Color.WHITE)
-	for teams: int in _teams_btns.keys():
-		(_teams_btns[teams] as Button).add_theme_color_override("font_color",
-			Color("ffd166") if teams == world.client_teams else Color.WHITE)
-	for n: int in _bots_btns.keys():
-		(_bots_btns[n] as Button).add_theme_color_override("font_color",
-			Color("ffd166") if n == world.client_bots else Color.WHITE)
 	_refresh_team_box()
 
 ## The team matrix: one row per player, one column per team. You can move
@@ -898,27 +857,34 @@ func _refresh_team_box() -> void:
 	if world == null:
 		return
 	var me := multiplayer.get_unique_id()
-	var team_count: int = maxi(world.client_teams, 2)
-	var cell_w := _us(46) if team_count <= 8 else _us(30)
+	var names: Array = world.client_team_names
+	var team_count: int = maxi(names.size(), 2)
+	var cell_w := _us(46) if team_count <= 8 else _us(32)
 	var hscroll := ScrollContainer.new()
 	hscroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	hscroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hscroll.custom_minimum_size = Vector2(0, _us(34) * (Game.roster.size() + 1) + _us(12))
+	hscroll.custom_minimum_size = Vector2(0, _us(34) * (Game.roster.size() + 2) + _us(16))
 	_team_box.add_child(hscroll)
 	var grid := GridContainer.new()
-	grid.columns = team_count + 1
+	grid.columns = team_count + 2
 	grid.add_theme_constant_override("h_separation", _us(4))
 	grid.add_theme_constant_override("v_separation", _us(4))
 	hscroll.add_child(grid)
 	grid.add_child(Label.new())
 	for t in team_count:
-		var head := Label.new()
-		head.text = WorldNode.TEAM_NAMES[t] if team_count <= 8 else str(t + 1)
-		head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		head.add_theme_font_size_override("font_size", _us(14))
+		# Team header: colored name, click to rename in place.
+		var head := Button.new()
+		head.focus_mode = Control.FOCUS_NONE
+		head.flat = true
+		head.text = str(names[t]) if t < names.size() else str(t + 1)
+		head.add_theme_font_size_override("font_size", _us(15))
 		head.add_theme_color_override("font_color", WorldNode.TEAM_COLORS[t])
 		head.custom_minimum_size = Vector2(cell_w, 0)
+		var team_index := t
+		head.pressed.connect(func() -> void:
+			_rename_team(head, team_index))
 		grid.add_child(head)
+	grid.add_child(Label.new())
 	for id: String in Game.roster.keys():
 		var entry: Dictionary = Game.roster[id]
 		var team := int(entry.get("team", -1))
@@ -964,6 +930,56 @@ func _refresh_team_box() -> void:
 				dot.add_theme_color_override("font_color",
 					WorldNode.TEAM_COLORS[t] if t == team else Color(1, 1, 1, 0.25))
 				grid.add_child(dot)
+		if bot:
+			var kick := Button.new()
+			kick.focus_mode = Control.FOCUS_NONE
+			kick.text = "✕"
+			kick.add_theme_font_size_override("font_size", _us(16))
+			kick.add_theme_color_override("font_color", Color("ff6b6b"))
+			kick.pressed.connect(func() -> void:
+				if Game.world != null:
+					Game.world.sv_remove_bot.rpc_id(1, target_id)
+				Sfx.play("pop"))
+			grid.add_child(kick)
+		else:
+			grid.add_child(Label.new())
+	# Bottom row: an ✕ under each column deletes that team (its computer
+	# players spread themselves over the remaining teams).
+	if team_count > 2:
+		grid.add_child(Label.new())
+		for t in team_count:
+			var del_btn := Button.new()
+			del_btn.focus_mode = Control.FOCUS_NONE
+			del_btn.flat = true
+			del_btn.text = "✕"
+			del_btn.add_theme_font_size_override("font_size", _us(14))
+			del_btn.add_theme_color_override("font_color", Color(1, 1, 1, 0.45))
+			var gone := t
+			del_btn.pressed.connect(func() -> void:
+				if Game.world != null:
+					Game.world.sv_remove_team.rpc_id(1, gone)
+				Sfx.play("pop"))
+			grid.add_child(del_btn)
+		grid.add_child(Label.new())
+
+## Swap a team header button for a LineEdit; commit renames server-side.
+func _rename_team(head: Button, index: int) -> void:
+	var edit := LineEdit.new()
+	edit.text = head.text
+	edit.max_length = 10
+	edit.add_theme_font_size_override("font_size", _us(15))
+	edit.custom_minimum_size = Vector2(_us(70), 0)
+	head.add_sibling(edit)
+	head.visible = false
+	edit.grab_focus()
+	edit.select_all()
+	var commit := func() -> void:
+		if Game.world != null and not edit.text.strip_edges().is_empty():
+			Game.world.sv_rename_team.rpc_id(1, index, edit.text)
+		edit.queue_free()
+		head.visible = true
+	edit.text_submitted.connect(func(_t: String) -> void: commit.call())
+	edit.focus_exited.connect(commit)
 
 ## Its own tab: every video setting individually — numbers get sliders,
 ## switches get checkboxes. No presets, no magic.
@@ -997,8 +1013,8 @@ func _build_video_tab() -> void:
 	lite_btn.focus_mode = Control.FOCUS_NONE
 	lite_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	lite_btn.add_theme_font_size_override("font_size", _us(20))
-	lite_btn.text = "🎨  Renderer: " + ("Lite — fast, for old computers" if is_lite \
-		else "Full — all the fancy effects") + "   (switch = quick restart)"
+	lite_btn.text = "🎨  Renderer: " + ("Lite" if is_lite else "Full") \
+		+ " — restart required"
 	lite_btn.pressed.connect(func() -> void:
 		Game.relaunch_with_renderer(not is_lite))
 	tab.add_child(lite_btn)
@@ -1125,6 +1141,11 @@ func _process(_delta: float) -> void:
 				_slots_dirty = true
 				Sfx.play("tick", -10.0)
 			_prev_slot_pick_menu = pick
+			var group_cycle := input.group_cycle_direction()
+			if group_cycle != 0 and not _menu_group_latch:
+				_groups.current_tab = posmod(_groups.current_tab + group_cycle, 3)
+				Sfx.play("tick", -12.0)
+			_menu_group_latch = group_cycle != 0
 			var tab_cycle := input.cycle_direction()
 			if tab_cycle != 0 and not _menu_tab_latch:
 				var next_tab := _current_page()
@@ -1151,6 +1172,12 @@ func _process(_delta: float) -> void:
 	if _autoopened and _menu.visible and not OS.get_environment("WORLD_AUTOTEST_TAB").is_empty():
 		_set_page(int(OS.get_environment("WORLD_AUTOTEST_TAB")))
 
+	if _lobby_countdown != null and world != null:
+		var in_lobby: bool = world.match_phase == "LOBBY"
+		_lobby_countdown.visible = in_lobby
+		if in_lobby:
+			_lobby_countdown.text = "⚔  Battle starts in %d — pick your team!" \
+				% int(ceil(world.match_seconds))
 	_crosshair.visible = player.fp_mode and not _menu.visible
 	_crosshair.add_theme_font_size_override("font_size", _us(int(30 * (1.0 + player.fp_zoom * 0.8))))
 	if size.x != _last_width:

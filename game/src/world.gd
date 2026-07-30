@@ -32,8 +32,7 @@ signal battle_config_changed
 var client_minutes := 5
 var client_size := 250
 var client_loot := false
-var client_teams := 4
-var client_bots := 0
+var client_team_names: Array = ["A", "B", "C", "D"]
 ## player_id -> dragon critter id, replicated so everyone sees who rides.
 var riding_map: Dictionary = {}
 
@@ -123,7 +122,9 @@ const TEAM_COLORS := [Color("ff5a5a"), Color("4a9df8"), Color("51c979"),
 	Color("8858d8"), Color("90e8b8"), Color("708098"), Color("ffc8a0"),
 	Color("484858")]
 var team_count := 4
-var bots_per_team := 0
+## Display names for the teams, A..X by default; renameable from the
+## Players view. Size always equals team_count.
+var team_names: Array = ["A", "B", "C", "D"]
 var match_phase := "IDLE"
 var match_seconds := 0.0
 var storm_radius := 0.0
@@ -288,8 +289,8 @@ func sv_hello() -> void:
 	cl_world_info.rpc_id(peer, spawn_pos, clock, source)
 	cl_map_list.rpc_id(peer, ChunkStore.list_maps())
 	cl_overview.rpc_id(peer, overview)
-	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only,
-		team_count, bots_per_team)
+	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only)
+	cl_teams.rpc_id(peer, team_names)
 	var payload: Array = []
 	for crate_id: int in _crates.keys():
 		payload.append([crate_id, _crates[crate_id].weapon, _crates[crate_id].pos])
@@ -1107,56 +1108,85 @@ func sv_add_bot() -> void:
 	var slot := _next_bot_slot
 	_next_bot_slot += 1
 	var id := Game.player_id(1, slot)
-	Game.roster[id] = {"peer": 1, "slot": slot, "name": Game._pick_name(),
+	var number := 0
+	for other: String in _bots.keys():
+		number = maxi(number, int(str(Game.roster.get(other, {}).get("name", "0"))))
+	Game.roster[id] = {"peer": 1, "slot": slot, "name": str(number + 1),
 		"style": AvatarFactory.random_style(), "team": -1, "bot": true}
-	Game.cl_roster.rpc(Game.roster)
 	var start := Vector3(spawn_pos) + Vector3(randf_range(-8, 8), 2, randf_range(-8, 8))
 	_bots[id] = {"slot": slot, "pos": start, "yaw": 0.0, "think": 0.0,
 		"weapon": 13, "shoot_cd": 0.0, "goal": start}
 	_player_state[id] = {"pos": start, "treasures": 0, "name": Game.roster[id].name, "hp": 5}
+	_redistribute_bots()
 
 @rpc("any_peer", "call_local", "reliable")
-func sv_remove_bot() -> void:
+func sv_remove_bot(target_id: String = "") -> void:
 	if not multiplayer.is_server() or not _is_host(multiplayer.get_remote_sender_id()):
 		return
 	if _bots.is_empty():
 		return
-	var id: String = _bots.keys().back()
+	var id := target_id if _bots.has(target_id) else str(_bots.keys().back())
 	_bots.erase(id)
 	_player_state.erase(id)
 	_match_alive.erase(id)
 	Game.roster.erase(id)
 	Game.cl_roster.rpc(Game.roster)
 
-## Host sets how many computer players fill each team; the server keeps
-## the bot pool matched to it (respecting the 24-player cap).
+## Teams are managed from the Players view: add/remove columns, rename.
+## Computer players redistribute into contiguous, even groups (1,2,3 on
+## the first team, 4,5,6 on the next...) whenever the layout changes;
+## humans always keep the team they picked.
 @rpc("any_peer", "call_local", "reliable")
-func sv_set_bots_per_team(n: int) -> void:
+func sv_add_team() -> void:
 	if not multiplayer.is_server() or not _is_host(multiplayer.get_remote_sender_id()):
 		return
-	bots_per_team = clampi(n, 0, 6)
-	_apply_bots_per_team()
-	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only,
-		team_count, bots_per_team)
+	if team_count >= 24:
+		return
+	team_count += 1
+	team_names.append(char(65 + (team_count - 1) % 24))
+	_redistribute_bots()
+	cl_teams.rpc(team_names)
 
-func _apply_bots_per_team() -> void:
-	for id: String in _bots.keys():
-		_player_state.erase(id)
-		_match_alive.erase(id)
-		Game.roster.erase(id)
-	_bots.clear()
-	var humans := Game.roster.size()
-	var want := mini(bots_per_team * team_count, 24 - humans)
-	for i in maxi(want, 0):
-		var slot := _next_bot_slot
-		_next_bot_slot += 1
-		var id := Game.player_id(1, slot)
-		Game.roster[id] = {"peer": 1, "slot": slot, "name": Game._pick_name(),
-			"style": AvatarFactory.random_style(), "team": i % team_count, "bot": true}
-		var start := Vector3(spawn_pos) + Vector3(randf_range(-8, 8), 2, randf_range(-8, 8))
-		_bots[id] = {"slot": slot, "pos": start, "yaw": 0.0, "think": 0.0,
-			"weapon": 13, "shoot_cd": 0.0, "goal": start}
-		_player_state[id] = {"pos": start, "treasures": 0, "name": Game.roster[id].name, "hp": 5}
+@rpc("any_peer", "call_local", "reliable")
+func sv_remove_team(index: int = -1) -> void:
+	if not multiplayer.is_server() or not _is_host(multiplayer.get_remote_sender_id()):
+		return
+	if team_count <= 2:
+		return
+	var gone := index if index >= 0 and index < team_count else team_count - 1
+	team_names.remove_at(gone)
+	team_count -= 1
+	for id: String in Game.roster.keys():
+		var team := int(Game.roster[id].get("team", -1))
+		if team == gone:
+			Game.roster[id].team = -1
+		elif team > gone:
+			Game.roster[id].team = team - 1
+	_redistribute_bots()
+	cl_teams.rpc(team_names)
+
+@rpc("any_peer", "call_local", "reliable")
+func sv_rename_team(index: int, new_name: String) -> void:
+	if not multiplayer.is_server():
+		return
+	if index >= 0 and index < team_names.size() and not new_name.strip_edges().is_empty():
+		team_names[index] = new_name.strip_edges().left(10)
+		cl_teams.rpc(team_names)
+
+@rpc("authority", "call_local", "reliable")
+func cl_teams(names: Array) -> void:
+	client_team_names = names
+	if multiplayer.is_server():
+		return
+	battle_config_changed.emit()
+
+func _redistribute_bots() -> void:
+	var ids: Array = _bots.keys()
+	ids.sort_custom(func(a: String, b: String) -> bool:
+		return int(Game.roster[a].slot) < int(Game.roster[b].slot))
+	var group := ceili(float(ids.size()) / float(team_count))
+	for i in ids.size():
+		Game.roster[ids[i]].team = mini(i / maxi(group, 1), team_count - 1)
 	Game.cl_roster.rpc(Game.roster)
 
 func _bot_nearest_enemy(id: String, pos: Vector3, radius: float) -> String:
@@ -1318,7 +1348,7 @@ func sv_set_bot_team(target_id: String, team: int) -> void:
 		Game.cl_roster.rpc(Game.roster)
 
 @rpc("any_peer", "reliable")
-func sv_match_config(minutes: int, loot: int, size: int = -1, teams: int = -1) -> void:
+func sv_match_config(minutes: int, loot: int, size: int = -1) -> void:
 	if not multiplayer.is_server() or not (match_phase in ["IDLE", "LOBBY"]) \
 			or not _is_host(multiplayer.get_remote_sender_id()):
 		return
@@ -1328,11 +1358,7 @@ func sv_match_config(minutes: int, loot: int, size: int = -1, teams: int = -1) -
 		loot_only = loot == 1
 	if size > 0:
 		battle_size = clampf(float(size), 25.0, 400.0)
-	if teams >= 2:
-		team_count = clampi(teams, 2, 24)
-		_apply_bots_per_team()
-	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only,
-		team_count, bots_per_team)
+	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only)
 
 @rpc("any_peer", "reliable")
 func sv_match_start(_slot: int) -> void:
@@ -2169,12 +2195,10 @@ func cl_overview(bytes: PackedByteArray) -> void:
 	overview = bytes
 
 @rpc("authority", "reliable")
-func cl_battle_config(minutes: int, size: int, loot: bool, teams: int = 4, bots: int = 0) -> void:
+func cl_battle_config(minutes: int, size: int, loot: bool) -> void:
 	client_minutes = minutes
 	client_size = size
 	client_loot = loot
-	client_teams = teams
-	client_bots = bots
 	battle_config_changed.emit()
 
 @rpc("authority", "reliable")

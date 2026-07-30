@@ -169,6 +169,14 @@ func get_ui_vector() -> Vector2:
 	return get_move_vector()
 
 ## Sprint is retired — walking is the normal pace now.
+## Triggers cycle the menu's TOP-LEVEL group (Build / Game / Options).
+func group_cycle_direction() -> int:
+	if kind != Kind.GAMEPAD:
+		return 0
+	var right := Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.5
+	var left := Input.get_joy_axis(device, JOY_AXIS_TRIGGER_LEFT) > 0.5
+	return (1 if right else 0) - (1 if left else 0)
+
 func is_sprint_pressed() -> bool:
 	return false
 
