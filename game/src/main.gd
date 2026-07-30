@@ -22,6 +22,7 @@ var _survival_button: Button
 var _battle_button: Button
 var _lobby_panel: PanelContainer
 var _lobby_label: Label
+var _join_hint: Label
 var _storm_tint: ColorRect
 var _team_rows: VBoxContainer
 var _wave_label: Label
@@ -189,6 +190,13 @@ func _build_game_screen() -> void:
 	_game_screen.add_child(_players_label)
 	_wave_label = _make_label("", 20, Color("ff6b6b"), 4)
 	_game_screen.add_child(_wave_label)
+	_join_hint = _make_label("🎮  New player?  Press Ⓐ on another controller to hop in!",
+		15, Color(1, 1, 1, 0.65), 4)
+	_join_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_join_hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_join_hint.offset_top = int(-190 * ui_scale())
+	_join_hint.visible = false
+	_game_screen.add_child(_join_hint)
 	_layout_topright()
 	get_viewport().size_changed.connect(func() -> void:
 		_layout_topright()
@@ -613,9 +621,12 @@ func _process(_delta: float) -> void:
 	var world := Game.world
 	if world == null:
 		return
-	if world.match_phase == "LOBBY":
+	if world.match_phase == "LOBBY" or world.match_phase == "COUNTDOWN":
 		world.match_seconds = maxf(0.0, world.match_seconds - _delta)
-		_lobby_label.text = "BATTLE ROYALE — starting in %d" % int(ceil(world.match_seconds))
+	# Friendly hop-in hint while it's just one player pottering about.
+	if _join_hint != null:
+		_join_hint.visible = Game.local_inputs.size() == 1 \
+			and world.match_phase == "IDLE" and not Input.get_connected_joypads().is_empty()
 	# The per-player red warning lives in each PlayerHud now.
 	_storm_tint.color.a = 0.0
 	var clock: float = world.clock

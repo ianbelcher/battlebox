@@ -38,7 +38,7 @@ var _opt_tabs: TabContainer
 const PAGE_PLAYERS := 8
 const PAGE_CHARACTER := 10
 const _PAGES := [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6],
-	[1, 0], [1, 1], [1, 2], [2, 0], [2, 1]]
+	[1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]]
 var _prev_picker := false
 var _prev_menu := false
 
@@ -228,6 +228,9 @@ func _ready() -> void:
 		_groups.add_child(inner_tc)
 		inner_tc.tab_changed.connect(on_page_change)
 	_groups.tab_changed.connect(on_page_change)
+	_groups.set_tab_title(0, "🔨 Build")
+	_groups.set_tab_title(1, "⚔ Game")
+	_groups.set_tab_title(2, "⚙ Options")
 	_storm_tint = ColorRect.new()
 	_storm_tint.color = Color(0.9, 0.15, 0.1, 0.0)
 	_storm_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -265,6 +268,18 @@ func _ready() -> void:
 	_storm_arrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_storm_arrow.visible = false
 	add_child(_storm_arrow)
+	# Big center note for match phases (lobby countdown, next-battle).
+	_center_note = Label.new()
+	_center_note.add_theme_font_size_override("font_size", _us(26))
+	_center_note.add_theme_color_override("font_color", Color("ffd166"))
+	_center_note.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
+	_center_note.add_theme_constant_override("outline_size", 6)
+	_center_note.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_center_note.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_center_note.offset_top = _us(120)
+	_center_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_center_note.visible = false
+	add_child(_center_note)
 	# First-person crosshair.
 	_crosshair = Label.new()
 	_crosshair.text = "+"
@@ -291,6 +306,7 @@ func _ready() -> void:
 	_build_character_tab()
 	_build_game_tab()
 	_build_video_tab()
+	_build_help_tab()
 	# The 8 slots live inside the menu too: click a slot, then click items.
 	_menu_slots_row = HBoxContainer.new()
 	_menu_slots_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -411,16 +427,20 @@ func _set_nav_focus(c: Control) -> void:
 		return
 	if _nav_focus != null and is_instance_valid(_nav_focus):
 		_nav_focus.modulate = Color.WHITE
+	if _nav_focus != null and is_instance_valid(_nav_focus):
+		_nav_focus.scale = Vector2.ONE
 	_nav_focus = c
 	if c != null:
 		c.modulate = Color(1.5, 1.35, 0.85)
+		c.pivot_offset = c.size / 2.0
+		c.scale = Vector2.ONE * 1.06
 		var p: Node = c.get_parent()
 		while p != null and not (p is ScrollContainer):
 			p = p.get_parent()
 		if p is ScrollContainer:
 			(p as ScrollContainer).ensure_control_visible(c)
 
-func _toggle_menu(player: Player, _tab: int) -> void:
+func _toggle_menu(player: Player, open_tab: int) -> void:
 	if _menu.visible:
 		_close_menu()
 		return
@@ -436,7 +456,10 @@ func _toggle_menu(player: Player, _tab: int) -> void:
 	for picker: BlockPicker in _pickers:
 		picker.fit(size * Vector2(0.75, 0.6))
 		picker.open()
-	_set_page(1 if _page_disabled(_last_tab) else _last_tab)
+	if open_tab == 0:
+		_set_page(1)  # the blocks button always lands on Building
+	else:
+		_set_page(1 if _page_disabled(_last_tab) else _last_tab)
 	_tab_guard = false
 	var entry := _entry()
 	if _name_edit != null and not entry.is_empty():
@@ -816,6 +839,7 @@ var _team_box: VBoxContainer
 var _length_btns: Dictionary = {}
 var _size_btns: Dictionary = {}
 var _lobby_countdown: Label
+var _center_note: Label
 var _world_row: HBoxContainer
 var _maps_row: HBoxContainer
 var _maps_label: Label
@@ -982,6 +1006,43 @@ func _rename_team(head: Button, index: int) -> void:
 		head.visible = true
 	edit.text_submitted.connect(func(_t: String) -> void: commit.call())
 	edit.focus_exited.connect(commit)
+
+## A controls cheat-sheet so nobody has to memorize the pad layout.
+func _build_help_tab() -> void:
+	var tab := _scrolled_tab("Help", _opt_tabs)
+	tab.add_theme_constant_override("separation", _us(6))
+	_add_section(tab, "🎮  CONTROLLER")
+	for line in ["Left stick — move      L3 (click stick) — creep quietly",
+			"Right stick — orbit the camera, up and down too",
+			"Ⓐ — jump / select      Ⓑ or RB — dig",
+			"RT — fire / place      LB — fly up      LT — descend",
+			"D-pad up/down — zoom      D-pad left/right — weapon",
+			"Ⓨ — camera view (orbit / top-down / first person)",
+			"Start or Ⓧ — menu      in menu: LB/RB pages, LT/RT groups",
+			"Hold Ⓑ — leave the game"]:
+		var pad_line := Label.new()
+		pad_line.text = str(line)
+		pad_line.add_theme_font_size_override("font_size", _us(17))
+		tab.add_child(pad_line)
+	_add_section(tab, "⌨  KEYBOARD + MOUSE")
+	for line in ["WASD — move      Shift — creep      Space — jump",
+			"Z / X — spin camera      E — blocks      Esc — menu",
+			"Click — dig      Right-click — place      1-8 — hotbar",
+			"T — camera view      F — fly (when idle)"]:
+		var key_line := Label.new()
+		key_line.text = str(line)
+		key_line.add_theme_font_size_override("font_size", _us(17))
+		tab.add_child(key_line)
+	_add_section(tab, "⚔  BATTLE ROYALE")
+	for line in ["Set up teams and computer players on Game ▸ Players.",
+			"Grab crates for weapons — the sword alone won't win it.",
+			"Stay inside the storm circle (watch the radar ring).",
+			"Downed teammates revive if you stand close to them.",
+			"Winner sticks around — battles loop until the host stops them."]:
+		var tip_line := Label.new()
+		tip_line.text = "• " + str(line)
+		tip_line.add_theme_font_size_override("font_size", _us(17))
+		tab.add_child(tip_line)
 
 ## Its own tab: every video setting individually — numbers get sliders,
 ## switches get checkboxes. No presets, no magic.
@@ -1180,6 +1241,16 @@ func _process(_delta: float) -> void:
 		if in_lobby:
 			_lobby_countdown.text = "⚔  Battle starts in %d — pick your team!" \
 				% int(ceil(world.match_seconds))
+	if _center_note != null and world != null:
+		var secs := int(ceil(world.match_seconds))
+		if world.match_phase == "COUNTDOWN":
+			_center_note.visible = true
+			_center_note.text = "🏆  Next battle in %d" % secs
+		elif world.match_phase == "LOBBY" and not _menu.visible:
+			_center_note.visible = true
+			_center_note.text = "⚔  Battle in %d — press ☰ to pick your team" % secs
+		else:
+			_center_note.visible = false
 	_crosshair.visible = player.fp_mode and not _menu.visible
 	_crosshair.add_theme_font_size_override("font_size", _us(int(30 * (1.0 + player.fp_zoom * 0.8))))
 	if size.x != _last_width:
