@@ -1,17 +1,36 @@
-# Boxel — TODO
+# Voxel Battle — TODO
 
-A live list of OPEN work only. Items leave the list when they are done
-(git history is the record).
+A live list of OPEN work only (git history is the record of done).
 
-- [ ] Review draw-distance interplay with 3+ local players (each player
-      streams their own area by design)
-- [ ] Import fidelity next steps: stair top-half (upside-down) variants,
-      per-species stair/slab colors, fence connections, thin carpets/
-      snow layers — if the kids' builds need them
-- [ ] Verify with Ian: 48 new Minecraft-style blocks in the Blocks tab
-      + imports now use them (roads/deepslate/quartz/logs...); castle great hall (flat marble court, red carpet
-      to a golden throne, banners, chandeliers, stairs); Mac resize; stale-block rendering after edits (worker watchdog
-      + sync fallback shipped), napalm fire patch + longer burn, sun/moon
-      visible through fog, resolution slider to 1%%
-- [ ] Multi-instance servers eventually: ws://ip:port/servername, one
-      shared game per named server (multi-tenant later)
+Ian's playtest list (2026-07-29 evening):
+- [ ] One controller A-press creates TWO local players it then controls
+      (join double-fire — debounce/dedupe joins)
+- [ ] MENU REDESIGN for controllers: more, smaller tabs — split Battle
+      Royale / Computer players / Video into their own tabs; consider two
+      LEVELS of tabs (Build: tools/blocks/special/kits · Game: battle,
+      bots, world · Options: character, video). Tabs must change ONLY
+      with LB/RB (left/right in a picker currently changes tabs too)
+- [ ] Blocks picker on small screens shrinks chips to fit — keep chip
+      size and scroll instead
+- [ ] Battle options must SHOW the selected value (highlight the active
+      length/size/loot buttons)
+- [ ] First arena size = 50 (not 25); options 50/100/150/200/250
+- [ ] SERVER-SIDE BOTS: computer players run on the server, added from
+      the menu (never as local split-screen players — remove that);
+      set the NUMBER of bots per team
+- [ ] Team structure rework: up to 24 players total; configurable team
+      count and size, up to 24 teams (free-for-all)
+- [ ] Computer players need to be MUCH smarter: pathing around
+      obstacles, target selection, weapon choice by range, retreat when
+      low, loot when unarmed, revive teammates reliably
+- [ ] BATTLE FLOW rework: end-of-battle winner banner on every screen
+      (dismissable); all humans dead -> "no winner" end; then a countdown
+      to the NEXT game; map recreated/reset between games (game-loop is
+      the normal mode); the FIRST human to join controls the battle
+      settings and can stop the loop
+- [ ] CAMERA: right stick orbits FREELY around the player (no isometric
+      snap); Y (pad) / T (keyboard) cycles orbit -> top-down -> first
+      person
+- [ ] Sword should swing like a real sword (proper arc animation)
+- [ ] Movement: normal = walking, audible to nearby players; Shift =
+      CREEP (slow + silent), like Minecraft sneak
