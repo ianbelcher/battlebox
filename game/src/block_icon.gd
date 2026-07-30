@@ -443,14 +443,16 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 			for i in 4:
 				_face_quad(face, 0.08 + 0.24 * i, 0.14, 0.2 + 0.24 * i,
 					0.3 + 0.1 * _hashf(float(i + face)), Color(top.r * 0.85, top.g * 0.85, top.b * 0.85))
-	elif b == Blocks.LOG or b in [125, 126, 127, 128, 130]:
+	elif b == Blocks.LOG or b in [125, 126, 127, 128, 130, Blocks.WARPED_STEM,
+			Blocks.BAMBOO_BLOCK]:
 		for ring in [0.32, 0.6]:
 			draw_arc(_face_pt(0, 0.5, 0.5), size.x * 0.5 * ring * 0.42, 0, TAU, 16, dark, size.x * 0.02)
 		for face in [1, 2]:
 			for i in 3:
 				_face_line(face, 0.2 + 0.3 * i, 0.05, 0.2 + 0.3 * i, 0.95, dark, size.x * 0.025)
 	elif b == Blocks.PLANKS or b in [Blocks.BIRCH_PLANKS, Blocks.DARK_PLANKS,
-			Blocks.CHERRY_PLANKS, 129, 131]:
+			Blocks.CHERRY_PLANKS, 129, 131, Blocks.WARPED_PLANKS,
+			Blocks.CRIMSON_PLANKS, Blocks.MANGROVE_PLANKS]:
 		for face in [1, 2]:
 			for i in 3:
 				_face_line(face, 0.0, 0.25 * (i + 1), 1.0, 0.25 * (i + 1), dark, size.x * 0.02)
@@ -492,6 +494,12 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 		for face in [1, 2]:
 			_face_quad(face, 0.28, 0.28, 0.72, 0.72, Color(side.lightened(0.35), 0.9))
 			_face_quad(face, 0.38, 0.38, 0.62, 0.62, Color(side.darkened(0.15), 0.9))
+	elif b == Blocks.MAGMA:
+		for i in 3:
+			_face_line(1, 0.1 + 0.2 * i, 0.15, 0.35 + 0.25 * i, 0.85,
+				Color(0.95, 0.45, 0.15, 0.9), size.x * 0.03)
+			_face_line(2, 0.15 + 0.25 * i, 0.2, 0.3 + 0.2 * i, 0.9,
+				Color(0.95, 0.45, 0.15, 0.9), size.x * 0.03)
 	elif b in [Blocks.ICE, 134, 135]:
 		_face_line(1, 0.15, 0.2, 0.6, 0.7, lite, size.x * 0.02)
 		_face_line(2, 0.4, 0.15, 0.75, 0.8, lite, size.x * 0.02)

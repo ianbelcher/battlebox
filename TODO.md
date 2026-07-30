@@ -2,9 +2,10 @@
 
 A live list of OPEN work only (git history is the record of done).
 
-- [ ] Vanilla sweep continues on Ian's next map-import feedback (doors/
-      beds/lily pads now real; next candidates: pressure plates, signs,
-      cocoa, per-species doors)
+- [ ] Vanilla sweep: full 5-agent audit applied (~120 fixes). Remaining
+      nice-to-haves from the audits: per-species stair/slab/fence/door
+      colors, glazed terracotta patterns, purpur block, mycelium
+      purple top, tinted glass panes
 - [ ] ICONS MEGA-REDO (BIG — asked multiple times): every block icon
       redrawn to read like Minecraft's actual iconography — kids can't
       read, the picture must say what it is (leaves ≠ plain green cube:

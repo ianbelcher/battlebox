@@ -131,6 +131,12 @@ const DOOR_WOOD := 199
 const DOOR_IRON := 200
 const BED := 201
 const LILY_PAD := 202
+const WARPED_PLANKS := 203
+const CRIMSON_PLANKS := 204
+const MANGROVE_PLANKS := 205
+const BAMBOO_BLOCK := 206
+const MAGMA := 207
+const WARPED_STEM := 208
 
 static func shape_of(id: int) -> String:
 	return str(info(id).get("shape", ""))
@@ -291,6 +297,18 @@ static func _static_init() -> void:
 		"shape": "bed", "hard": 1}
 	EXTRA[LILY_PAD] = {"name": "Lily Pad", "color": Color("3f7a33"),
 		"solid": false, "opaque": false, "shape": "carpet", "hard": 0}
+	EXTRA[WARPED_PLANKS] = {"name": "Warped Planks", "color": Color("3a8078"),
+		"solid": true, "opaque": true, "hard": 1}
+	EXTRA[CRIMSON_PLANKS] = {"name": "Crimson Planks", "color": Color("7e3a56"),
+		"solid": true, "opaque": true, "hard": 1}
+	EXTRA[MANGROVE_PLANKS] = {"name": "Mangrove Planks", "color": Color("7a3b33"),
+		"solid": true, "opaque": true, "hard": 1}
+	EXTRA[BAMBOO_BLOCK] = {"name": "Bamboo Block", "color": Color("83973f"),
+		"top": Color("b3a94e"), "solid": true, "opaque": true, "hard": 1}
+	EXTRA[MAGMA] = {"name": "Magma", "color": Color("5b2c1e"),
+		"top": Color("d95f2a"), "solid": true, "opaque": true, "emit": 0.7, "hard": 2}
+	EXTRA[WARPED_STEM] = {"name": "Warped Stem", "color": Color("3f6b62"),
+		"top": Color("2f4f48"), "solid": true, "opaque": true, "hard": 1}
 
 ## Per-block info, indexed by block id:
 ##   color: base albedo
@@ -432,7 +450,8 @@ const HOTBAR: Array[int] = [
 	149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
 	165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178,
 	179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192,
-	193, 194, 195, 196, 197, 198, 199, 200, 201, 202,
+	193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206,
+	207, 208,
 ]
 
 ## Picker categories (what each tab shows).
@@ -463,7 +482,8 @@ static func picker_category(cat: String) -> Array:
 	match cat:
 		"building":
 			out = [PLANKS, BIRCH_PLANKS, DARK_PLANKS, CHERRY_PLANKS, 129, 131,
-				LOG, 125, 126, 127, 128, 130,
+				WARPED_PLANKS, CRIMSON_PLANKS, MANGROVE_PLANKS, BAMBOO_BLOCK,
+				LOG, 125, 126, 127, 128, 130, WARPED_STEM,
 				COBBLE, MOSSY_COBBLE, STONE, MARBLE, SLATE, BRICK, SANDSTONE,
 				101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112,
 				113, 114, 115, 116, 117, 119, 121, 132, BEDROCK,
@@ -476,7 +496,7 @@ static func picker_category(cat: String) -> Array:
 				FENCE, WALL, LADDER])
 		"nature":
 			out = [GRASS, DIRT, PATH, SAND, 124, 118, 120, 122, 123, SHELL,
-				LILY_PAD,
+				LILY_PAD, MAGMA,
 				LEAVES, LEAVES_DARK, LEAVES_LIGHT, LEAVES_PINK, 133,
 				SNOW, SNOW_LAYER, ICE, 134, 135,
 				PUMPKIN, 136, 137, 138, 139, 140,
