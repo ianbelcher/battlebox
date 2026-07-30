@@ -128,7 +128,7 @@ func _spectator_prompt() -> Control:
 	box.add_theme_constant_override("separation", 10)
 	center.add_child(box)
 	var title := Label.new()
-	title.text = "BELCHER WORLD"
+	title.text = "VOXEL BATTLE"
 	title.add_theme_font_size_override("font_size", 64)
 	title.add_theme_color_override("font_color", Color("ffd166"))
 	title.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))

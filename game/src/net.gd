@@ -35,7 +35,7 @@ func start_server() -> Error:
 		return err
 	multiplayer.multiplayer_peer = peer
 	is_server = true
-	print("Boxel server listening on ws://0.0.0.0:%d" % port)
+	print("Voxel Battle server listening on ws://0.0.0.0:%d" % port)
 	return OK
 
 func connect_to(url: String) -> Error:

@@ -29,9 +29,9 @@ RUN godot --headless --path /game --import || true
 
 RUN mkdir -p /game/build/server /game/build/downloads \
     && godot --headless --path /game --export-release "Linux Server" build/server/world-server.x86_64 \
-    && godot --headless --path /game --export-release "Linux Client" build/downloads/boxel-linux.x86_64 \
-    && godot --headless --path /game --export-release "Windows Client" build/downloads/boxel-windows.exe \
-    && godot --headless --path /game --export-release "macOS Client" build/downloads/boxel-macos.zip
+    && godot --headless --path /game --export-release "Linux Client" build/downloads/voxel-battle-linux.x86_64 \
+    && godot --headless --path /game --export-release "Windows Client" build/downloads/voxel-battle-windows.exe \
+    && godot --headless --path /game --export-release "macOS Client" build/downloads/voxel-battle-macos.zip
 
 # Runtime stage: one image, two roles. The k8s deployment runs two containers
 # from this image — `server` (the world) and `web` (nginx serving the
