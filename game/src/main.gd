@@ -643,37 +643,80 @@ func _poll_banner_dismiss() -> void:
 
 ## A twin pad is a second enumeration of a controller someone already
 ## plays with: same joypad name, mirroring the same A press right now.
-func _twin_pad_pressed(candidate: InputSlot) -> bool:
+## One physical controller = one player. macOS sometimes enumerates the
+## same controller under two device ids, and the ghost id mirrors every
+## button and stick of the real one forever. So an unclaimed pad only
+## becomes ELIGIBLE to join after its full input state has differed from
+## every claimed pad for several consecutive frames — a real second
+## controller diverges the instant a different kid touches it; a ghost
+## never does. (A completely dead ghost can't press A, so it never joins
+## either.) With no pads claimed yet there is nothing to mirror and the
+## first press joins normally.
+const _DIVERGE_FRAMES := 6
+var _pad_diverge_count: Dictionary = {}
+
+const _MIRROR_BUTTONS: Array = [JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_X,
+	JOY_BUTTON_Y, JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER,
+	JOY_BUTTON_START, JOY_BUTTON_BACK, JOY_BUTTON_DPAD_UP,
+	JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_RIGHT]
+const _MIRROR_AXES: Array = [JOY_AXIS_LEFT_X, JOY_AXIS_LEFT_Y,
+	JOY_AXIS_RIGHT_X, JOY_AXIS_RIGHT_Y, JOY_AXIS_TRIGGER_LEFT,
+	JOY_AXIS_TRIGGER_RIGHT]
+
+func _mirrors_pad(candidate_device: int, claimed_device: int) -> bool:
+	for btn: int in _MIRROR_BUTTONS:
+		if Input.is_joy_button_pressed(candidate_device, btn) \
+				!= Input.is_joy_button_pressed(claimed_device, btn):
+			return false
+	for axis: int in _MIRROR_AXES:
+		if absf(Input.get_joy_axis(candidate_device, axis)
+				- Input.get_joy_axis(claimed_device, axis)) > 0.08:
+			return false
+	return true
+
+func _pad_join_eligible(candidate: InputSlot) -> bool:
 	if candidate.kind != InputSlot.Kind.GAMEPAD:
-		return false
-	var cand_name := Input.get_joy_name(candidate.device)
+		return true
+	var claimed_pads: Array = []
 	for input: InputSlot in Game.local_inputs.values():
-		if input is InputSlot and input.kind == InputSlot.Kind.GAMEPAD \
-				and Input.get_joy_name(input.device) == cand_name \
-				and Input.is_joy_button_pressed(input.device, JOY_BUTTON_A):
-			return true
-	return false
+		if input is InputSlot and input.kind == InputSlot.Kind.GAMEPAD:
+			claimed_pads.append(input.device)
+	if claimed_pads.is_empty():
+		return true
+	var key := candidate.claim_key()
+	var mirrors_someone := false
+	for device: int in claimed_pads:
+		if _mirrors_pad(candidate.device, device):
+			mirrors_someone = true
+			break
+	if mirrors_someone:
+		_pad_diverge_count[key] = 0
+		return false
+	_pad_diverge_count[key] = int(_pad_diverge_count.get(key, 0)) + 1
+	return int(_pad_diverge_count[key]) >= _DIVERGE_FRAMES
 
 func _poll_join_leave(delta: float) -> void:
 	_poll_banner_dismiss()
-	# Unclaimed devices can hop in any time — but only one join per press
-	# (some pads show up twice on macOS and double-joined), never while a
-	# menu is open (A is a menu click there), and never when a claimed pad
-	# with the same name is pressing A this very frame (that's the ghost
-	# enumeration of an already-joined controller, not a new player).
+	# Unclaimed devices hop in with A — but only devices that have proven
+	# they're a real separate controller (see _pad_join_eligible), never
+	# while a menu is open, one join per press.
 	var menu_open := _split != null and _split.any_menu_open()
 	for slot: InputSlot in InputSlot.candidate_slots():
 		var key := slot.claim_key()
 		if _claimed_keys().has(key):
 			continue
-		var pressed := slot.is_primary_pressed()
-		if pressed and not menu_open and not _prev_pressed.get(key, false) \
-				and not _twin_pad_pressed(slot) \
+		var eligible := _pad_join_eligible(slot)
+		# Rising edge of "pressed AND eligible": a fresh press joins at
+		# once when the pad has already proven itself, and a HELD press
+		# joins the moment eligibility arrives (a brand-new second
+		# controller proves divergence during the press itself).
+		var wants_join := slot.is_primary_pressed() and eligible and not menu_open
+		if wants_join and not _prev_pressed.get(key, false) \
 				and Time.get_ticks_msec() - _last_join_ms > 700:
 			_last_join_ms = Time.get_ticks_msec()
 			Game.join_local(slot)
 			_split.update_layout()
-		_prev_pressed[key] = pressed
+		_prev_pressed[key] = wants_join
 	# Claimed devices leave by HOLDING their leave control.
 	for slot_index: int in Game.local_inputs.keys().duplicate():
 		var input: InputSlot = Game.local_inputs[slot_index]
