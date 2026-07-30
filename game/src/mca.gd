@@ -373,6 +373,17 @@ const STAINED_GLASS_MAP := {
 	"black": Blocks.GLASS_RED + 7, "brown": Blocks.GLASS_RED + 1,
 }
 
+const CARPET_COLOR_MAP := {
+	"red": Blocks.CARPET_RED, "orange": Blocks.CARPET_RED + 1,
+	"brown": Blocks.CARPET_RED + 1, "yellow": Blocks.CARPET_RED + 2,
+	"lime": Blocks.CARPET_RED + 3, "green": Blocks.CARPET_RED + 3,
+	"cyan": Blocks.CARPET_RED + 4, "light_blue": Blocks.CARPET_RED + 4,
+	"blue": Blocks.CARPET_RED + 4, "purple": Blocks.CARPET_RED + 5,
+	"magenta": Blocks.CARPET_RED + 5, "pink": Blocks.CARPET_RED + 6,
+	"white": Blocks.CARPET_RED + 7, "light_gray": Blocks.CARPET_RED + 7,
+	"gray": Blocks.CARPET_RED + 7, "black": Blocks.CARPET_RED + 7,
+}
+
 const WOOL_COLOR_MAP := {
 	"red": Blocks.WOOL_RED, "orange": Blocks.WOOL_ORANGE, "yellow": Blocks.WOOL_YELLOW,
 	"lime": Blocks.WOOL_GREEN, "green": Blocks.WOOL_GREEN, "cyan": Blocks.WOOL_TEAL,
@@ -540,6 +551,8 @@ static func _map_block_uncached(short_name: String) -> int:
 			var rest := short_name.trim_prefix(color + "_")
 			if rest.contains("glass"):
 				return STAINED_GLASS_MAP.get(color, Blocks.GLASS)
+			if rest == "carpet":
+				return CARPET_COLOR_MAP.get(color, Blocks.CARPET_RED + 7)
 			if rest == "wool" or rest.contains("concrete") or rest.contains("terracotta") \
 					or rest == "bed" or rest.contains("shulker"):
 				return WOOL_COLOR_MAP[color]

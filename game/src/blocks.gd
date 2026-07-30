@@ -123,6 +123,7 @@ const GLASS_RED := 177  # ..184: red orange yellow green blue purple pink white
 const LEAVES_DARK := 185
 const LEAVES_LIGHT := 186
 const LEAVES_PINK := 187
+const CARPET_RED := 188  # ..195: 8 wool-colored floor carpets
 
 static func shape_of(id: int) -> String:
 	return str(info(id).get("shape", ""))
@@ -260,6 +261,14 @@ static func _static_init() -> void:
 		"solid": true, "opaque": true, "sway": 0.35, "hard": 0}
 	EXTRA[LEAVES_PINK] = {"name": "Blossom Leaves", "color": Color("e8a7c8"),
 		"solid": true, "opaque": true, "sway": 0.35, "hard": 0}
+	var carpet_tints := [["Red", Color("c94040")], ["Orange", Color("d97d33")],
+		["Yellow", Color("d9c23d")], ["Green", Color("57a04a")],
+		["Blue", Color("4a68c9")], ["Purple", Color("8850c9")],
+		["Pink", Color("d98cb8")], ["White", Color("e8e8ea")]]
+	for ci in carpet_tints.size():
+		EXTRA[CARPET_RED + ci] = {"name": str(carpet_tints[ci][0]) + " Carpet",
+			"color": carpet_tints[ci][1], "solid": true, "opaque": false,
+			"shape": "carpet", "hard": 0}
 
 ## Per-block info, indexed by block id:
 ##   color: base albedo
@@ -400,7 +409,8 @@ const HOTBAR: Array[int] = [
 	133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148,
 	149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
 	165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178,
-	179, 180, 181, 182, 183, 184, 185, 186, 187,
+	179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192,
+	193, 194, 195,
 ]
 
 ## Picker categories (what each tab shows).
@@ -459,9 +469,11 @@ static func picker_category(cat: String) -> Array:
 				WOOL_PINK, GLASS, GLASS_PANE]
 			for i in 8:
 				out.append(GLASS_RED + i)
+			for i in 8:
+				out.append(CARPET_RED + i)
 		"lights":
 			out = [TORCH, LANTERN, GLOWSTONE, CAMPFIRE, 147, 148,
-				CRYSTAL_PINK, CRYSTAL_BLUE, CRYSTAL_GREEN]
+				CRYSTAL_PINK, CRYSTAL_BLUE, CRYSTAL_GREEN, LADDER, 132, 136]
 		"special":
 			out = SPECIAL_BLOCKS.duplicate()
 	return out

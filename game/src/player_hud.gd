@@ -359,8 +359,8 @@ func _ready() -> void:
 
 	_pickers = []
 	for spec in [["Tools", "tools"], ["Building", "building"],
-			["Nature", "nature"], ["Colors", "colors"], ["Lights", "lights"],
-			["Special", "special"], ["Kits", "kits"]]:
+			["Natural", "nature"], ["Colored", "colors"],
+			["Functional", "lights"], ["Special", "special"], ["Kits", "kits"]]:
 		var picker := BlockPicker.new(spec[1])
 		picker.name = spec[0]
 		picker.picked.connect(_on_picked)
