@@ -120,6 +120,10 @@ func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Di
 				if Blocks.is_cross(block):
 					_add_cross(block, x, y, z, cx, cz)
 					continue
+				var shape := Blocks.shape_of(block)
+				if shape != "":
+					_add_shape(block, shape, x, y, z, cx, cz)
+					continue
 				if Blocks.is_translucent(block):
 					_add_cube(block, x, y, z, cx, cz, "trans")
 					continue
@@ -225,6 +229,61 @@ func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String
 				_indices[key].append(start + index)
 		else:
 			for index in [1, 3, 2, 1, 0, 3]:
+				_indices[key].append(start + index)
+
+## Shaped blocks: a list of sub-boxes per shape, every face emitted (no
+## culling/AO — these are small and partial, overdraw is negligible).
+func _add_shape(block: int, shape: String, x: int, y: int, z: int, cx: int, cz: int) -> void:
+	var boxes: Array = []
+	match shape:
+		"slab":
+			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.5, 1)]]
+		"stairs":
+			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.5, 1)]]
+			match Blocks.stairs_facing_of(block):
+				0: boxes.append([Vector3(0, 0.5, 0), Vector3(1, 1, 0.5)])
+				1: boxes.append([Vector3(0.5, 0.5, 0), Vector3(1, 1, 1)])
+				2: boxes.append([Vector3(0, 0.5, 0.5), Vector3(1, 1, 1)])
+				3: boxes.append([Vector3(0, 0.5, 0), Vector3(0.5, 1, 1)])
+		"fence":
+			boxes = [[Vector3(0.4, 0, 0.4), Vector3(0.6, 1.0, 0.6)],
+				[Vector3(0, 0.42, 0.45), Vector3(1, 0.56, 0.55)],
+				[Vector3(0.45, 0.42, 0), Vector3(0.55, 0.56, 1)],
+				[Vector3(0, 0.76, 0.45), Vector3(1, 0.9, 0.55)],
+				[Vector3(0.45, 0.76, 0), Vector3(0.55, 0.9, 1)]]
+		"wall":
+			boxes = [[Vector3(0.25, 0, 0.25), Vector3(0.75, 1.0, 0.75)],
+				[Vector3(0, 0, 0.3), Vector3(1, 0.82, 0.7)],
+				[Vector3(0.3, 0, 0), Vector3(0.7, 0.82, 1)]]
+		"pane":
+			boxes = [[Vector3(0, 0, 0.44), Vector3(1, 1, 0.56)],
+				[Vector3(0.44, 0, 0), Vector3(0.56, 1, 1)]]
+	var key := "trans" if shape == "pane" else "opaque"
+	var color := Blocks.color_of(block)
+	var jitter := _jitter(x, y, z, cx, cz)
+	var origin := Vector3(x, y, z)
+	for box: Array in boxes:
+		var bmin: Vector3 = box[0]
+		var bmax: Vector3 = box[1]
+		for face_index in 6:
+			var face: Array = FACES[face_index]
+			var n: Vector3i = face[0]
+			var u: Vector3i = face[1]
+			var v: Vector3i = face[2]
+			var shade: float = face[3]
+			var center := origin + (bmin + bmax) * 0.5 \
+				+ Vector3(n) * ((bmax - bmin) * 0.5)
+			var half_u := Vector3(u) * (bmax - bmin) * 0.5
+			var half_v := Vector3(v) * (bmax - bmin) * 0.5
+			var start: int = _verts[key].size()
+			for corner in [Vector2i(-1, -1), Vector2i(1, -1), Vector2i(1, 1), Vector2i(-1, 1)]:
+				_verts[key].append(center + half_u * float(corner.x) + half_v * float(corner.y))
+				_normals[key].append(Vector3(n))
+				var brightness := shade * jitter
+				_colors[key].append(Color(color.r * brightness, color.g * brightness,
+					color.b * brightness, color.a))
+				_uv2s[key].append(Vector2.ZERO)
+			for index in [0, 2, 1, 0, 3, 2]:
 				_indices[key].append(start + index)
 
 func _add_cross(block: int, x: int, y: int, z: int, cx: int, cz: int) -> void:

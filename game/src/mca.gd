@@ -98,7 +98,7 @@ func _apply_section(data: PackedByteArray, section: Dictionary) -> void:
 	mapped.resize(palette.size())
 	for i in palette.size():
 		var entry: Dictionary = palette[i]
-		mapped[i] = map_block(str(entry.get("Name", "")))
+		mapped[i] = map_entry(entry)
 	var base_y := sy * 16 - y0 + 1   # our y for the section's mc y floor
 	if base_y >= WorldGen.CHUNK_H or base_y + 16 <= 1:
 		return
@@ -356,13 +356,64 @@ const WOOL_COLOR_MAP := {
 const SKIP_PARTS := [
 	"rail", "button", "lever", "sign", "banner", "pressure_plate", "carpet",
 	"tripwire", "redstone_wire", "repeater", "comparator", "candle", "pot",
-	"flower_pot", "scaffolding", "ladder", "vine", "vines", "cobweb", "chain",
-	"iron_bars", "sculk_vein", "frogspawn", "sniffer_egg", "turtle_egg",
+	"flower_pot", "scaffolding", "cobweb", "chain",
+	"sculk_vein", "frogspawn", "sniffer_egg", "turtle_egg",
 	"structure_void", "light", "barrier", "player_head", "skull", "spore_blossom",
 	"hanging_roots", "glow_lichen", "sea_pickle", "amethyst_cluster", "coral_fan",
 ]
 
 static var _map_cache: Dictionary = {}
+
+const _STAIR_FACING := {"north": 0, "east": 1, "south": 2, "west": 3}
+
+## Full-entry mapping: uses blockstate Properties so stairs keep their
+## facing, double slabs become full blocks, and so on.
+static func map_entry(entry: Dictionary) -> int:
+	var name := str(entry.get("Name", "")).trim_prefix("minecraft:")
+	var props: Dictionary = entry.get("Properties", {})
+	if name.ends_with("_stairs"):
+		var base := Blocks.STAIRS_WOOD
+		if name.contains("brick") or name.contains("granite"):
+			base = Blocks.STAIRS_BRICK
+		elif name.contains("quartz") or name.contains("diorite") or name.contains("sandstone"):
+			base = Blocks.STAIRS_QUARTZ
+		elif name.contains("stone") or name.contains("andesite") or name.contains("deepslate") \
+				or name.contains("blackstone") or name.contains("cobbled") or name.contains("tuff"):
+			base = Blocks.STAIRS_STONE
+		return base + int(_STAIR_FACING.get(str(props.get("facing", "north")), 0))
+	if name.ends_with("_slab"):
+		var double: bool = str(props.get("type", "bottom")) == "double"
+		if name.contains("brick") or name.contains("granite"):
+			return Blocks.BRICK if double else Blocks.SLAB_BRICK
+		if name.contains("quartz") or name.contains("diorite") or name.contains("sandstone"):
+			return 114 if double else Blocks.SLAB_QUARTZ
+		if name.contains("stone") or name.contains("andesite") or name.contains("deepslate") \
+				or name.contains("blackstone") or name.contains("cobbled") or name.contains("tuff"):
+			return 104 if double else Blocks.SLAB_STONE
+		return Blocks.PLANKS if double else Blocks.SLAB_WOOD
+	if name.ends_with("_fence") or name.ends_with("_fence_gate"):
+		return Blocks.FENCE
+	if name.ends_with("_wall"):
+		return Blocks.WALL
+	if name.contains("glass_pane") or name == "iron_bars":
+		return Blocks.GLASS_PANE
+	if name.contains("torch"):
+		return Blocks.TORCH
+	if name == "ladder":
+		return Blocks.LADDER
+	if name == "vine" or name.ends_with("_vines") or name == "glow_lichen":
+		return Blocks.VINE
+	if name.begins_with("bamboo"):
+		return Blocks.BAMBOO
+	if name.ends_with("_door") or name.ends_with("_trapdoor"):
+		return 141 if name.begins_with("iron") else Blocks.PLANKS
+	match name:
+		"wheat": return Blocks.WHEAT_PLANT
+		"carrots", "potatoes", "beetroots", "sweet_berry_bush": return Blocks.BERRY_BUSH
+		"sugar_cane": return Blocks.CATTAIL
+		"fern", "large_fern": return Blocks.FERN
+		"dead_bush": return Blocks.DEAD_BUSH
+	return map_block("minecraft:" + name)
 
 static func map_block(mc_name: String) -> int:
 	if _map_cache.has(mc_name):
@@ -374,27 +425,75 @@ static func map_block(mc_name: String) -> int:
 static func _map_block_uncached(short_name: String) -> int:
 	if NAME_MAP.has(short_name):
 		return NAME_MAP[short_name]
-	# Roads, paths and common stone variants map to close Boxel blocks.
+	# Direct matches onto the Minecraft-style building set (ids 101+).
 	match short_name:
-		"dirt_path", "grass_path", "gravel", "coarse_dirt":
+		"dirt_path", "grass_path", "coarse_dirt":
 			return Blocks.PATH
-		"mud", "packed_mud", "rooted_dirt", "podzol":
-			return Blocks.DIRT
-		"mud_bricks":
-			return Blocks.BRICK
-	if short_name.contains("deepslate") or short_name.contains("blackstone") \
-			or short_name.contains("basalt"):
-		return Blocks.SLATE
-	if short_name.contains("stone_brick") or short_name.contains("cobblestone"):
+		"gravel": return 121
+		"mud": return 118
+		"packed_mud": return 120
+		"mud_bricks": return 119
+		"rooted_dirt": return Blocks.DIRT
+		"podzol", "mycelium": return 123
+		"red_sand": return 124
+		"smooth_stone": return 104
+		"obsidian", "crying_obsidian": return 113
+		"terracotta": return 117
+		"bookshelf", "chiseled_bookshelf": return 132
+		"moss_block", "moss_carpet": return 133
+		"packed_ice": return 134
+		"blue_ice": return 135
+		"cactus": return 136
+		"melon": return 137
+		"hay_block": return 138
+		"red_mushroom_block": return 139
+		"brown_mushroom_block", "mushroom_stem": return 140
+		"iron_block": return 141
+		"copper_block", "cut_copper", "exposed_copper", "weathered_copper": return 142
+		"oxidized_copper", "oxidized_cut_copper": return 143
+		"emerald_block": return 144
+		"lapis_block": return 145
+		"redstone_block": return 146
+		"coal_block": return 108
+		"sea_lantern": return 147
+		"shroomlight", "ochre_froglight", "pearlescent_froglight": return 148
+		"birch_log", "birch_wood", "stripped_birch_log": return 125
+		"spruce_log", "spruce_wood", "stripped_spruce_log": return 126
+		"cherry_log", "cherry_wood": return 127
+		"acacia_log", "acacia_wood": return 128
+		"acacia_planks": return 129
+		"jungle_log", "jungle_wood": return 130
+		"jungle_planks": return 131
+	if short_name.contains("mossy_stone_brick"):
+		return 102
+	if short_name.contains("cracked_stone_brick"):
+		return 103
+	if short_name.contains("stone_brick"):
+		return 101
+	if short_name.contains("deepslate_brick") or short_name.contains("deepslate_tile"):
+		return 109
+	if short_name.contains("deepslate"):
+		return 108
+	if short_name.contains("blackstone") or short_name.contains("basalt"):
+		return 112
+	if short_name.contains("cobblestone"):
 		return Blocks.COBBLE
-	if short_name.begins_with("andesite") or short_name.begins_with("polished_andesite") \
-			or short_name.begins_with("tuff"):
-		return Blocks.STONE
-	if short_name.begins_with("diorite") or short_name.begins_with("polished_diorite") \
-			or short_name.begins_with("calcite"):
-		return Blocks.MARBLE
+	if short_name.begins_with("andesite") or short_name.begins_with("polished_andesite"):
+		return 105
+	if short_name.begins_with("tuff"):
+		return 110
+	if short_name.begins_with("diorite") or short_name.begins_with("polished_diorite"):
+		return 106
+	if short_name.begins_with("calcite"):
+		return 111
 	if short_name.begins_with("granite") or short_name.begins_with("polished_granite"):
-		return Blocks.SANDSTONE
+		return 107
+	if short_name.contains("red_sandstone"):
+		return 116
+	if short_name.contains("quartz_brick"):
+		return 115
+	if short_name.contains("quartz"):
+		return 114
 	# Wool / concrete / terracotta / stained glass by their color token.
 	for color: String in WOOL_COLOR_MAP.keys():
 		if short_name.begins_with(color + "_"):

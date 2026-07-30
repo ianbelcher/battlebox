@@ -98,6 +98,95 @@ const CATTAIL := 97
 const DAISY := 98
 const BLUEBELL := 99
 const WHEAT_PLANT := 100
+## Shaped blocks (ids 149+): stairs come in four materials x four facings
+## (N/E/S/W = +0..3); slabs, fences, walls and panes are one id each.
+## Torch/vine/ladder/bamboo render as crosses.
+const STAIRS_WOOD := 149
+const STAIRS_STONE := 153
+const STAIRS_BRICK := 157
+const STAIRS_QUARTZ := 161
+const SLAB_WOOD := 165
+const SLAB_STONE := 166
+const SLAB_BRICK := 167
+const SLAB_QUARTZ := 168
+const FENCE := 169
+const WALL := 170
+const GLASS_PANE := 171
+const TORCH := 172
+const VINE := 173
+const LADDER := 174
+const BAMBOO := 175
+
+static func shape_of(id: int) -> String:
+	return str(info(id).get("shape", ""))
+
+static func stairs_facing_of(id: int) -> int:
+	return posmod(id - STAIRS_WOOD, 4)
+
+## Rotate a placeable stairs id so it ascends the way the player faces.
+static func orient_stairs(id: int, dir: Vector3) -> int:
+	if shape_of(id) != "stairs":
+		return id
+	var base := id - stairs_facing_of(id)
+	var facing := 0  # north (-z)
+	if absf(dir.x) > absf(dir.z):
+		facing = 1 if dir.x > 0.0 else 3
+	elif dir.z > 0.0:
+		facing = 2
+	return base + facing
+
+## The Minecraft-style building set (ids 101+). Grouped in rows of 8 so
+## the Blocks tab lines up: stone, deep/dark, earthy, wood, nature, shiny.
+const MC_BLOCKS := {
+	101: {"name": "Stone Bricks", "color": Color("8c8f96"), "hard": 2, "rough": 1.2},
+	102: {"name": "Mossy Stone Bricks", "color": Color("7c8a72"), "hard": 2, "rough": 1.4},
+	103: {"name": "Cracked Stone Bricks", "color": Color("7e8188"), "hard": 2, "rough": 1.6},
+	104: {"name": "Smooth Stone", "color": Color("a3a6ad"), "hard": 2, "rough": 0.4},
+	105: {"name": "Andesite", "color": Color("888a86"), "hard": 2, "rough": 1.3},
+	106: {"name": "Diorite", "color": Color("c8c5c0"), "hard": 2, "rough": 1.3},
+	107: {"name": "Granite", "color": Color("9a6a55"), "hard": 2, "rough": 1.3},
+	108: {"name": "Deepslate", "color": Color("4b4d52"), "hard": 2, "rough": 1.5},
+	109: {"name": "Deepslate Bricks", "color": Color("55575c"), "hard": 2, "rough": 1.2},
+	110: {"name": "Tuff", "color": Color("6d6f66"), "hard": 2, "rough": 1.6},
+	111: {"name": "Calcite", "color": Color("dedbd4"), "hard": 2, "rough": 0.8},
+	112: {"name": "Basalt", "color": Color("47454b"), "hard": 2, "rough": 1.4},
+	113: {"name": "Obsidian", "color": Color("1c1226"), "hard": 3, "rough": 0.2, "emit": 0.05},
+	114: {"name": "Quartz", "color": Color("efe9e2"), "hard": 2, "rough": 0.3},
+	115: {"name": "Quartz Bricks", "color": Color("e6e0d8"), "hard": 2, "rough": 0.4},
+	116: {"name": "Red Sandstone", "color": Color("b56b3a"), "hard": 2, "rough": 1.2},
+	117: {"name": "Terracotta", "color": Color("9a5f43"), "hard": 2, "rough": 1.4},
+	118: {"name": "Mud", "color": Color("5c4a3d"), "rough": 2.6},
+	119: {"name": "Mud Bricks", "color": Color("8a6f52"), "hard": 1, "rough": 1.8},
+	120: {"name": "Packed Mud", "color": Color("6e5a48"), "hard": 1, "rough": 2.0},
+	121: {"name": "Gravel", "color": Color("7f7c78"), "rough": 2.4},
+	122: {"name": "Clay Block", "color": Color("9aa3b0"), "rough": 1.6},
+	123: {"name": "Podzol", "color": Color("5a4630"), "top": Color("7a5c38"), "rough": 2.4},
+	124: {"name": "Red Sand", "color": Color("c07a45"), "rough": 2.2},
+	125: {"name": "Birch Log", "color": Color("d9d4c2"), "top": Color("c2b48a"), "hard": 1, "rough": 1.2},
+	126: {"name": "Spruce Log", "color": Color("4a3524"), "top": Color("6e5238"), "hard": 1, "rough": 1.4},
+	127: {"name": "Cherry Log", "color": Color("6e4148"), "top": Color("d9a8b8"), "hard": 1, "rough": 1.2},
+	128: {"name": "Acacia Log", "color": Color("6e5a4a"), "top": Color("b0603a"), "hard": 1, "rough": 1.4},
+	129: {"name": "Acacia Planks", "color": Color("b0603a"), "hard": 1, "rough": 1.0},
+	130: {"name": "Jungle Log", "color": Color("5a4a30"), "top": Color("8a6f47"), "hard": 1, "rough": 1.4},
+	131: {"name": "Jungle Planks", "color": Color("a5794f"), "hard": 1, "rough": 1.0},
+	132: {"name": "Bookshelf", "color": Color("8a6a42"), "top": Color("b08d5e"), "hard": 1, "rough": 1.0},
+	133: {"name": "Moss Block", "color": Color("5d7e3c"), "rough": 2.0},
+	134: {"name": "Packed Ice", "color": Color("9cc2e8"), "hard": 1, "rough": 0.2},
+	135: {"name": "Blue Ice", "color": Color("6fa8e8"), "hard": 1, "rough": 0.1},
+	136: {"name": "Cactus", "color": Color("4a7a35"), "top": Color("6b9a4d"), "rough": 1.6},
+	137: {"name": "Melon", "color": Color("5d8a3a"), "top": Color("6f9c47"), "rough": 1.2},
+	138: {"name": "Hay Bale", "color": Color("c9a83a"), "top": Color("d9bc50"), "rough": 1.8},
+	139: {"name": "Red Mushroom Block", "color": Color("b03a30"), "top": Color("c24a40"), "rough": 1.2},
+	140: {"name": "Brown Mushroom Block", "color": Color("8a674a"), "rough": 1.2},
+	141: {"name": "Iron Block", "color": Color("d8d8d8"), "hard": 3, "rough": 0.2, "emit": 0.1},
+	142: {"name": "Copper Block", "color": Color("c06843"), "hard": 3, "rough": 0.3, "emit": 0.08},
+	143: {"name": "Oxidized Copper", "color": Color("4fab90"), "hard": 3, "rough": 0.6},
+	144: {"name": "Emerald Block", "color": Color("2fbf6b"), "hard": 3, "rough": 0.2, "emit": 0.15},
+	145: {"name": "Lapis Block", "color": Color("2a4fc0"), "hard": 2, "rough": 0.5, "emit": 0.08},
+	146: {"name": "Redstone Block", "color": Color("c02a1c"), "hard": 2, "rough": 0.4, "emit": 0.5},
+	147: {"name": "Sea Lantern", "color": Color("c9e8dc"), "hard": 1, "emit": 2.0, "light": 3.0},
+	148: {"name": "Shroomlight", "color": Color("f0a05a"), "hard": 1, "emit": 2.2, "light": 3.2},
+}
 
 static func _static_init() -> void:
 	for i in FAMILY_COLORS.size():
@@ -120,6 +209,33 @@ static func _static_init() -> void:
 	EXTRA[DAISY] = {"name": "Daisy", "color": Color("f2f2e0"), "cross": true, "sway": 0.4}
 	EXTRA[BLUEBELL] = {"name": "Bluebell", "color": Color("6a7df0"), "cross": true, "sway": 0.4}
 	EXTRA[WHEAT_PLANT] = {"name": "Wild Wheat", "color": Color("d9b84a"), "cross": true, "sway": 0.7}
+	for mc_id: int in MC_BLOCKS.keys():
+		var spec: Dictionary = MC_BLOCKS[mc_id].duplicate()
+		spec["solid"] = true
+		spec["opaque"] = true
+		EXTRA[mc_id] = spec
+	var stair_mats := [["Wood", Color("b08d5e")], ["Stone", Color("8c8f96")],
+		["Brick", Color("b0524a")], ["Quartz", Color("efe9e2")]]
+	for mat_i in 4:
+		for f in 4:
+			EXTRA[STAIRS_WOOD + mat_i * 4 + f] = {
+				"name": str(stair_mats[mat_i][0]) + " Stairs",
+				"color": stair_mats[mat_i][1], "solid": true, "opaque": false,
+				"shape": "stairs", "hard": 1 if mat_i == 0 else 2}
+		EXTRA[SLAB_WOOD + mat_i] = {"name": str(stair_mats[mat_i][0]) + " Slab",
+			"color": stair_mats[mat_i][1], "solid": true, "opaque": false,
+			"shape": "slab", "hard": 1 if mat_i == 0 else 2}
+	EXTRA[FENCE] = {"name": "Fence", "color": Color("9a7a4f"), "solid": true,
+		"opaque": false, "shape": "fence", "hard": 1}
+	EXTRA[WALL] = {"name": "Stone Wall", "color": Color("7e8188"), "solid": true,
+		"opaque": false, "shape": "wall", "hard": 2}
+	EXTRA[GLASS_PANE] = {"name": "Glass Pane", "color": Color(0.75, 0.87, 0.95, 0.5),
+		"solid": true, "opaque": false, "shape": "pane", "hard": 0}
+	EXTRA[TORCH] = {"name": "Torch", "color": Color("ffd98a"), "cross": true,
+		"emit": 2.2, "light": 2.6}
+	EXTRA[VINE] = {"name": "Vine", "color": Color("4a7a35"), "cross": true, "sway": 0.5}
+	EXTRA[LADDER] = {"name": "Ladder", "color": Color("9a7a4f"), "cross": true}
+	EXTRA[BAMBOO] = {"name": "Bamboo", "color": Color("6b9a3d"), "cross": true, "sway": 0.3}
 
 ## Per-block info, indexed by block id:
 ##   color: base albedo
@@ -217,6 +333,8 @@ static func hardness(id: int) -> int:
 		return 2
 	if id >= M_SOIL and id < MAX_BLOCK:
 		return 0
+	if id > WHEAT_PLANT:
+		return int(info(id).get("hard", 0))
 	if id == DIAMOND:
 		return 4
 	if id == STEEL:
@@ -253,6 +371,11 @@ const HOTBAR: Array[int] = [
 	M_STONE, M_STONE + 1, M_STONE + 2, M_STONE + 3, M_STONE + 4, M_STONE + 5, M_STONE + 6, M_STONE + 7,
 	M_SOIL, M_SOIL + 1, M_SOIL + 2, M_SOIL + 3, M_SOIL + 4, M_SOIL + 5, M_SOIL + 6, M_SOIL + 7,
 	M_SNOW, M_SNOW + 1, M_SNOW + 2, M_SNOW + 3, M_SNOW + 4, M_SNOW + 5, M_SNOW + 6, M_SNOW + 7,
+	101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116,
+	117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132,
+	133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148,
+	149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
+	165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175,
 ]
 
 ## Picker categories (what each tab shows).
@@ -261,6 +384,12 @@ static func family_blocks() -> Array:
 	for row in [M_STEEL, M_STONE, M_SOIL, M_SNOW]:
 		for i in 8:
 			out.append(row + i)
+	var mc_ids := MC_BLOCKS.keys()
+	mc_ids.sort()
+	out.append_array(mc_ids)
+	out.append_array([STAIRS_WOOD, STAIRS_STONE, STAIRS_BRICK, STAIRS_QUARTZ,
+		SLAB_WOOD, SLAB_STONE, SLAB_BRICK, SLAB_QUARTZ,
+		FENCE, WALL, GLASS_PANE, TORCH, VINE, LADDER, BAMBOO])
 	return out
 
 const SPECIAL_BLOCKS := [GLASS, ICE, LAVA, GLOWSTONE, LANTERN, CAMPFIRE,

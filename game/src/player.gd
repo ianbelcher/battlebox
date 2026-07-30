@@ -676,7 +676,8 @@ func _local_actions(delta: float) -> void:
 					randi() % 1000, facing)
 				_edit_cooldown = 1.0
 			else:
-				world.send_edit(slot, place_target, selected_block())
+				world.send_edit(slot, place_target,
+					Blocks.orient_stairs(selected_block(), heading))
 				_edit_cooldown = EDIT_REPEAT
 
 ## Sword: a close swing that bonks enemies and chops soft blocks.
