@@ -1156,6 +1156,13 @@ func _spawn_bot() -> void:
 	_player_state[id] = {"pos": start, "treasures": 0, "name": Game.roster[id].name, "hp": 5}
 	_redistribute_bots()
 
+## Roster-full eviction path (a human needs the seat).
+func drop_bot(id: String) -> void:
+	_bots.erase(id)
+	_player_state.erase(id)
+	_match_alive.erase(id)
+	_save_battle_setup()
+
 @rpc("any_peer", "call_local", "reliable")
 func sv_remove_bot(target_id: String = "") -> void:
 	if not multiplayer.is_server() or not _is_host(multiplayer.get_remote_sender_id()):
@@ -1390,8 +1397,9 @@ func _load_battle_setup() -> void:
 	selected_map = str(cfg.get_value("battle", "world", ""))
 	if not _known_map(selected_map):
 		selected_map = ""
+	# Restore bots but always leave room for a family of humans.
 	var bot_count := int(cfg.get_value("battle", "bots", 0))
-	for i in mini(bot_count, 23):
+	for i in mini(bot_count, 16):
 		_spawn_bot()
 	print("Battle setup restored: %d min, %d blocks, %d teams, %d bots" % [
 		int(storm_minutes), int(battle_size), team_count, _bots.size()])

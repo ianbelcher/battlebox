@@ -5,7 +5,7 @@ extends Node
 ## The server (peer 1) owns the roster; the World node (created here, same
 ## path everywhere) handles everything spatial.
 
-const MAX_PLAYERS := 16
+const MAX_PLAYERS := 24
 const MAX_LOCAL := 4
 
 const AUTO_NAMES: Array[String] = [
@@ -153,8 +153,24 @@ func sv_register_player(slot: int, pname: String, style: Dictionary, bot := fals
 		return
 	var peer := _sender_id()
 	var id := player_id(peer, slot)
-	if roster.has(id) or roster.size() >= MAX_PLAYERS:
+	if roster.has(id):
 		return
+	if roster.size() >= MAX_PLAYERS:
+		if bot:
+			return
+		# Humans ALWAYS get a seat: a full roster evicts a computer
+		# player rather than silently ignoring a real person (this
+		# stranded joins as unplaced ghosts when restored bots filled
+		# the server).
+		var evict := ""
+		for other: String in roster.keys():
+			if bool(roster[other].get("bot", false)):
+				evict = other
+		if evict.is_empty():
+			return
+		roster.erase(evict)
+		if world != null:
+			world.drop_bot(evict)
 	pname = pname.strip_edges().left(12)
 	if pname.is_empty():
 		pname = _pick_name()
