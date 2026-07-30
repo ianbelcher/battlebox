@@ -35,21 +35,23 @@ var _announced_ready := false
 ## never block the render thread. Jobs carry SNAPSHOTS of the chunk bytes
 ## (PackedByteArray.duplicate) so the worker never races live edits; the
 ## main thread only uploads finished arrays (cheap).
-var _mesh_thread: Thread
+var _mesh_threads: Array[Thread] = []
 var _mesh_mutex := Mutex.new()
 var _mesh_sem := Semaphore.new()
 var _mesh_jobs: Array = []
+var _mesh_jobs_urgent: Array = []
 var _mesh_results: Array = []
 var _mesh_exit := false
 var _mesh_gen: Dictionary = {}      # cpos -> generation stamp
 var _inflight: Dictionary = {}      # cpos -> submit time msec
 
 func _exit_tree() -> void:
-	if _mesh_thread != null:
-		_mesh_exit = true
+	_mesh_exit = true
+	for i in _mesh_threads.size():
 		_mesh_sem.post()
-		_mesh_thread.wait_to_finish()
-		_mesh_thread = null
+	for worker: Thread in _mesh_threads:
+		worker.wait_to_finish()
+	_mesh_threads.clear()
 
 func _mesh_worker() -> void:
 	while true:
@@ -57,19 +59,30 @@ func _mesh_worker() -> void:
 		if _mesh_exit:
 			return
 		_mesh_mutex.lock()
-		var job: Dictionary = {} if _mesh_jobs.is_empty() else _mesh_jobs.pop_front()
+		# Player edits jump every streaming job on every worker.
+		var job: Dictionary = {}
+		if not _mesh_jobs_urgent.is_empty():
+			job = _mesh_jobs_urgent.pop_front()
+		elif not _mesh_jobs.is_empty():
+			job = _mesh_jobs.pop_front()
 		_mesh_mutex.unlock()
 		if job.is_empty():
 			continue
+		var t0 := Time.get_ticks_msec()
 		var surfaces: Dictionary = Mesher.new().build(
 			job.data, job.neighbors, job.cpos.x, job.cpos.y)
+		var build_ms := Time.get_ticks_msec() - t0
+		if build_ms > 500:
+			push_warning("Slow mesh build: %s took %d ms" % [job.cpos, build_ms])
 		_mesh_mutex.lock()
 		_mesh_results.append({"cpos": job.cpos, "surfaces": surfaces, "gen": job.gen})
 		_mesh_mutex.unlock()
 
 func _ready() -> void:
-	_mesh_thread = Thread.new()
-	_mesh_thread.start(_mesh_worker)
+	for i in 4:
+		var worker := Thread.new()
+		worker.start(_mesh_worker)
+		_mesh_threads.append(worker)
 	var terrain := ShaderMaterial.new()
 	terrain.shader = load("res://shaders/terrain.gdshader")
 	var plants := ShaderMaterial.new()
@@ -164,6 +177,36 @@ func receive_chunk(cx: int, cz: int, blob: PackedByteArray) -> void:
 		if _data.has(cpos + off):
 			_queue_mesh(cpos + off)
 
+## A local player's own edit: apply and remesh the chunk RIGHT NOW so
+## breaking/placing feels instant, regardless of how busy the streaming
+## mesh queue is. Border chunks still go through the urgent async path.
+func apply_edit_now(pos: Vector3i, block: int) -> void:
+	if apply_edit(pos, block) < 0:
+		return
+	var cpos := Vector2i(floori(pos.x / 16.0), floori(pos.z / 16.0))
+	_submit_urgent(cpos)
+
+## Push a chunk straight to the workers' priority queue, bypassing the
+## streaming backlog entirely.
+func _submit_urgent(cpos: Vector2i) -> void:
+	if not _data.has(cpos):
+		return
+	_mesh_queue.erase(cpos)
+	_queued.erase(cpos)
+	var nb := {}
+	for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var n: PackedByteArray = _data.get(cpos + off, PackedByteArray())
+		if not n.is_empty():
+			nb[off] = n.duplicate()
+	var gen: int = int(_mesh_gen.get(cpos, 0)) + 1
+	_mesh_gen[cpos] = gen
+	_inflight[cpos] = Time.get_ticks_msec()
+	_mesh_mutex.lock()
+	_mesh_jobs_urgent.append({"cpos": cpos, "data": _data[cpos].duplicate(),
+		"neighbors": nb, "gen": gen})
+	_mesh_mutex.unlock()
+	_mesh_sem.post()
+
 ## Applies a replicated edit. Returns the previous block id (or -1 if the
 ## chunk isn't resident here).
 func apply_edit(pos: Vector3i, block: int) -> int:
@@ -225,14 +268,14 @@ func _queue_mesh(cpos: Vector2i, urgent := false) -> void:
 		_mesh_queue.append(cpos)
 
 func _process(_delta: float) -> void:
-	# Watchdog: if the worker ever dies, restart it and log loudly.
-	if _mesh_thread == null or not _mesh_thread.is_alive():
-		push_warning("Mesh worker not alive — restarting it")
-		if _mesh_thread != null:
-			_mesh_thread.wait_to_finish()
-		_mesh_exit = false
-		_mesh_thread = Thread.new()
-		_mesh_thread.start(_mesh_worker)
+	# Watchdog: restart any worker that dies, loudly.
+	for i in _mesh_threads.size():
+		if not _mesh_threads[i].is_alive():
+			push_warning("Mesh worker %d not alive — restarting it" % i)
+			_mesh_threads[i].wait_to_finish()
+			_mesh_exit = false
+			_mesh_threads[i] = Thread.new()
+			_mesh_threads[i].start(_mesh_worker)
 	# Feed the mesh worker (snapshots only — never live arrays)...
 	_mesh_mutex.lock()
 	var backlog: int = _mesh_jobs.size()

@@ -336,6 +336,51 @@ static func _static_init() -> void:
 		EXTRA[SLAB_SPRUCE + sp_i] = {"name": str(species_mats[sp_i][0]) + " Slab",
 			"color": species_mats[sp_i][1], "solid": true, "opaque": false,
 			"shape": "slab", "hard": 1}
+	_build_lookups()
+
+## Flat per-id lookup tables for the mesher's hot loop — dictionary
+## lookups per voxel were the whole cost of chunk meshing (measured
+## ~245 ms/chunk before, dominated by info() dict traffic).
+const SHAPE_IDS := {"": 0, "slab": 1, "carpet": 2, "stairs": 3, "fence": 4,
+	"wall": 5, "pane": 6, "door": 7, "bed": 8}
+static var LK_OPAQUE := PackedByteArray()
+static var LK_CROSS := PackedByteArray()
+static var LK_TRANS := PackedByteArray()
+static var LK_LIQUID := PackedByteArray()
+static var LK_SHAPE := PackedByteArray()
+static var LK_COLOR := PackedColorArray()
+static var LK_TOP := PackedColorArray()
+static var LK_SWAY := PackedFloat32Array()
+static var LK_EMIT := PackedFloat32Array()
+static var LK_LIGHT := PackedFloat32Array()
+static var LK_ROUGH := PackedFloat32Array()
+
+static func _build_lookups() -> void:
+	LK_OPAQUE.resize(256)
+	LK_CROSS.resize(256)
+	LK_TRANS.resize(256)
+	LK_LIQUID.resize(256)
+	LK_SHAPE.resize(256)
+	LK_COLOR.resize(256)
+	LK_TOP.resize(256)
+	LK_SWAY.resize(256)
+	LK_EMIT.resize(256)
+	LK_LIGHT.resize(256)
+	LK_ROUGH.resize(256)
+	for id in 256:
+		var spec := info(id)
+		LK_OPAQUE[id] = 1 if bool(spec.get("opaque", false)) else 0
+		LK_CROSS[id] = 1 if bool(spec.get("cross", false)) else 0
+		LK_TRANS[id] = 1 if bool(spec.get("translucent", false)) else 0
+		LK_LIQUID[id] = 1 if is_liquid(id) else 0
+		LK_SHAPE[id] = int(SHAPE_IDS.get(str(spec.get("shape", "")), 0))
+		var c: Color = spec.get("color", Color(0, 0, 0, 0))
+		LK_COLOR[id] = c
+		LK_TOP[id] = spec.get("top", c)
+		LK_SWAY[id] = float(spec.get("sway", 0.0))
+		LK_EMIT[id] = float(spec.get("emit", 0.0))
+		LK_LIGHT[id] = float(spec.get("light", 0.0))
+		LK_ROUGH[id] = float(spec.get("rough", 0.0))
 
 ## Per-block info, indexed by block id:
 ##   color: base albedo

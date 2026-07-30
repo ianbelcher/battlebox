@@ -99,11 +99,14 @@ func _block_at(x: int, y: int, z: int) -> int:
 	return neighbor[(y * SIZE + z) * SIZE + x]
 
 func _occludes(x: int, y: int, z: int) -> bool:
-	return Blocks.is_opaque(_block_at(x, y, z))
+	return _lk_opaque[_block_at(x, y, z)] == 1
 
 ## Build all surfaces for a chunk. cx/cz are only used to seed color jitter
 ## so the pattern doesn't repeat chunk to chunk.
+var _lk_opaque := PackedByteArray()
+
 func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Dictionary:
+	_lk_opaque = Blocks.LK_OPAQUE
 	_data = data
 	_neighbors = neighbors
 	var topmap := PackedByteArray()
@@ -119,25 +122,25 @@ func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Di
 				if block == Blocks.AIR:
 					continue
 				topmap[z * SIZE + x] = block
-				if Blocks.is_cross(block):
+				if Blocks.LK_CROSS[block] == 1:
 					_add_cross(block, x, y, z, cx, cz)
 					continue
-				var shape := Blocks.shape_of(block)
-				if shape != "":
+				var shape := int(Blocks.LK_SHAPE[block])
+				if shape != 0:
 					_add_shape(block, shape, x, y, z, cx, cz)
 					continue
-				if Blocks.is_translucent(block):
+				if Blocks.LK_TRANS[block] == 1:
 					_add_cube(block, x, y, z, cx, cz, "trans")
 					continue
 				_add_cube(block, x, y, z, cx, cz, "opaque")
 				if block == Blocks.TELEPORT:
 					teleporters.append(Vector3i(x, y, z))
-				var light := Blocks.light_of(block)
+				var light := Blocks.LK_LIGHT[block]
 				if light > 0.0:
 					lights.append({
 						"pos": Vector3(x + 0.5, y + 0.6, z + 0.5),
 						"energy": light,
-						"color": Blocks.color_of(block),
+						"color": Blocks.LK_COLOR[block],
 						"flicker": block == Blocks.CAMPFIRE or block == Blocks.FIRE,
 					})
 	var result := {}
@@ -164,13 +167,13 @@ func _jitter(x: int, y: int, z: int, cx: int, cz: int, rough := 0.0) -> float:
 	return 1.0 - amp * 0.6 + amp * WorldGen.hash01(cx * SIZE + x, cz * SIZE + z, y * 31)
 
 func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String) -> void:
-	var base_color := Blocks.color_of(block)
-	var top_color := Blocks.top_color_of(block)
-	var jitter := _jitter(x, y, z, cx, cz, float(Blocks.info(block).get("rough", 0.0)))
-	var sway := Blocks.sway_of(block)
-	var emit := Blocks.emit_of(block)
+	var base_color := Blocks.LK_COLOR[block]
+	var top_color := Blocks.LK_TOP[block]
+	var jitter := _jitter(x, y, z, cx, cz, Blocks.LK_ROUGH[block])
+	var sway := Blocks.LK_SWAY[block]
+	var emit := Blocks.LK_EMIT[block]
 	var translucent := key == "trans"
-	var is_liquid := Blocks.is_liquid(block)
+	var is_liquid := Blocks.LK_LIQUID[block] == 1
 	# Liquids drop their surface a bit below the block top, like Minecraft.
 	var top_y := 0.875 if is_liquid and _block_at(x, y + 1, z) != block else 1.0
 
@@ -181,12 +184,12 @@ func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String
 		if translucent:
 			# Translucent faces show against air/plants only — never against
 			# the same material (no internal water walls) or opaque blocks.
-			if neighbor == block or Blocks.is_opaque(neighbor):
+			if neighbor == block or Blocks.LK_OPAQUE[neighbor] == 1:
 				continue
 			if is_liquid and neighbor == Blocks.ICE:
 				continue
 		else:
-			if Blocks.is_opaque(neighbor):
+			if Blocks.LK_OPAQUE[neighbor] == 1:
 				continue
 		var u: Vector3i = face[1]
 		var v: Vector3i = face[2]
@@ -237,48 +240,50 @@ func _add_cube(block: int, x: int, y: int, z: int, cx: int, cz: int, key: String
 
 ## Shaped blocks: a list of sub-boxes per shape, every face emitted (no
 ## culling/AO — these are small and partial, overdraw is negligible).
-## Does a fence/wall/pane arm reach toward this neighbor?
-func _shape_connects(shape: String, nx: int, ny: int, nz: int) -> bool:
+## Does a fence/wall/pane arm reach toward this neighbor? (Shapes are the
+## Blocks.SHAPE_IDS ints: 1 slab, 2 carpet, 3 stairs, 4 fence, 5 wall,
+## 6 pane, 7 door, 8 bed.)
+func _shape_connects(shape: int, nx: int, ny: int, nz: int) -> bool:
 	var n := _block_at(nx, ny, nz)
 	if n <= 0:
 		return false
-	var n_shape := Blocks.shape_of(n)
-	if shape == "pane":
-		return n_shape == "pane" or bool(Blocks.info(n).get("opaque", false))
-	if n_shape == "fence" or n_shape == "wall":
+	var n_shape := int(Blocks.LK_SHAPE[n])
+	if shape == 6:
+		return n_shape == 6 or Blocks.LK_OPAQUE[n] == 1
+	if n_shape == 4 or n_shape == 5:
 		return true
-	return bool(Blocks.info(n).get("opaque", false))
+	return Blocks.LK_OPAQUE[n] == 1
 
-func _add_shape(block: int, shape: String, x: int, y: int, z: int, cx: int, cz: int) -> void:
+func _add_shape(block: int, shape: int, x: int, y: int, z: int, cx: int, cz: int) -> void:
 	var boxes: Array = []
 	match shape:
-		"slab":
+		1:
 			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.5, 1)]]
-		"carpet":
+		2:
 			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.15, 1)]] \
 				if block != Blocks.LILY_PAD \
 				else [[Vector3(0.12, 0, 0.12), Vector3(0.88, 0.05, 0.88)]]
-		"door":
+		7:
 			# Thin full-height panel hugging whichever neighbor is solid
 			# (a lone door faces north).
-			if _shape_connects("door", x, y, z - 1) or not (
-					_shape_connects("door", x - 1, y, z) or _shape_connects("door", x + 1, y, z)):
+			if _shape_connects(7, x, y, z - 1) or not (
+					_shape_connects(7, x - 1, y, z) or _shape_connects(7, x + 1, y, z)):
 				boxes = [[Vector3(0, 0, 0), Vector3(1, 1, 0.14)]]
-			elif _shape_connects("door", x - 1, y, z):
+			elif _shape_connects(7, x - 1, y, z):
 				boxes = [[Vector3(0, 0, 0), Vector3(0.14, 1, 1)]]
 			else:
 				boxes = [[Vector3(0.86, 0, 0), Vector3(1, 1, 1)]]
-		"bed":
+		8:
 			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.32, 1)],
 				[Vector3(0.05, 0.32, 0.05), Vector3(0.95, 0.55, 0.95)]]
-		"stairs":
+		3:
 			boxes = [[Vector3(0, 0, 0), Vector3(1, 0.5, 1)]]
 			match Blocks.stairs_facing_of(block):
 				0: boxes.append([Vector3(0, 0.5, 0), Vector3(1, 1, 0.5)])
 				1: boxes.append([Vector3(0.5, 0.5, 0), Vector3(1, 1, 1)])
 				2: boxes.append([Vector3(0, 0.5, 0.5), Vector3(1, 1, 1)])
 				3: boxes.append([Vector3(0, 0.5, 0), Vector3(0.5, 1, 1)])
-		"fence":
+		4:
 			# Post always; rails only toward connected neighbors.
 			boxes = [[Vector3(0.4, 0, 0.4), Vector3(0.6, 1.0, 0.6)]]
 			for rail_y: Array in [[0.42, 0.56], [0.76, 0.9]]:
@@ -290,7 +295,7 @@ func _add_shape(block: int, shape: String, x: int, y: int, z: int, cx: int, cz: 
 					boxes.append([Vector3(0.45, rail_y[0], 0.6), Vector3(0.55, rail_y[1], 1)])
 				if _shape_connects(shape, x, y, z - 1):
 					boxes.append([Vector3(0.45, rail_y[0], 0), Vector3(0.55, rail_y[1], 0.4)])
-		"wall":
+		5:
 			boxes = [[Vector3(0.25, 0, 0.25), Vector3(0.75, 1.0, 0.75)]]
 			if _shape_connects(shape, x + 1, y, z):
 				boxes.append([Vector3(0.75, 0, 0.3), Vector3(1, 0.82, 0.7)])
@@ -300,7 +305,7 @@ func _add_shape(block: int, shape: String, x: int, y: int, z: int, cx: int, cz: 
 				boxes.append([Vector3(0.3, 0, 0.75), Vector3(0.7, 0.82, 1)])
 			if _shape_connects(shape, x, y, z - 1):
 				boxes.append([Vector3(0.3, 0, 0.25), Vector3(0.7, 0.82, 0.75)])
-		"pane":
+		6:
 			# Small core plus arms toward whatever the pane joins onto; a
 			# lone pane keeps the old full cross so it isn't invisible.
 			var east := _shape_connects(shape, x + 1, y, z)
@@ -320,8 +325,8 @@ func _add_shape(block: int, shape: String, x: int, y: int, z: int, cx: int, cz: 
 					boxes.append([Vector3(0.44, 0, 0.56), Vector3(0.56, 1, 1)])
 				if north:
 					boxes.append([Vector3(0.44, 0, 0), Vector3(0.56, 1, 0.44)])
-	var key := "trans" if shape == "pane" else "opaque"
-	var color := Blocks.color_of(block)
+	var key := "trans" if shape == 6 else "opaque"
+	var color := Blocks.LK_COLOR[block]
 	var jitter := _jitter(x, y, z, cx, cz)
 	var origin := Vector3(x, y, z)
 	for box: Array in boxes:
@@ -349,8 +354,7 @@ func _add_shape(block: int, shape: String, x: int, y: int, z: int, cx: int, cz: 
 				_indices[key].append(start + index)
 
 func _is_opaque_at(x: int, y: int, z: int) -> bool:
-	var n := _block_at(x, y, z)
-	return n > 0 and bool(Blocks.info(n).get("opaque", false))
+	return _lk_opaque[_block_at(x, y, z)] == 1
 
 ## Which cutout silhouette the plants shader draws for a cross block.
 ## 0 grass tuft · 1 flower · 2 mushroom · 3 flame · 4 leafy bush ·
@@ -380,10 +384,10 @@ static func _plant_shape(block: int) -> int:
 	return 8
 
 func _add_cross(block: int, x: int, y: int, z: int, cx: int, cz: int) -> void:
-	var color := Blocks.color_of(block)
+	var color := Blocks.LK_COLOR[block]
 	var jitter := _jitter(x, y, z, cx, cz)
-	var sway := Blocks.sway_of(block)
-	var emit := Blocks.emit_of(block)
+	var sway := Blocks.LK_SWAY[block]
+	var emit := Blocks.LK_EMIT[block]
 	var o := Vector3(x, y, z)
 	var half: float = CROSS_SIZES.get(block, Vector2(0.6, 0.75)).x * 0.5
 	var tall: float = CROSS_SIZES.get(block, Vector2(0.6, 0.75)).y

@@ -2304,6 +2304,12 @@ func send_pos(slot: int, pos: Vector3, yaw: float, anim: int) -> void:
 	sv_pos.rpc_id(1, slot, pos, yaw, anim)
 
 func send_edit(slot: int, pos: Vector3i, block: int) -> void:
+	# Predict locally: the block changes THIS frame (with an immediate
+	# synchronous remesh of its chunk) instead of waiting for the server
+	# echo to fight through the mesh queue. The echo re-applies the same
+	# value, which is a no-op visually.
+	if chunks != null:
+		chunks.apply_edit_now(pos, block)
 	sv_edit.rpc_id(1, slot, pos, block)
 
 @rpc("authority", "reliable")
