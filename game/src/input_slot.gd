@@ -65,7 +65,10 @@ func is_primary_pressed() -> bool:
 		_:
 			return Input.is_joy_button_pressed(device, JOY_BUTTON_A)
 
+## Jump / fly up: A, or LB while airborne (Ian's pad layout).
 func is_jump_pressed() -> bool:
+	if kind == Kind.GAMEPAD and Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER):
+		return true
 	return is_primary_pressed()
 
 ## Dig a block, collect a treasure, pet a critter (and zap Grumps).
@@ -77,7 +80,8 @@ func is_dig_pressed() -> bool:
 		Kind.KEYBOARD_ARROWS:
 			return Input.is_physical_key_pressed(KEY_PERIOD)
 		_:
-			return Input.is_joy_button_pressed(device, JOY_BUTTON_B)
+			return Input.is_joy_button_pressed(device, JOY_BUTTON_B) \
+				or Input.is_joy_button_pressed(device, JOY_BUTTON_RIGHT_SHOULDER)
 
 ## Place the selected block.
 func is_place_pressed() -> bool:
@@ -88,7 +92,7 @@ func is_place_pressed() -> bool:
 		Kind.KEYBOARD_ARROWS:
 			return Input.is_physical_key_pressed(KEY_COMMA)
 		_:
-			return Input.is_joy_button_pressed(device, JOY_BUTTON_X)
+			return Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.5
 
 ## Cycle the hotbar selection. Returns -1, 0 or +1.
 func cycle_direction() -> int:
@@ -134,7 +138,8 @@ func is_menu_pressed() -> bool:
 		Kind.KEYBOARD_WASD:
 			return Input.is_physical_key_pressed(KEY_ESCAPE)
 		Kind.GAMEPAD:
-			return Input.is_joy_button_pressed(device, JOY_BUTTON_START)
+			return Input.is_joy_button_pressed(device, JOY_BUTTON_START) \
+				or Input.is_joy_button_pressed(device, JOY_BUTTON_X)
 	return false
 
 ## Open/close the block & structure picker (E / D-pad up).
@@ -143,7 +148,7 @@ func is_picker_pressed() -> bool:
 		Kind.KEYBOARD_WASD:
 			return Input.is_physical_key_pressed(KEY_E)
 		Kind.GAMEPAD:
-			return Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_UP)
+			return false  # pads open the menu with X/Start
 	return false
 
 ## Directional input for navigating the picker grid.
@@ -237,10 +242,9 @@ func zoom_direction() -> int:
 			if Input.is_physical_key_pressed(KEY_BRACKETRIGHT):
 				return 1
 		Kind.GAMEPAD:
-			var y := Input.get_joy_axis(device, JOY_AXIS_RIGHT_Y)
-			if y < -0.6:
+			if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_UP):
 				return 1
-			if y > 0.6:
+			if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_DOWN):
 				return -1
 	return 0
 

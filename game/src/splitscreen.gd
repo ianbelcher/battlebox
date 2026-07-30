@@ -280,7 +280,7 @@ func _process(delta: float) -> void:
 			cell.vm_sig = ""
 		# Poll this player's spin/zoom controls (edge-latched so one press or
 		# stick flick = one step).
-		if input != null:
+		if input != null and (cell.hud == null or not cell.hud.is_ui_open()):
 			var rot := input.rotate_direction()
 			if rot != 0 and cell.prev_rot == 0:
 				cell.yaw_index = posmod(cell.yaw_index + rot, 5)
