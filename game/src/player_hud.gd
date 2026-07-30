@@ -27,7 +27,18 @@ var _menu_slot_buttons: Array = []
 func _uscale() -> float:
 	return clampf(DisplayServer.window_get_size().x / 1100.0, 1.15, 3.0)
 var _menu: PanelContainer
-var _tabs: TabContainer
+# Two-level menu: a top row of groups, each holding a row of small tabs.
+# Pages are addressed by a flat index so controllers can just bump LB/RB
+# through everything: 0-3 pickers, 4 Battle, 5 Players, 6 World,
+# 7 Character, 8 Video.
+var _groups: TabContainer
+var _build_tabs: TabContainer
+var _game_tabs: TabContainer
+var _opt_tabs: TabContainer
+const PAGE_PLAYERS := 5
+const PAGE_CHARACTER := 7
+const _PAGES := [[0, 0], [0, 1], [0, 2], [0, 3],
+	[1, 0], [1, 1], [1, 2], [2, 0], [2, 1]]
 var _prev_picker := false
 var _prev_menu := false
 
@@ -197,13 +208,25 @@ func _ready() -> void:
 	_menu.visible = false
 	_menu.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_menu)
-	_tabs = TabContainer.new()
-	_tabs.get_tab_bar().focus_mode = Control.FOCUS_NONE
-	_tabs.add_theme_font_size_override("font_size", _us(20))
-	_menu.add_child(_tabs)
-	_tabs.tab_changed.connect(func(tab: int) -> void:
+	_groups = TabContainer.new()
+	_groups.get_tab_bar().focus_mode = Control.FOCUS_NONE
+	_groups.add_theme_font_size_override("font_size", _us(21))
+	_menu.add_child(_groups)
+	_build_tabs = TabContainer.new()
+	_build_tabs.name = "Build"
+	_game_tabs = TabContainer.new()
+	_game_tabs.name = "Game"
+	_opt_tabs = TabContainer.new()
+	_opt_tabs.name = "Options"
+	var on_page_change := func(_t: int) -> void:
 		if not _tab_guard:
-			_last_tab = tab)
+			_last_tab = _current_page()
+	for inner_tc: TabContainer in [_build_tabs, _game_tabs, _opt_tabs]:
+		inner_tc.get_tab_bar().focus_mode = Control.FOCUS_NONE
+		inner_tc.add_theme_font_size_override("font_size", _us(17))
+		_groups.add_child(inner_tc)
+		inner_tc.tab_changed.connect(on_page_change)
+	_groups.tab_changed.connect(on_page_change)
 	_storm_tint = ColorRect.new()
 	_storm_tint.color = Color(0.9, 0.15, 0.1, 0.0)
 	_storm_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -259,7 +282,7 @@ func _ready() -> void:
 		var picker := BlockPicker.new(spec[1])
 		picker.name = spec[0]
 		picker.picked.connect(_on_picked)
-		_tabs.add_child(picker)
+		_build_tabs.add_child(picker)
 		_pickers.append(picker)
 	_picker = _pickers[0]
 	_build_character_tab()
@@ -316,7 +339,7 @@ func _toggle_menu(player: Player, _tab: int) -> void:
 		_close_menu()
 		return
 	_menu.visible = true
-	_tabs.set_tab_disabled(0, world != null and world.match_phase != "IDLE")
+	_build_tabs.set_tab_disabled(0, world != null and world.match_phase != "IDLE")
 	_refresh_preview()
 	player.ui_locked = true
 	# picker.open() flips child visibility, which yanks the TabContainer onto
@@ -325,9 +348,9 @@ func _toggle_menu(player: Player, _tab: int) -> void:
 	# churn doesn't pollute _last_tab.
 	_tab_guard = true
 	for picker: BlockPicker in _pickers:
-		picker.fit(size * Vector2(0.75, 0.66))
+		picker.fit(size * Vector2(0.75, 0.6))
 		picker.open()
-	_tabs.current_tab = 1 if _tabs.is_tab_disabled(_last_tab) else _last_tab
+	_set_page(1 if _page_disabled(_last_tab) else _last_tab)
 	_tab_guard = false
 	var entry := _entry()
 	if _name_edit != null and not entry.is_empty():
@@ -339,7 +362,7 @@ func _build_character_tab() -> void:
 	var char_scroll := ScrollContainer.new()
 	char_scroll.name = "Character"
 	char_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_tabs.add_child(char_scroll)
+	_opt_tabs.add_child(char_scroll)
 	var split := HBoxContainer.new()
 	split.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	split.add_theme_constant_override("separation", _us(36))
@@ -439,7 +462,7 @@ func _build_character_tab() -> void:
 ## "Game" tab: battle royale (with options and teams inline), world picker
 ## and computer players — grouped into tidy sections.
 func _build_game_tab() -> void:
-	var tab := _scrolled_tab("Game")
+	var tab := _scrolled_tab("Battle", _game_tabs)
 	tab.add_theme_constant_override("separation", _us(10))
 	_add_section(tab, "⚔  BATTLE ROYALE")
 	var br := Button.new()
@@ -519,32 +542,13 @@ func _build_game_tab() -> void:
 			else "⏹  Stop after this battle (host only)")
 		Sfx.play("tick", -8.0))
 	tab.add_child(loop_btn)
-	var teams_label := Label.new()
-	teams_label.text = "Teams:"
-	teams_label.add_theme_font_size_override("font_size", _us(20))
-	tab.add_child(teams_label)
+	tab = _scrolled_tab("Players", _game_tabs)
+	tab.add_theme_constant_override("separation", _us(10))
+	_add_section(tab, "🚩  TEAMS")
 	_team_box = VBoxContainer.new()
 	_team_box.add_theme_constant_override("separation", _us(4))
 	tab.add_child(_team_box)
-	_add_section(tab, "🌍  WORLD")
-	var gen_label := Label.new()
-	gen_label.text = "Generated worlds:"
-	gen_label.add_theme_font_size_override("font_size", _us(18))
-	tab.add_child(gen_label)
-	_world_row = HBoxContainer.new()
-	_world_row.add_theme_constant_override("separation", _us(6))
-	tab.add_child(_world_row)
-	_maps_label = Label.new()
-	_maps_label.text = "Maps:"
-	_maps_label.add_theme_font_size_override("font_size", _us(18))
-	tab.add_child(_maps_label)
-	_maps_row = HBoxContainer.new()
-	_maps_row.add_theme_constant_override("separation", _us(6))
-	tab.add_child(_maps_row)
-	_rebuild_world_row()
-	if world != null:
-		world.map_list_changed.connect(_rebuild_world_row)
-	_add_section(tab, "👥  PLAYERS")
+	_add_section(tab, "🤖  COMPUTER PLAYERS")
 	var bot_row := HBoxContainer.new()
 	bot_row.add_theme_constant_override("separation", _us(8))
 	tab.add_child(bot_row)
@@ -584,6 +588,26 @@ func _build_game_tab() -> void:
 			Sfx.play("click"))
 		per_row.add_child(per_btn)
 		_bots_btns[n] = per_btn
+	tab = _scrolled_tab("World", _game_tabs)
+	tab.add_theme_constant_override("separation", _us(10))
+	_add_section(tab, "🌍  WORLD")
+	var gen_label := Label.new()
+	gen_label.text = "Generated worlds:"
+	gen_label.add_theme_font_size_override("font_size", _us(18))
+	tab.add_child(gen_label)
+	_world_row = HBoxContainer.new()
+	_world_row.add_theme_constant_override("separation", _us(6))
+	tab.add_child(_world_row)
+	_maps_label = Label.new()
+	_maps_label.text = "Maps:"
+	_maps_label.add_theme_font_size_override("font_size", _us(18))
+	tab.add_child(_maps_label)
+	_maps_row = HBoxContainer.new()
+	_maps_row.add_theme_constant_override("separation", _us(6))
+	tab.add_child(_maps_row)
+	_rebuild_world_row()
+	if world != null:
+		world.map_list_changed.connect(_rebuild_world_row)
 
 ## Generated themes on one row; the server's imported map library below.
 func _rebuild_world_row() -> void:
@@ -616,15 +640,34 @@ func _map_button(map_key: String, map_name: String) -> Button:
 	return map_btn
 
 ## A tab whose content scrolls vertically instead of overflowing.
-func _scrolled_tab(tab_name: String) -> VBoxContainer:
+func _scrolled_tab(tab_name: String, parent: TabContainer) -> VBoxContainer:
 	var scroll := ScrollContainer.new()
 	scroll.name = tab_name
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_tabs.add_child(scroll)
+	parent.add_child(scroll)
 	var box := VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(box)
 	return box
+
+func _inner_tabs(group: int) -> TabContainer:
+	return [_build_tabs, _game_tabs, _opt_tabs][group]
+
+func _current_page() -> int:
+	for page in _PAGES.size():
+		if _PAGES[page][0] == _groups.current_tab \
+				and _PAGES[page][1] == _inner_tabs(_groups.current_tab).current_tab:
+			return page
+	return 0
+
+func _set_page(page: int) -> void:
+	var spec: Array = _PAGES[clampi(page, 0, _PAGES.size() - 1)]
+	_groups.current_tab = spec[0]
+	_inner_tabs(spec[0]).current_tab = spec[1]
+
+func _page_disabled(page: int) -> bool:
+	var spec: Array = _PAGES[clampi(page, 0, _PAGES.size() - 1)]
+	return _inner_tabs(spec[0]).is_tab_disabled(spec[1])
 
 func _add_section(tab: Control, title: String) -> void:
 	var lbl := Label.new()
@@ -738,7 +781,7 @@ func _on_match_changed() -> void:
 	if world.match_phase == "LOBBY":
 		if not _menu.visible:
 			_toggle_menu(player, 5)
-		_tabs.current_tab = 5
+		_set_page(PAGE_PLAYERS)
 		_refresh_team_box()
 	elif _menu.visible and world.match_phase == "DROP":
 		_close_menu()
@@ -810,7 +853,7 @@ func _refresh_team_box() -> void:
 ## Its own tab: every video setting individually — numbers get sliders,
 ## switches get checkboxes. No presets, no magic.
 func _build_video_tab() -> void:
-	var tab := _scrolled_tab("Video")
+	var tab := _scrolled_tab("Video", _opt_tabs)
 	tab.add_theme_constant_override("separation", _us(10))
 	_add_video_slider(tab, "Draw distance", "dist_blocks", 32, 208, 16, "%d blocks (16 per chunk)")
 	_add_video_slider(tab, "3D resolution", "render_scale", 1, 100, 1, "%d%%")
@@ -902,7 +945,7 @@ func _refresh_identity() -> void:
 	if entry.is_empty():
 		return
 	_name_label.text = str(entry.name)
-	if _menu != null and _menu.visible and _tabs.current_tab == 4:
+	if _menu != null and _menu.visible and _current_page() == PAGE_CHARACTER:
 		_refresh_preview()
 	var team := int(entry.get("team", -1))
 	_name_label.add_theme_color_override("font_color",
@@ -967,18 +1010,19 @@ func _process(_delta: float) -> void:
 			_prev_slot_pick_menu = pick
 			var tab_cycle := input.cycle_direction()
 			if tab_cycle != 0 and not _menu_tab_latch:
-				var next_tab := _tabs.current_tab
-				for attempt in 6:
-					next_tab = posmod(next_tab + tab_cycle, 7)
-					if not _tabs.is_tab_disabled(next_tab):
+				var next_tab := _current_page()
+				for attempt in _PAGES.size() - 1:
+					next_tab = posmod(next_tab + tab_cycle, _PAGES.size())
+					if not _page_disabled(next_tab):
 						break
-				_tabs.current_tab = next_tab
+				_set_page(next_tab)
 				Sfx.play("tick", -12.0)
 			_menu_tab_latch = tab_cycle != 0
 			if input.is_view_toggle_pressed():
 				_close_menu()
-			if _tabs.current_tab < 4:
-				_pickers[_tabs.current_tab].poll(input, _delta)
+			var page := _current_page()
+			if page < 4:
+				_pickers[page].poll(input, _delta)
 	if not _menu.visible and player.ui_locked:
 		player.ui_locked = false
 	if OS.get_environment("WORLD_AUTOTEST_MENU") == "1" and slot == 0 \
@@ -986,7 +1030,7 @@ func _process(_delta: float) -> void:
 		_autoopened = true
 		_toggle_menu(player, 1)
 	if _autoopened and _menu.visible and not OS.get_environment("WORLD_AUTOTEST_TAB").is_empty():
-		_tabs.current_tab = int(OS.get_environment("WORLD_AUTOTEST_TAB"))
+		_set_page(int(OS.get_environment("WORLD_AUTOTEST_TAB")))
 
 	_crosshair.visible = player.fp_mode and not _menu.visible
 	_crosshair.add_theme_font_size_override("font_size", _us(int(30 * (1.0 + player.fp_zoom * 0.8))))

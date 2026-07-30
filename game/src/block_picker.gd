@@ -13,6 +13,7 @@ var entries: Array = []      # {kind: "block"/"structure", id, name, color}
 var focus_index := 0
 var _title: Label
 var _chips: Array = []
+var _scroll: ScrollContainer
 var _nav_cooldown := 0.0
 
 var category := "blocks"
@@ -63,13 +64,18 @@ func _init(p_category := "blocks") -> void:
 	_title.add_theme_color_override("font_color", Color("ffd166"))
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_title)
+	# Chips keep their size on small screens; the grid scrolls instead of
+	# squashing everything to fit.
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(_scroll)
 	var grid := GridContainer.new()
-	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	grid.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_SHRINK_CENTER
+	grid.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_SHRINK_CENTER
 	grid.columns = COLUMNS
 	grid.add_theme_constant_override("h_separation", 5)
 	grid.add_theme_constant_override("v_separation", 5)
-	box.add_child(grid)
+	_scroll.add_child(grid)
 	for i in entries.size():
 		var entry: Dictionary = entries[i]
 		var chip := Panel.new()
@@ -99,9 +105,9 @@ func _init(p_category := "blocks") -> void:
 ## Scale chips and text so the grid uses the space it's given — tiny
 ## quarter-screen cells and huge fullscreen windows both read well.
 func fit(avail: Vector2) -> void:
-	var rows := ceili(float(entries.size()) / COLUMNS)
-	var chip := clampf(minf((avail.x * 0.92 - 50.0) / COLUMNS,
-		(avail.y * 0.74 - 90.0) / rows) - 5.0, 30.0, 130.0)
+	# Width decides the chip size (the columns must fit); running out of
+	# HEIGHT just means the grid scrolls, so chips never shrink for it.
+	var chip := clampf((avail.x * 0.92 - 50.0) / COLUMNS - 5.0, 44.0, 130.0)
 	for panel: Panel in _chips:
 		panel.custom_minimum_size = Vector2(chip, chip)
 		for child in panel.get_children():
@@ -148,6 +154,8 @@ func _select() -> void:
 
 func _refresh() -> void:
 	_title.text = str(entries[focus_index].name)
+	if _scroll != null and focus_index < _chips.size():
+		_scroll.ensure_control_visible(_chips[focus_index])
 	for i in _chips.size():
 		var chip: Panel = _chips[i]
 		var entry: Dictionary = _chips[i].get_meta("entry", entries[i])

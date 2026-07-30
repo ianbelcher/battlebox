@@ -231,7 +231,10 @@ func teleport(pos: Vector3) -> void:
 func remote_update(pos: Vector3, yaw: float, p_anim: int) -> void:
 	_remote_target = pos
 	_remote_yaw = yaw
-	anim = p_anim % 16
+	var packed := p_anim % 16
+	if packed >= 8 and swing_time <= 0.0:
+		swing_time = 0.25
+	anim = packed % 8
 	apply_remote_held(p_anim / 16)
 	if not _spawned:
 		position = pos
@@ -802,7 +805,8 @@ func _send_state(delta: float) -> void:
 	if _send_accum < 1.0 / SEND_HZ:
 		return
 	_send_accum = 0.0
-	world.send_pos(slot, position, rotation.y, anim + _held_code() * 16)
+	world.send_pos(slot, position, rotation.y,
+		anim + (8 if swing_time > 0.0 else 0) + _held_code() * 16)
 	if OS.get_environment("WORLD_DEBUG") == "1":
 		_debug_ticks += 1
 		if _debug_ticks % 24 == 0:
@@ -846,6 +850,19 @@ func _animate(delta: float) -> void:
 	_swing_limb("LegR", -swing, delta)
 	_swing_limb("ArmL", -swing, delta, arms_up)
 	_swing_limb("ArmR", swing, delta, arms_up)
+	# A real sword swing overrides the walk cycle on the sword arm: a fast
+	# wind-up over the shoulder, then a diagonal chop across the body.
+	if swing_time > 0.0:
+		var arm: Node3D = _avatar.get_node_or_null("ArmR")
+		if arm != null:
+			var t := 1.0 - swing_time / 0.25
+			if t < 0.35:
+				arm.rotation.x = lerpf(0.4, 2.7, t / 0.35)
+				arm.rotation.z = lerpf(0.0, 0.35, t / 0.35)
+			else:
+				var chop := minf((t - 0.35) / 0.65 * 1.25, 1.0)
+				arm.rotation.x = lerpf(2.7, 0.15, chop)
+				arm.rotation.z = lerpf(0.35, -0.75, chop)
 
 ## Limbs ease toward their pose so animation switches never pop. arms_up
 ## rotates the pivot so hands point skyward (jumping — kids love it).

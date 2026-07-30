@@ -1245,6 +1245,7 @@ func _server_tick_bots(delta: float) -> void:
 						_match_hurt(enemy, 1, epos)
 				elif dist < 2.6:
 					bot.shoot_cd = 0.8
+					cl_pos.rpc(id, pos, bot.yaw, 9)
 					_match_hurt(enemy, 1, epos)
 		cl_pos.rpc(id, pos, bot.yaw, 1)
 
