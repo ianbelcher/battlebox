@@ -229,7 +229,7 @@ func _ready() -> void:
 		inner_tc.tab_changed.connect(on_page_change)
 	_groups.tab_changed.connect(on_page_change)
 	_groups.set_tab_title(0, "🔨 Build")
-	_groups.set_tab_title(1, "⚔ Game")
+	_groups.set_tab_title(1, "🏆 Game")
 	_groups.set_tab_title(2, "⚙ Options")
 	_storm_tint = ColorRect.new()
 	_storm_tint.color = Color(0.9, 0.15, 0.1, 0.0)
@@ -555,6 +555,15 @@ func _build_character_tab() -> void:
 				Game.cycle_local_style(slot, attr_name, d)
 				Sfx.play("pop", -6.0))
 			row.add_child(btn)
+	var dice := Button.new()
+	dice.focus_mode = Control.FOCUS_NONE
+	dice.text = "🎲  Surprise me!"
+	dice.add_theme_font_size_override("font_size", _us(20))
+	dice.pressed.connect(func() -> void:
+		for dice_attr in ["body", "face", "hair", "hat", "shirt", "pants", "shoes", "gear"]:
+			Game.cycle_local_style(slot, str(dice_attr), randi_range(1, 5))
+		Sfx.play("cheer", -12.0))
+	tab.add_child(dice)
 	_preview_viewport = SubViewport.new()
 	_preview_viewport.own_world_3d = true
 	_preview_viewport.transparent_bg = true
@@ -584,7 +593,7 @@ func _build_character_tab() -> void:
 func _build_game_tab() -> void:
 	var tab := _scrolled_tab("Battle", _game_tabs)
 	tab.add_theme_constant_override("separation", _us(10))
-	_add_section(tab, "⚔  BATTLE ROYALE")
+	_add_section(tab, "🏆  BATTLE ROYALE")
 	var br := Button.new()
 	br.focus_mode = Control.FOCUS_NONE
 	br.text = "🏆  Start Battle Royale"
@@ -1045,7 +1054,7 @@ func _build_help_tab() -> void:
 		key_line.text = str(line)
 		key_line.add_theme_font_size_override("font_size", _us(17))
 		tab.add_child(key_line)
-	_add_section(tab, "⚔  BATTLE ROYALE")
+	_add_section(tab, "🏆  BATTLE ROYALE")
 	for line in ["Set up teams and computer players on Game ▸ Players.",
 			"Grab crates for weapons — the sword alone won't win it.",
 			"Stay inside the storm circle (watch the radar ring).",
@@ -1251,7 +1260,7 @@ func _process(_delta: float) -> void:
 		var in_lobby: bool = world.match_phase == "LOBBY"
 		_lobby_countdown.visible = in_lobby
 		if in_lobby:
-			_lobby_countdown.text = "⚔  Battle starts in %d — pick your team!" \
+			_lobby_countdown.text = "🏆  Battle starts in %d — pick your team!" \
 				% int(ceil(world.match_seconds))
 	if _ride_hint != null and world != null and world.critter_view != null:
 		if player.riding >= 0:
@@ -1270,7 +1279,7 @@ func _process(_delta: float) -> void:
 			_center_note.text = "🏆  Next battle in %d" % secs
 		elif world.match_phase == "LOBBY" and not _menu.visible:
 			_center_note.visible = true
-			_center_note.text = "⚔  Battle in %d — press ☰ to pick your team" % secs
+			_center_note.text = "🏆  Battle in %d — open the menu to pick your team" % secs
 		else:
 			_center_note.visible = false
 	_crosshair.visible = player.fp_mode and not _menu.visible

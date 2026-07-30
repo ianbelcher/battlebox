@@ -308,15 +308,16 @@ func _draw() -> void:
 			draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -w * 0.2),
 				mid + Vector2(w * 0.12, w * 0.08), mid + Vector2(0, w * 0.16),
 				mid + Vector2(-w * 0.12, w * 0.08)]), Color(1, 0.5, 0.15, 0.95))
-		Blocks.GLASS, Blocks.ICE:
-			draw_line(mid + Vector2(-w * 0.16, w * 0.12), mid + Vector2(w * 0.04, -w * 0.16), Color(1, 1, 1, 0.8), w * 0.05)
-			draw_line(mid + Vector2(-w * 0.02, w * 0.16), mid + Vector2(w * 0.14, -w * 0.06), Color(1, 1, 1, 0.6), w * 0.04)
 		Blocks.FIREWORK:
 			draw_line(Vector2(w * 0.35, h * 0.65), Vector2(w * 0.62, h * 0.3), overlay, w * 0.05)
 			for i in 5:
 				var a := i * TAU / 5.0
 				draw_line(Vector2(w * 0.62, h * 0.3),
 					Vector2(w * 0.62, h * 0.3) + Vector2(cos(a), sin(a)) * w * 0.12, overlay, w * 0.03)
+		_:
+			if Blocks.is_translucent(block_id):
+				draw_line(mid + Vector2(-w * 0.16, w * 0.12), mid + Vector2(w * 0.04, -w * 0.16), Color(1, 1, 1, 0.8), w * 0.05)
+				draw_line(mid + Vector2(-w * 0.02, w * 0.16), mid + Vector2(w * 0.14, -w * 0.06), Color(1, 1, 1, 0.6), w * 0.04)
 
 	# Material textures so the family blocks read as more than flat color.
 	if block_id >= Blocks.M_STONE and block_id < Blocks.M_SOIL:
