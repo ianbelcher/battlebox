@@ -262,14 +262,18 @@ func _draw() -> void:
 		return
 	var top := _dim(Blocks.top_color_of(block_id))
 	var side := _dim(Blocks.color_of(block_id))
-	var ty := h * 0.28
-	var my := h * 0.55
-	draw_colored_polygon(PackedVector2Array([Vector2(mid.x, 0), Vector2(w, ty * 0.5),
-		Vector2(mid.x, ty), Vector2(0, ty * 0.5)]), Color(top.r, top.g, top.b))
-	draw_colored_polygon(PackedVector2Array([Vector2(0, ty * 0.5), Vector2(mid.x, ty),
-		Vector2(mid.x, h), Vector2(0, my)]), Color(side.r * 0.72, side.g * 0.72, side.b * 0.72))
-	draw_colored_polygon(PackedVector2Array([Vector2(mid.x, ty), Vector2(w, ty * 0.5),
-		Vector2(w, my), Vector2(mid.x, h)]), Color(side.r * 0.55, side.g * 0.55, side.b * 0.55))
+	# Minecraft-proportioned iso cube: a shallower top diamond and a less
+	# pointy base (small hotbar chips used to read as "shields"), with
+	# brighter side faces.
+	var ty := h * 0.26
+	var my := h * 0.74
+	var by := h * 0.97
+	draw_colored_polygon(PackedVector2Array([Vector2(mid.x, h * 0.03), Vector2(w * 0.97, ty * 0.55),
+		Vector2(mid.x, ty), Vector2(w * 0.03, ty * 0.55)]), Color(top.r, top.g, top.b))
+	draw_colored_polygon(PackedVector2Array([Vector2(w * 0.03, ty * 0.55), Vector2(mid.x, ty),
+		Vector2(mid.x, by), Vector2(w * 0.03, my)]), Color(side.r * 0.8, side.g * 0.8, side.b * 0.8))
+	draw_colored_polygon(PackedVector2Array([Vector2(mid.x, ty), Vector2(w * 0.97, ty * 0.55),
+		Vector2(w * 0.97, my), Vector2(mid.x, by)]), Color(side.r * 0.6, side.g * 0.6, side.b * 0.6))
 	# Symbol overlays so the machine blocks read at a glance.
 	var overlay := Color(1, 1, 1, 0.9)
 	match block_id:
