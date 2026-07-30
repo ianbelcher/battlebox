@@ -27,6 +27,7 @@ var _storm_tint: ColorRect
 var _team_rows: VBoxContainer
 var _wave_label: Label
 var _banner: Label
+var _banner_shown_ms := 0
 var _vote_panel: PanelContainer
 var _minimap: TextureRect
 var _loading_label: Label
@@ -383,7 +384,7 @@ func _on_connected() -> void:
 			Sfx.play("cheer", -4.0)
 		elif winner == -2:
 			message = "Everyone's out — no winner this time!"
-		_show_banner(message + "\n(Ⓐ to close)", true))
+		_show_banner(message, true))
 	world.reset_vote_started.connect(func() -> void: _vote_panel.visible = true)
 	world.reset_result.connect(func(happened: bool) -> void:
 		_vote_panel.visible = false
@@ -640,6 +641,7 @@ func _show_banner(text: String, sticky := false) -> void:
 	_banner.visible = true
 	_banner.modulate.a = 1.0
 	_banner_sticky = sticky
+	_banner_shown_ms = Time.get_ticks_msec()
 	if sticky:
 		return  # stays until a player dismisses it (jump)
 	var tween := create_tween()
@@ -719,8 +721,13 @@ var _last_join_ms := 0
 func _poll_banner_dismiss() -> void:
 	if not _banner_sticky or not _banner.visible:
 		return
+	# The result deserves a moment on screen: ignore presses for 5s,
+	# then any main button clears it.
+	if Time.get_ticks_msec() - _banner_shown_ms < 5000:
+		return
 	for input: InputSlot in Game.local_inputs.values():
-		if input.is_primary_pressed():
+		if input.is_primary_pressed() or input.is_dig_pressed() \
+				or input.is_menu_pressed():
 			_banner.visible = false
 			_banner_sticky = false
 			return

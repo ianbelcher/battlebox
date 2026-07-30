@@ -33,6 +33,7 @@ var client_minutes := 5
 var client_size := 250
 var client_loot := false
 var client_team_names: Array = ["A", "B", "C", "D"]
+var client_world := ""
 ## player_id -> dragon critter id, replicated so everyone sees who rides.
 var riding_map: Dictionary = {}
 
@@ -122,6 +123,12 @@ const TEAM_COLORS := [Color("ff5a5a"), Color("4a9df8"), Color("51c979"),
 	Color("8858d8"), Color("90e8b8"), Color("708098"), Color("ffc8a0"),
 	Color("484858")]
 var team_count := 4
+var selected_map := ""
+## Kid-tuned battle health: plenty of hearts, and after any hit you're
+## untouchable for a moment — no more getting deleted in one volley.
+const MATCH_HP := 8
+const MERCY_MS := 2000
+var _last_hit_ms: Dictionary = {}
 ## Display names for the teams, A..X by default; renameable from the
 ## Players view. Size always equals team_count.
 var team_names: Array = ["A", "B", "C", "D"]
@@ -292,6 +299,8 @@ func sv_hello() -> void:
 	cl_overview.rpc_id(peer, overview)
 	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only)
 	cl_teams.rpc_id(peer, team_names)
+	cl_world_sel.rpc_id(peer, selected_map if not selected_map.is_empty() \
+		else (store.current_map_key if not store.current_map_key.is_empty() else store.theme))
 	var payload: Array = []
 	for crate_id: int in _crates.keys():
 		payload.append([crate_id, _crates[crate_id].weapon, _crates[crate_id].pos])
@@ -1050,13 +1059,7 @@ func _check_reset_votes() -> void:
 func sv_new_map(map_name: String) -> void:
 	if not multiplayer.is_server() or match_phase != "IDLE":
 		return
-	var known := map_name in ["classic", "desert", "isles", "castles", "city", "sky"]
-	if map_name == "mca" or map_name.begins_with("mca:"):
-		for entry in ChunkStore.list_maps():
-			if str(entry.key) == map_name:
-				known = true
-				break
-	if not known:
+	if not _known_map(map_name):
 		return
 	_do_world_reset(map_name)
 
@@ -1343,6 +1346,7 @@ func _save_battle_setup() -> void:
 	cfg.set_value("battle", "loot", loot_only)
 	cfg.set_value("battle", "team_names", team_names)
 	cfg.set_value("battle", "bots", _bots.size())
+	cfg.set_value("battle", "world", selected_map)
 	cfg.save(store.data_dir.path_join("battle.cfg"))
 
 func _load_battle_setup() -> void:
@@ -1356,6 +1360,9 @@ func _load_battle_setup() -> void:
 	if names.size() >= 2:
 		team_names = names
 		team_count = names.size()
+	selected_map = str(cfg.get_value("battle", "world", ""))
+	if not _known_map(selected_map):
+		selected_map = ""
 	var bot_count := int(cfg.get_value("battle", "bots", 0))
 	for i in mini(bot_count, 23):
 		_spawn_bot()
@@ -1410,10 +1417,64 @@ func sv_match_start(_slot: int) -> void:
 	if not multiplayer.is_server() or match_phase != "IDLE" or Game.roster.is_empty() \
 			or not _is_host(multiplayer.get_remote_sender_id()):
 		return
+	# The battle plays on the SELECTED world — switch now if it differs.
+	if not selected_map.is_empty() and selected_map != store.current_map_key \
+			and not (selected_map == store.theme and store.current_map_key.is_empty()):
+		_do_world_reset(selected_map)
+	# Every human gets a team the moment the lobby opens; nobody is ever
+	# team-less (they can still move themselves in the menu).
+	_assign_stray_humans()
 	match_phase = "LOBBY"
 	_match_timer = LOBBY_SECONDS
 	print("Battle royale lobby open")
 	cl_match.rpc("LOBBY", LOBBY_SECONDS)
+
+func _assign_stray_humans() -> void:
+	var counts: Array[int] = []
+	counts.resize(team_count)
+	for id: String in Game.roster.keys():
+		var team := int(Game.roster[id].get("team", -1))
+		if team >= 0 and team < team_count:
+			counts[team] += 1
+	var changed := false
+	for id: String in Game.roster.keys():
+		if int(Game.roster[id].get("team", -1)) >= 0:
+			continue
+		var best := 0
+		for t in team_count:
+			if counts[t] < counts[best]:
+				best = t
+		Game.roster[id].team = best
+		counts[best] += 1
+		changed = true
+	if changed:
+		Game.cl_roster.rpc(Game.roster)
+
+## World SELECTION (host): remembered, shown highlighted everywhere, and
+## applied when the next battle starts — never an instant switch.
+@rpc("any_peer", "call_local", "reliable")
+func sv_select_world(map_name: String) -> void:
+	if not multiplayer.is_server() or not _is_host(multiplayer.get_remote_sender_id()):
+		return
+	if not _known_map(map_name):
+		return
+	selected_map = map_name
+	cl_world_sel.rpc(selected_map)
+	_save_battle_setup()
+
+@rpc("authority", "call_local", "reliable")
+func cl_world_sel(map_name: String) -> void:
+	client_world = map_name
+	if not multiplayer.is_server():
+		map_list_changed.emit()
+
+func _known_map(map_name: String) -> bool:
+	if map_name in ["classic", "desert", "isles", "castles", "city", "sky"]:
+		return true
+	for entry in ChunkStore.list_maps():
+		if str(entry.key) == map_name:
+			return true
+	return false
 
 func _server_tick_match(delta: float) -> void:
 	if match_phase == "IDLE":
@@ -1459,7 +1520,8 @@ func _server_tick_match(delta: float) -> void:
 		"COUNTDOWN":
 			if _match_timer <= 0.0:
 				# Fresh copy of the SAME map, then straight into a new lobby.
-				_do_world_reset(store.current_map_key)
+				_do_world_reset(selected_map if not selected_map.is_empty() \
+					else store.current_map_key)
 				match_phase = "LOBBY"
 				_match_timer = LOBBY_SECONDS
 				cl_match.rpc("LOBBY", LOBBY_SECONDS)
@@ -1496,10 +1558,10 @@ func _server_match_drop() -> void:
 		# bots — recreate instead of crashing the match start.
 		if not _player_state.has(id):
 			_player_state[id] = {"pos": Vector3(spawn_pos), "treasures": 0,
-				"name": str(entry.get("name", "?")), "hp": 5}
+				"name": str(entry.get("name", "?")), "hp": MATCH_HP}
 		var state: Dictionary = _player_state[id]
-		state.hp = 5
-		cl_hearts.rpc(id, 5)
+		state.hp = MATCH_HP
+		cl_hearts.rpc(id, MATCH_HP)
 		var angle := float(i) * TAU / maxf(Game.roster.size(), 1.0) + randf() * 0.3
 		var dist := randf_range(_storm_start() * 0.25, _storm_start() * 0.42)
 		var drop := Vector3(cos(angle) * dist, WorldGen.CHUNK_H - 4, sin(angle) * dist)
@@ -1546,7 +1608,7 @@ func _storm_damage() -> void:
 		# than that the storm hits hard.
 		if Vector2(pos.x, pos.z).length() > storm_radius + 12.0:
 			_storm_hurt_ms[id] = now + 1600
-			state.hp = int(state.get("hp", 5)) - 1
+			state.hp = int(state.get("hp", MATCH_HP)) - 1
 			cl_hearts.rpc(id, state.hp)
 			# No knockback from the storm: pushing players while they're
 			# already outside fed back into more storm damage and once
@@ -1630,7 +1692,7 @@ func _tick_revives() -> void:
 				_revive_progress.erase(id)
 				var state: Dictionary = _player_state.get(id, {})
 				if not state.is_empty():
-					state.hp = 2
+					state.hp = 3
 				cl_hearts.rpc(id, 2)
 				cl_downed_state.rpc(id, false)
 				Sfx.play("collect")
@@ -1671,10 +1733,14 @@ func _match_hurt(id: String, amount: int, from_pos: Vector3) -> void:
 		return
 	if _downed_ids.has(id):
 		return  # ghosts are untouchable — revive or bleed out, nothing else
+	var now := Time.get_ticks_msec()
+	if now - int(_last_hit_ms.get(id, -MERCY_MS)) < MERCY_MS:
+		return  # mercy window: recently hit, briefly untouchable
+	_last_hit_ms[id] = now
 	var state: Dictionary = _player_state.get(id, {})
 	if state.is_empty():
 		return
-	state.hp = int(state.get("hp", 5)) - amount
+	state.hp = int(state.get("hp", MATCH_HP)) - amount
 	cl_hearts.rpc(id, state.hp)
 	cl_bonk.rpc(id, from_pos)
 	if state.hp <= 0:

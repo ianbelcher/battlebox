@@ -2,6 +2,11 @@
 
 A live list of OPEN work only (git history is the record of done).
 
+- [ ] FOLIAGE LOOK: the flat solid-color X-cross "two pieces of paper"
+      plants must go — real grass-blade / petal / flame cutout shapes
+      (UV-based shader cutouts), fire should read like Minecraft fire
+- [ ] ALL VANILLA BLOCKS (confirmed again): every main Minecraft block
+      minus redstone-circuitry — imported maps should look right
 - [ ] ICONS MEGA-REDO (BIG — asked multiple times): every block icon
       redrawn to read like Minecraft's actual iconography — kids can't
       read, the picture must say what it is (leaves ≠ plain green cube:
@@ -14,21 +19,3 @@ A live list of OPEN work only (git history is the record of done).
 - [ ] CATEGORY TAXONOMY: use Minecraft's own creative taxonomy —
       Building Blocks / Colored Blocks / Natural / Functional — instead
       of our invented Building/Nature/Colors/Lights split
-- [ ] BATTLE FLOW REWORK:
-      · Start button lives at the TOP of the Game group with the
-        countdown shown in it once clicked; tabs (Battle/Players/World)
-        sit under it
-      · World page = SELECT the world for the next battle (gold
-        highlight on the currently selected world, persisted) — do NOT
-        instantly switch the world and slam the menu shut
-      · starting must not yank everyone to the Players tab; humans are
-        auto-assigned a team the moment the lobby opens (never
-        team-less), anyone can still switch
-- [ ] UI PROFESSIONAL PASS:
-      · padding inside every tab view (content is flush to the edges)
-      · hover turns button text white which hides the selected state —
-        selected must stay YELLOW, hover must not mask it
-      · Players list: rows far too tall (chevron + name + robot icon
-        huge) — compact rows, no scrolling for a full 24 lobby
-      · hide "+ Computer player" at 24 players; add "− Computer player"
-        (removes the most recent)

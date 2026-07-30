@@ -231,10 +231,38 @@ func _ready() -> void:
 	var on_page_change := func(_t: int) -> void:
 		if not _tab_guard:
 			_last_tab = _current_page()
+	var game_wrap := VBoxContainer.new()
+	game_wrap.name = "Game"
+	game_wrap.add_theme_constant_override("separation", _us(8))
+	_battle_start = Button.new()
+	_battle_start.focus_mode = Control.FOCUS_NONE
+	_battle_start.text = "🏆  Start Battle Royale"
+	_battle_start.add_theme_font_size_override("font_size", _us(24))
+	var start_style := StyleBoxFlat.new()
+	start_style.bg_color = Color("ffd166")
+	start_style.set_corner_radius_all(10)
+	start_style.set_content_margin_all(_us(9))
+	_battle_start.add_theme_stylebox_override("normal", start_style)
+	var start_hover: StyleBoxFlat = start_style.duplicate()
+	start_hover.bg_color = Color("ffd166").lightened(0.12)
+	_battle_start.add_theme_stylebox_override("hover", start_hover)
+	_battle_start.add_theme_stylebox_override("pressed", start_hover)
+	for state in ["font_color", "font_hover_color", "font_pressed_color"]:
+		_battle_start.add_theme_color_override(state, Color("1c2333"))
+	_battle_start.pressed.connect(func() -> void:
+		if Game.world != null and Game.world.match_phase == "IDLE":
+			Game.world.sv_match_start.rpc_id(1, 0)
+			Sfx.play("cheer", -10.0))
+	game_wrap.add_child(_battle_start)
 	for inner_tc: TabContainer in [_build_tabs, _game_tabs, _opt_tabs]:
 		inner_tc.get_tab_bar().focus_mode = Control.FOCUS_NONE
 		inner_tc.add_theme_font_size_override("font_size", _us(17))
-		_groups.add_child(inner_tc)
+		if inner_tc == _game_tabs:
+			inner_tc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+			game_wrap.add_child(inner_tc)
+			_groups.add_child(game_wrap)
+		else:
+			_groups.add_child(inner_tc)
 		inner_tc.tab_changed.connect(on_page_change)
 	_groups.tab_changed.connect(on_page_change)
 	_groups.set_tab_title(0, "🔨 Build")
@@ -624,15 +652,6 @@ func _build_game_tab() -> void:
 	var tab := _scrolled_tab("Battle", _game_tabs)
 	tab.add_theme_constant_override("separation", _us(10))
 	_add_section(tab, "🏆  BATTLE ROYALE")
-	var br := Button.new()
-	br.focus_mode = Control.FOCUS_NONE
-	br.text = "🏆  Start Battle Royale"
-	br.add_theme_font_size_override("font_size", _us(24))
-	br.pressed.connect(func() -> void:
-		if Game.world != null and Game.world.match_phase == "IDLE":
-			Game.world.sv_match_start.rpc_id(1, 0)
-			Sfx.play("cheer", -10.0))
-	tab.add_child(br)
 	var length_row := HBoxContainer.new()
 	length_row.add_theme_constant_override("separation", _us(8))
 	tab.add_child(length_row)
@@ -694,7 +713,7 @@ func _build_game_tab() -> void:
 	manage_row.add_theme_constant_override("separation", _us(8))
 	tab.add_child(manage_row)
 	for spec in [["➕ Team", "add_team"], ["➖ Team", "remove_team"],
-			["➕ Computer player", "add_bot"]]:
+			["➕ Computer player", "add_bot"], ["➖ Computer player", "remove_bot"]]:
 		var manage_btn := Button.new()
 		manage_btn.focus_mode = Control.FOCUS_NONE
 		manage_btn.text = str(spec[0])
@@ -707,8 +726,11 @@ func _build_game_tab() -> void:
 				"add_team": Game.world.sv_add_team.rpc_id(1)
 				"remove_team": Game.world.sv_remove_team.rpc_id(1, -1)
 				"add_bot": Game.world.sv_add_bot.rpc_id(1)
+				"remove_bot": Game.world.sv_remove_bot.rpc_id(1, "")
 			Sfx.play("tick", -8.0))
 		manage_row.add_child(manage_btn)
+		if action == "add_bot":
+			_add_bot_btn = manage_btn
 	_team_box = VBoxContainer.new()
 	_team_box.add_theme_constant_override("separation", _us(4))
 	tab.add_child(_team_box)
@@ -756,11 +778,13 @@ func _map_button(map_key: String, map_name: String) -> Button:
 	map_btn.focus_mode = Control.FOCUS_NONE
 	map_btn.text = map_name
 	map_btn.add_theme_font_size_override("font_size", _us(18))
+	if world != null and map_key == world.client_world:
+		map_btn.add_theme_color_override("font_color", Color("ffd166"))
+		map_btn.add_theme_color_override("font_hover_color", Color("ffd166"))
 	map_btn.pressed.connect(func() -> void:
 		if Game.world != null:
-			Game.world.sv_new_map.rpc_id(1, map_key)
-			_close_menu()
-		Sfx.play("warp", -8.0))
+			Game.world.sv_select_world.rpc_id(1, map_key)
+		Sfx.play("tick", -8.0))
 	return map_btn
 
 ## A tab whose content scrolls vertically instead of overflowing.
@@ -769,9 +793,14 @@ func _scrolled_tab(tab_name: String, parent: TabContainer) -> VBoxContainer:
 	scroll.name = tab_name
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	parent.add_child(scroll)
+	var pad := MarginContainer.new()
+	pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		pad.add_theme_constant_override(side, _us(14))
+	scroll.add_child(pad)
 	var box := VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(box)
+	pad.add_child(box)
 	return box
 
 func _inner_tabs(group: int) -> TabContainer:
@@ -889,6 +918,8 @@ var _team_box: VBoxContainer
 var _length_btns: Dictionary = {}
 var _size_btns: Dictionary = {}
 var _lobby_countdown: Label
+var _battle_start: Button
+var _add_bot_btn: Button
 var _center_note: Label
 var _ride_hint: Label
 var _damage_flash: ColorRect
@@ -908,9 +939,6 @@ func _on_match_changed() -> void:
 		return
 	_refresh_identity()
 	if world.match_phase == "LOBBY":
-		if not _menu.visible:
-			_toggle_menu(player, 5)
-		_set_page(PAGE_PLAYERS)
 		_refresh_team_box()
 	elif _menu.visible and world.match_phase == "DROP":
 		_close_menu()
@@ -920,11 +948,15 @@ func _refresh_battle_highlights() -> void:
 	if world == null:
 		return
 	for minutes: int in _length_btns.keys():
-		(_length_btns[minutes] as Button).add_theme_color_override("font_color",
-			Color("ffd166") if minutes == world.client_minutes else Color.WHITE)
+		var len_gold: bool = minutes == world.client_minutes
+		for state in ["font_color", "font_hover_color"]:
+			(_length_btns[minutes] as Button).add_theme_color_override(state,
+				Color("ffd166") if len_gold else Color.WHITE)
 	for arena: int in _size_btns.keys():
-		(_size_btns[arena] as Button).add_theme_color_override("font_color",
-			Color("ffd166") if arena == world.client_size else Color.WHITE)
+		var size_gold: bool = arena == world.client_size
+		for state in ["font_color", "font_hover_color"]:
+			(_size_btns[arena] as Button).add_theme_color_override(state,
+				Color("ffd166") if size_gold else Color.WHITE)
 	_refresh_team_box()
 
 ## The team matrix: one row per player, one column per team. You can move
@@ -937,6 +969,8 @@ func _refresh_team_box() -> void:
 		child.queue_free()
 	if world == null:
 		return
+	if _add_bot_btn != null:
+		_add_bot_btn.visible = Game.roster.size() < 24
 	var me := multiplayer.get_unique_id()
 	var names: Array = world.client_team_names
 	var team_count: int = maxi(names.size(), 2)
@@ -944,7 +978,7 @@ func _refresh_team_box() -> void:
 	var hscroll := ScrollContainer.new()
 	hscroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	hscroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hscroll.custom_minimum_size = Vector2(0, _us(34) * (Game.roster.size() + 2) + _us(16))
+	hscroll.custom_minimum_size = Vector2(0, _us(25) * (Game.roster.size() + 2) + _us(14))
 	_team_box.add_child(hscroll)
 	var grid := GridContainer.new()
 	grid.columns = team_count + 2
@@ -972,9 +1006,9 @@ func _refresh_team_box() -> void:
 		var mine: bool = int(entry.peer) == me and int(entry.slot) == slot
 		var bot: bool = bool(entry.get("bot", false))
 		var name_label := Label.new()
-		name_label.text = ("▶ " if mine else "") + str(entry.name) + ("  🤖" if bot else "")
-		name_label.custom_minimum_size = Vector2(_us(150), 0)
-		name_label.add_theme_font_size_override("font_size", _us(18))
+		name_label.text = str(entry.name) + (" (you)" if mine else "") + ("  🤖" if bot else "")
+		name_label.custom_minimum_size = Vector2(_us(120), 0)
+		name_label.add_theme_font_size_override("font_size", _us(15))
 		name_label.add_theme_color_override("font_color",
 			WorldNode.TEAM_COLORS[team] if team >= 0 else Color.WHITE)
 		grid.add_child(name_label)
@@ -984,7 +1018,7 @@ func _refresh_team_box() -> void:
 			if mine or bot:
 				var cell_btn := Button.new()
 				cell_btn.focus_mode = Control.FOCUS_NONE
-				cell_btn.custom_minimum_size = Vector2(cell_w, _us(26))
+				cell_btn.custom_minimum_size = Vector2(cell_w, _us(20))
 				var style := StyleBoxFlat.new()
 				style.bg_color = WorldNode.TEAM_COLORS[t] * (1.0 if t == team else 0.3)
 				style.bg_color.a = 1.0
@@ -1291,6 +1325,20 @@ func _process(_delta: float) -> void:
 	if _autoopened and _menu.visible and not OS.get_environment("WORLD_AUTOTEST_TAB").is_empty():
 		_set_page(int(OS.get_environment("WORLD_AUTOTEST_TAB")))
 
+	if _battle_start != null and world != null:
+		match world.match_phase:
+			"IDLE":
+				_battle_start.disabled = false
+				_battle_start.text = "🏆  Start Battle Royale"
+			"LOBBY":
+				_battle_start.disabled = true
+				_battle_start.text = "⚔  Battle starts in %d…" % int(ceil(world.match_seconds))
+			"COUNTDOWN":
+				_battle_start.disabled = true
+				_battle_start.text = "🏆  Next battle in %d…" % int(ceil(world.match_seconds))
+			_:
+				_battle_start.disabled = true
+				_battle_start.text = "⚔  Battle in progress"
 	if _lobby_countdown != null and world != null:
 		var in_lobby: bool = world.match_phase == "LOBBY"
 		_lobby_countdown.visible = in_lobby
