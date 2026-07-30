@@ -137,6 +137,21 @@ const MANGROVE_PLANKS := 205
 const BAMBOO_BLOCK := 206
 const MAGMA := 207
 const WARPED_STEM := 208
+## Per-species wooden stairs (4 facings each) and slabs, so imported
+## builds keep their wood colors: spruce, birch, dark oak,
+## crimson/cherry, mangrove, warped.
+const STAIRS_SPRUCE := 209
+const STAIRS_BIRCH := 213
+const STAIRS_DARK := 217
+const STAIRS_CRIMSON := 221
+const STAIRS_MANGROVE := 225
+const STAIRS_WARPED := 229
+const SLAB_SPRUCE := 233
+const SLAB_BIRCH := 234
+const SLAB_DARK := 235
+const SLAB_CRIMSON := 236
+const SLAB_MANGROVE := 237
+const SLAB_WARPED := 238
 
 static func shape_of(id: int) -> String:
 	return str(info(id).get("shape", ""))
@@ -309,6 +324,18 @@ static func _static_init() -> void:
 		"top": Color("d95f2a"), "solid": true, "opaque": true, "emit": 0.7, "hard": 2}
 	EXTRA[WARPED_STEM] = {"name": "Warped Stem", "color": Color("3f6b62"),
 		"top": Color("2f4f48"), "solid": true, "opaque": true, "hard": 1}
+	var species_mats := [["Spruce", Color("6b4f2e")], ["Birch", Color("c7b77c")],
+		["Dark Oak", Color("4a3524")], ["Crimson", Color("7e3a56")],
+		["Mangrove", Color("7a3b33")], ["Warped", Color("3a8078")]]
+	for sp_i in species_mats.size():
+		for f in 4:
+			EXTRA[STAIRS_SPRUCE + sp_i * 4 + f] = {
+				"name": str(species_mats[sp_i][0]) + " Stairs",
+				"color": species_mats[sp_i][1], "solid": true, "opaque": false,
+				"shape": "stairs", "hard": 1}
+		EXTRA[SLAB_SPRUCE + sp_i] = {"name": str(species_mats[sp_i][0]) + " Slab",
+			"color": species_mats[sp_i][1], "solid": true, "opaque": false,
+			"shape": "slab", "hard": 1}
 
 ## Per-block info, indexed by block id:
 ##   color: base albedo
@@ -451,7 +478,9 @@ const HOTBAR: Array[int] = [
 	165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178,
 	179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192,
 	193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206,
-	207, 208,
+	207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220,
+	221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234,
+	235, 236, 237, 238,
 ]
 
 ## Picker categories (what each tab shows).
@@ -491,8 +520,11 @@ static func picker_category(cat: String) -> Array:
 			for row in [M_STEEL, M_STONE]:
 				for i in 8:
 					out.append(row + i)
-			out.append_array([STAIRS_WOOD, STAIRS_STONE, STAIRS_BRICK,
-				STAIRS_QUARTZ, SLAB_WOOD, SLAB_STONE, SLAB_BRICK, SLAB_QUARTZ,
+			out.append_array([STAIRS_WOOD, STAIRS_SPRUCE, STAIRS_BIRCH,
+				STAIRS_DARK, STAIRS_CRIMSON, STAIRS_MANGROVE, STAIRS_WARPED,
+				STAIRS_STONE, STAIRS_BRICK, STAIRS_QUARTZ,
+				SLAB_WOOD, SLAB_SPRUCE, SLAB_BIRCH, SLAB_DARK, SLAB_CRIMSON,
+				SLAB_MANGROVE, SLAB_WARPED, SLAB_STONE, SLAB_BRICK, SLAB_QUARTZ,
 				FENCE, WALL, LADDER])
 		"nature":
 			out = [GRASS, DIRT, PATH, SAND, 124, 118, 120, 122, 123, SHELL,

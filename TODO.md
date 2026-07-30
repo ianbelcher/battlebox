@@ -2,8 +2,7 @@
 
 A live list of OPEN work only (git history is the record of done).
 
-- [ ] Vanilla sweep: full 5-agent audit applied (~120 fixes). Remaining
-      nice-to-haves from the audits: per-species stair/slab/fence/door
+- [ ] Vanilla sweep leftovers (low priority): per-species fence/door
       colors, glazed terracotta patterns, purpur block, mycelium
       purple top, tinted glass panes
 - [ ] ICONS MEGA-REDO (BIG — asked multiple times): every block icon

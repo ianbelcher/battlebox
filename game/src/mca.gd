@@ -430,7 +430,7 @@ static func map_entry(entry: Dictionary) -> int:
 	if name.ends_with("_stairs"):
 		# Stone-family checks must beat the generic "brick" check, or every
 		# stone_brick/deepslate/blackstone stair turns red clay.
-		var base := Blocks.STAIRS_WOOD
+		var base := _wood_stairs_base(name)
 		if name.contains("quartz") or name.contains("diorite") or name.contains("sandstone"):
 			base = Blocks.STAIRS_QUARTZ
 		elif name.contains("stone") or name.contains("andesite") or name.contains("deepslate") \
@@ -450,7 +450,7 @@ static func map_entry(entry: Dictionary) -> int:
 			return 104 if double else Blocks.SLAB_STONE
 		if name.contains("brick") or name.contains("granite"):
 			return Blocks.BRICK if double else Blocks.SLAB_BRICK
-		return Blocks.PLANKS if double else Blocks.SLAB_WOOD
+		return _wood_slab(name, double)
 	if name.ends_with("_fence") or name.ends_with("_fence_gate"):
 		return Blocks.FENCE
 	if name.ends_with("_wall"):
@@ -477,6 +477,37 @@ static func map_entry(entry: Dictionary) -> int:
 		"fern", "large_fern": return Blocks.FERN
 		"dead_bush": return Blocks.DEAD_BUSH
 	return map_block("minecraft:" + name)
+
+## Species-colored wooden stairs/slabs so imported builds keep their wood.
+static func _wood_stairs_base(name: String) -> int:
+	if name.begins_with("spruce"):
+		return Blocks.STAIRS_SPRUCE
+	if name.begins_with("birch") or name.begins_with("bamboo"):
+		return Blocks.STAIRS_BIRCH
+	if name.begins_with("dark_oak") or name.begins_with("pale_oak"):
+		return Blocks.STAIRS_DARK
+	if name.begins_with("crimson") or name.begins_with("cherry"):
+		return Blocks.STAIRS_CRIMSON
+	if name.begins_with("mangrove"):
+		return Blocks.STAIRS_MANGROVE
+	if name.begins_with("warped"):
+		return Blocks.STAIRS_WARPED
+	return Blocks.STAIRS_WOOD
+
+static func _wood_slab(name: String, double: bool) -> int:
+	if name.begins_with("spruce"):
+		return Blocks.PLANKS if double else Blocks.SLAB_SPRUCE
+	if name.begins_with("birch") or name.begins_with("bamboo"):
+		return Blocks.BIRCH_PLANKS if double else Blocks.SLAB_BIRCH
+	if name.begins_with("dark_oak") or name.begins_with("pale_oak"):
+		return Blocks.DARK_PLANKS if double else Blocks.SLAB_DARK
+	if name.begins_with("crimson") or name.begins_with("cherry"):
+		return 204 if double else Blocks.SLAB_CRIMSON
+	if name.begins_with("mangrove"):
+		return 205 if double else Blocks.SLAB_MANGROVE
+	if name.begins_with("warped"):
+		return 203 if double else Blocks.SLAB_WARPED
+	return Blocks.PLANKS if double else Blocks.SLAB_WOOD
 
 static func map_block(mc_name: String) -> int:
 	if _map_cache.has(mc_name):
