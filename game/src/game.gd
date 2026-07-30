@@ -184,7 +184,7 @@ func sv_set_team(slot: int, team: int) -> void:
 		return
 	var id := player_id(_sender_id(), slot)
 	if roster.has(id):
-		roster[id].team = clampi(team, -1, 3)
+		roster[id].team = clampi(team, -1, 23)
 		_broadcast_roster()
 
 @rpc("any_peer", "call_local", "reliable")

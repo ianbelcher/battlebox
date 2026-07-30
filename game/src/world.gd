@@ -32,6 +32,8 @@ signal battle_config_changed
 var client_minutes := 5
 var client_size := 250
 var client_loot := false
+var client_teams := 4
+var client_bots := 0
 ## player_id -> dragon critter id, replicated so everyone sees who rides.
 var riding_map: Dictionary = {}
 
@@ -109,8 +111,19 @@ var hearts: Dictionary = {}      # player id -> int, during survival
 var survival_active := false
 var survival_wave := 0
 ## Battle royale: IDLE / LOBBY / DROP / BATTLE / END (mirrored on clients).
-const TEAM_NAMES := ["Red", "Blue", "Green", "Yellow"]
-const TEAM_COLORS := [Color("ff5a5a"), Color("4a9df8"), Color("51c979"), Color("ffd166")]
+const TEAM_NAMES := ["Red", "Blue", "Green", "Yellow", "Purple", "Orange",
+	"Cyan", "Pink", "Lime", "Navy", "Brown", "White", "Maroon", "Teal",
+	"Gold", "Magenta", "Olive", "Sky", "Coral", "Violet", "Mint", "Slate",
+	"Peach", "Onyx"]
+const TEAM_COLORS := [Color("ff5a5a"), Color("4a9df8"), Color("51c979"),
+	Color("ffd166"), Color("b06df8"), Color("ff9a3d"), Color("46d8d8"),
+	Color("ff7ab8"), Color("a8e05f"), Color("3550b8"), Color("a5713f"),
+	Color("f0f0f0"), Color("b03040"), Color("2f8f8f"), Color("d8a818"),
+	Color("e040e0"), Color("909020"), Color("7ec8ff"), Color("ff8a70"),
+	Color("8858d8"), Color("90e8b8"), Color("708098"), Color("ffc8a0"),
+	Color("484858")]
+var team_count := 4
+var bots_per_team := 0
 var match_phase := "IDLE"
 var match_seconds := 0.0
 var storm_radius := 0.0
@@ -275,7 +288,8 @@ func sv_hello() -> void:
 	cl_world_info.rpc_id(peer, spawn_pos, clock, source)
 	cl_map_list.rpc_id(peer, ChunkStore.list_maps())
 	cl_overview.rpc_id(peer, overview)
-	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only)
+	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only,
+		team_count, bots_per_team)
 	var payload: Array = []
 	for crate_id: int in _crates.keys():
 		payload.append([crate_id, _crates[crate_id].weapon, _crates[crate_id].pos])
@@ -1114,6 +1128,37 @@ func sv_remove_bot() -> void:
 	Game.roster.erase(id)
 	Game.cl_roster.rpc(Game.roster)
 
+## Host sets how many computer players fill each team; the server keeps
+## the bot pool matched to it (respecting the 24-player cap).
+@rpc("any_peer", "call_local", "reliable")
+func sv_set_bots_per_team(n: int) -> void:
+	if not multiplayer.is_server() or not _is_host(multiplayer.get_remote_sender_id()):
+		return
+	bots_per_team = clampi(n, 0, 6)
+	_apply_bots_per_team()
+	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only,
+		team_count, bots_per_team)
+
+func _apply_bots_per_team() -> void:
+	for id: String in _bots.keys():
+		_player_state.erase(id)
+		_match_alive.erase(id)
+		Game.roster.erase(id)
+	_bots.clear()
+	var humans := Game.roster.size()
+	var want := mini(bots_per_team * team_count, 24 - humans)
+	for i in maxi(want, 0):
+		var slot := _next_bot_slot
+		_next_bot_slot += 1
+		var id := Game.player_id(1, slot)
+		Game.roster[id] = {"peer": 1, "slot": slot, "name": Game._pick_name(),
+			"style": AvatarFactory.random_style(), "team": i % team_count, "bot": true}
+		var start := Vector3(spawn_pos) + Vector3(randf_range(-8, 8), 2, randf_range(-8, 8))
+		_bots[id] = {"slot": slot, "pos": start, "yaw": 0.0, "think": 0.0,
+			"weapon": 13, "shoot_cd": 0.0, "goal": start}
+		_player_state[id] = {"pos": start, "treasures": 0, "name": Game.roster[id].name, "hp": 5}
+	Game.cl_roster.rpc(Game.roster)
+
 func _bot_nearest_enemy(id: String, pos: Vector3, radius: float) -> String:
 	var best := ""
 	var best_dist := radius
@@ -1229,11 +1274,11 @@ func sv_set_bot_team(target_id: String, team: int) -> void:
 	if not multiplayer.is_server():
 		return
 	if Game.roster.has(target_id) and Game.roster[target_id].get("bot", false):
-		Game.roster[target_id].team = clampi(team, -1, 3)
+		Game.roster[target_id].team = clampi(team, -1, team_count - 1)
 		Game.cl_roster.rpc(Game.roster)
 
 @rpc("any_peer", "reliable")
-func sv_match_config(minutes: int, loot: int, size: int = -1) -> void:
+func sv_match_config(minutes: int, loot: int, size: int = -1, teams: int = -1) -> void:
 	if not multiplayer.is_server() or not (match_phase in ["IDLE", "LOBBY"]) \
 			or not _is_host(multiplayer.get_remote_sender_id()):
 		return
@@ -1243,7 +1288,11 @@ func sv_match_config(minutes: int, loot: int, size: int = -1) -> void:
 		loot_only = loot == 1
 	if size > 0:
 		battle_size = clampf(float(size), 25.0, 400.0)
-	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only)
+	if teams >= 2:
+		team_count = clampi(teams, 2, 24)
+		_apply_bots_per_team()
+	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only,
+		team_count, bots_per_team)
 
 @rpc("any_peer", "reliable")
 func sv_match_start(_slot: int) -> void:
@@ -1312,17 +1361,20 @@ func _server_match_drop() -> void:
 	_match_alive.clear()
 	_downed_ids.clear()
 	_revive_progress.clear()
-	var counts := [0, 0, 0, 0]
+	var counts: Array[int] = []
+	counts.resize(team_count)
 	for id: String in Game.roster.keys():
 		var team := int(Game.roster[id].get("team", -1))
-		if team >= 0:
+		if team >= team_count:
+			Game.roster[id].team = -1
+		elif team >= 0:
 			counts[team] += 1
 	var i := 0
 	for id: String in Game.roster.keys():
 		var entry: Dictionary = Game.roster[id]
 		if int(entry.get("team", -1)) < 0:
 			var best := 0
-			for t in 4:
+			for t in team_count:
 				if counts[t] < counts[best]:
 					best = t
 			entry.team = best
@@ -2072,10 +2124,12 @@ func cl_overview(bytes: PackedByteArray) -> void:
 	overview = bytes
 
 @rpc("authority", "reliable")
-func cl_battle_config(minutes: int, size: int, loot: bool) -> void:
+func cl_battle_config(minutes: int, size: int, loot: bool, teams: int = 4, bots: int = 0) -> void:
 	client_minutes = minutes
 	client_size = size
 	client_loot = loot
+	client_teams = teams
+	client_bots = bots
 	battle_config_changed.emit()
 
 @rpc("authority", "reliable")

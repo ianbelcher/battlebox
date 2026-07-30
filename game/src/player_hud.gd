@@ -489,6 +489,24 @@ func _build_game_tab() -> void:
 			Sfx.play("tick", -8.0))
 		size_row.add_child(size_btn)
 		_size_btns[arena] = size_btn
+	var teams_row := HBoxContainer.new()
+	teams_row.add_theme_constant_override("separation", _us(6))
+	tab.add_child(teams_row)
+	var teams_tag := Label.new()
+	teams_tag.text = "Teams:"
+	teams_tag.add_theme_font_size_override("font_size", _us(18))
+	teams_row.add_child(teams_tag)
+	for teams: int in [2, 3, 4, 6, 8, 12, 24]:
+		var teams_btn := Button.new()
+		teams_btn.focus_mode = Control.FOCUS_NONE
+		teams_btn.text = " Solo " if teams == 24 else " %d " % teams
+		teams_btn.add_theme_font_size_override("font_size", _us(18))
+		teams_btn.pressed.connect(func() -> void:
+			if Game.world != null:
+				Game.world.sv_match_config.rpc_id(1, -1, -1, -1, teams)
+			Sfx.play("click"))
+		teams_row.add_child(teams_btn)
+		_teams_btns[teams] = teams_btn
 	var loop_btn := Button.new()
 	loop_btn.focus_mode = Control.FOCUS_NONE
 	loop_btn.text = "⏹  Stop after this battle (host only)"
@@ -548,6 +566,24 @@ func _build_game_tab() -> void:
 			Game.world.sv_remove_bot.rpc_id(1)
 		Sfx.play("pop"))
 	bot_row.add_child(bot_off)
+	var per_row := HBoxContainer.new()
+	per_row.add_theme_constant_override("separation", _us(6))
+	tab.add_child(per_row)
+	var per_tag := Label.new()
+	per_tag.text = "Bots per team:"
+	per_tag.add_theme_font_size_override("font_size", _us(18))
+	per_row.add_child(per_tag)
+	for n: int in [0, 1, 2, 3, 4]:
+		var per_btn := Button.new()
+		per_btn.focus_mode = Control.FOCUS_NONE
+		per_btn.text = " %d " % n
+		per_btn.add_theme_font_size_override("font_size", _us(18))
+		per_btn.pressed.connect(func() -> void:
+			if Game.world != null:
+				Game.world.sv_set_bots_per_team.rpc_id(1, n)
+			Sfx.play("click"))
+		per_row.add_child(per_btn)
+		_bots_btns[n] = per_btn
 
 ## Generated themes on one row; the server's imported map library below.
 func _rebuild_world_row() -> void:
@@ -685,6 +721,8 @@ func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color
 var _team_box: VBoxContainer
 var _length_btns: Dictionary = {}
 var _size_btns: Dictionary = {}
+var _teams_btns: Dictionary = {}
+var _bots_btns: Dictionary = {}
 var _world_row: HBoxContainer
 var _maps_row: HBoxContainer
 var _maps_label: Label
@@ -715,6 +753,12 @@ func _refresh_battle_highlights() -> void:
 	for arena: int in _size_btns.keys():
 		(_size_btns[arena] as Button).add_theme_color_override("font_color",
 			Color("ffd166") if arena == world.client_size else Color.WHITE)
+	for teams: int in _teams_btns.keys():
+		(_teams_btns[teams] as Button).add_theme_color_override("font_color",
+			Color("ffd166") if teams == world.client_teams else Color.WHITE)
+	for n: int in _bots_btns.keys():
+		(_bots_btns[n] as Button).add_theme_color_override("font_color",
+			Color("ffd166") if n == world.client_bots else Color.WHITE)
 
 func _refresh_team_box() -> void:
 	if _team_box == null:
@@ -744,7 +788,8 @@ func _refresh_team_box() -> void:
 			team_btn.focus_mode = Control.FOCUS_NONE
 			team_btn.text = "  " + (WorldNode.TEAM_NAMES[team] if team >= 0 else "Pick team") + "  "
 			team_btn.add_theme_font_size_override("font_size", _us(20))
-			var next_team := (team + 1) % 4
+			var max_teams: int = Game.world.client_teams if Game.world != null else 4
+			var next_team := (team + 1) % maxi(max_teams, 2)
 			var target_id := id
 			var target_slot := int(entry.slot)
 			team_btn.pressed.connect(func() -> void:
