@@ -62,6 +62,14 @@ func _init() -> void:
 		for file in dir.get_files():
 			if file.begins_with("c_") and file.ends_with(".bin"):
 				dir.remove(file)
+	# ...and saved positions must die with the world they were valid in —
+	# restoring an old position into fresh terrain buried players alive.
+	var boot_players := ConfigFile.new()
+	boot_players.load(data_dir.path_join("players.cfg"))
+	for section in boot_players.get_sections():
+		if boot_players.has_section_key(section, "pos"):
+			boot_players.erase_section_key(section, "pos")
+	boot_players.save(data_dir.path_join("players.cfg"))
 	print("World store: source=%s seed=%d data=%s edited_chunks=%d" % [
 		source, seed_value, data_dir, _edited.size()])
 

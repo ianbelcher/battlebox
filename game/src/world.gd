@@ -350,6 +350,11 @@ func sv_where(slot: int) -> void:
 		count = saved.treasures
 	else:
 		pos = _far_spawn()
+	# Never place anyone inside terrain, wherever the position came from.
+	var ground := store.surface_y(int(pos.x), int(pos.z))
+	if pos.y < float(ground) + 1.0 or store.get_block(Vector3i(int(pos.x),
+			int(pos.y), int(pos.z))) != Blocks.AIR:
+		pos.y = float(ground) + 1.5
 	_player_state[id] = {"pos": pos, "treasures": count, "name": str(entry.name)}
 	cl_treasures.rpc(id, count)
 	cl_where.rpc_id(peer, slot, pos, count)
