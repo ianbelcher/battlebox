@@ -604,13 +604,18 @@ func _claimed_keys() -> Dictionary:
 		keys[input.claim_key()] = true
 	return keys
 
+var _last_join_ms := 0
+
 func _poll_join_leave(delta: float) -> void:
-	# Unclaimed devices can hop in any time.
+	# Unclaimed devices can hop in any time — but only one join per press
+	# (some pads show up twice on macOS and double-joined).
 	for slot: InputSlot in InputSlot.candidate_slots():
 		var key := slot.claim_key()
 		if _claimed_keys().has(key):
 			continue
-		if slot.is_primary_pressed() and not _prev_pressed.get(key, false):
+		if slot.is_primary_pressed() and not _prev_pressed.get(key, false) \
+				and Time.get_ticks_msec() - _last_join_ms > 700:
+			_last_join_ms = Time.get_ticks_msec()
 			Game.join_local(slot)
 			_split.update_layout()
 		_prev_pressed[key] = slot.is_primary_pressed()

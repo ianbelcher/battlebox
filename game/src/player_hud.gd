@@ -198,6 +198,7 @@ func _ready() -> void:
 	_menu.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_menu)
 	_tabs = TabContainer.new()
+	_tabs.get_tab_bar().focus_mode = Control.FOCUS_NONE
 	_tabs.add_theme_font_size_override("font_size", _us(20))
 	_menu.add_child(_tabs)
 	_tabs.tab_changed.connect(func(tab: int) -> void:
@@ -474,7 +475,7 @@ func _build_game_tab() -> void:
 	size_label.text = "Arena size:"
 	size_label.add_theme_font_size_override("font_size", _us(20))
 	size_row.add_child(size_label)
-	for arena in [25, 100, 150, 200, 250]:
+	for arena in [50, 100, 150, 200, 250]:
 		var size_btn := Button.new()
 		size_btn.focus_mode = Control.FOCUS_NONE
 		size_btn.text = str(arena)

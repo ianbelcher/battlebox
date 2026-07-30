@@ -224,7 +224,8 @@ func _process(delta: float) -> void:
 		if input != null:
 			var view := input.is_view_toggle_pressed()
 			if view and not cell.prev_view:
-				cell.fp = not cell.fp
+				cell.view_mode = (int(cell.get("view_mode", 0)) + 1) % 3
+				cell.fp = int(cell.view_mode) == 2
 				Sfx.play("tick", -8.0)
 			cell.prev_view = view
 		player.set_fp(cell.fp)
@@ -281,24 +282,23 @@ func _process(delta: float) -> void:
 		# Poll this player's spin/zoom controls (edge-latched so one press or
 		# stick flick = one step).
 		if input != null and (cell.hud == null or not cell.hud.is_ui_open()):
-			var rot := input.rotate_direction()
-			if rot != 0 and cell.prev_rot == 0:
-				cell.yaw_index = posmod(cell.yaw_index + rot, 5)
-				Sfx.play("tick", -12.0)
-			cell.prev_rot = rot
+			# Free orbit: the right stick (or Z/X) swings smoothly all the
+			# way around the player — no isometric snapping.
+			var spin := input.get_look_vector().x
+			if input.kind != InputSlot.Kind.GAMEPAD:
+				spin = float(input.rotate_direction())
+			if absf(spin) > 0.08:
+				cell.yaw = fposmod(float(cell.yaw) - spin * delta * 2.6, TAU)
 			var zoom := input.zoom_direction()
 			if zoom != 0 and cell.prev_zoom == 0:
 				cell.zoom_index = clampi(int(cell.zoom_index) - zoom, 0, ZOOM_SIZES.size() - 1)
 			cell.prev_zoom = zoom
-		# Tween toward the snap targets.
-		var target_yaw: float = Player.ISO_ROT + cell.yaw_index * PI / 2.0
-		cell.yaw = lerp_angle(cell.yaw, target_yaw, minf(1.0, delta * 5.0))
 		cell.size = lerpf(cell.size, ZOOM_SIZES[cell.zoom_index], minf(1.0, delta * 5.0))
 		cam.size = cell.size
 		player.camera_yaw = cell.yaw
 		# Smooth-follow the player from the current orbit direction.
 		rig.position = rig.position.lerp(player.position, minf(1.0, delta * 6.0))
-		if cell.yaw_index == 4:
+		if int(cell.get("view_mode", 0)) == 1:
 			# Top-down map view, north up.
 			player.camera_yaw = 0.0
 			cam.look_at_from_position(rig.position + Vector3(0.01, CAM_HEIGHT + 20.0, 0.01),

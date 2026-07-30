@@ -307,7 +307,9 @@ func _footsteps(delta: float) -> void:
 	_step_prev = position
 	if delta <= 0.0 or flat > 3.0:
 		return
-	if flat / delta < 6.0 or vertical or downed or fly_mode:
+	# Walking is audible; creeping (or barely moving) is silent.
+	if flat / delta < 3.0 or vertical or downed or fly_mode \
+			or (is_local and input != null and input.is_sneak_pressed()):
 		_step_accum = 0.0
 		return
 	_step_accum += flat
@@ -424,6 +426,8 @@ func _local_move(delta: float) -> void:
 	var speed := SWIM_SPEED if in_water else WALK_SPEED
 	if input.is_sprint_pressed() and on_floor and not downed:
 		speed *= 1.55
+	elif input.is_sneak_pressed() and on_floor and not downed:
+		speed *= 0.5  # creeping: slow and silent
 	var feet_soft := _chunks().get_block(feet)
 	if feet_soft >= Blocks.M_SNOW and feet_soft < Blocks.MAX_BLOCK:
 		speed *= 0.45  # wading through soft snow
