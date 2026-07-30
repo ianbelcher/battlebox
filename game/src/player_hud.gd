@@ -280,6 +280,17 @@ func _ready() -> void:
 	_center_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_center_note.visible = false
 	add_child(_center_note)
+	_ride_hint = Label.new()
+	_ride_hint.add_theme_font_size_override("font_size", _us(17))
+	_ride_hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	_ride_hint.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
+	_ride_hint.add_theme_constant_override("outline_size", 5)
+	_ride_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_ride_hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_ride_hint.offset_top = -_us(190)
+	_ride_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_ride_hint.visible = false
+	add_child(_ride_hint)
 	# First-person crosshair.
 	_crosshair = Label.new()
 	_crosshair.text = "+"
@@ -840,6 +851,7 @@ var _length_btns: Dictionary = {}
 var _size_btns: Dictionary = {}
 var _lobby_countdown: Label
 var _center_note: Label
+var _ride_hint: Label
 var _world_row: HBoxContainer
 var _maps_row: HBoxContainer
 var _maps_label: Label
@@ -1241,6 +1253,16 @@ func _process(_delta: float) -> void:
 		if in_lobby:
 			_lobby_countdown.text = "⚔  Battle starts in %d — pick your team!" \
 				% int(ceil(world.match_seconds))
+	if _ride_hint != null and world != null and world.critter_view != null:
+		if player.riding >= 0:
+			_ride_hint.visible = true
+			_ride_hint.text = "🐉  RT breathe fire · look to steer · Ⓐ climb · LT dive · Ⓐ Ⓐ hop off"
+		elif not _menu.visible and player.on_floor \
+				and world.critter_view.nearest_dragon(player.position, 9.0) >= 0:
+			_ride_hint.visible = true
+			_ride_hint.text = "🐉  A dragon! Walk up to it to climb on"
+		else:
+			_ride_hint.visible = false
 	if _center_note != null and world != null:
 		var secs := int(ceil(world.match_seconds))
 		if world.match_phase == "COUNTDOWN":

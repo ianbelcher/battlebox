@@ -38,8 +38,45 @@ static func _cyl(top: float, bottom: float, height: float, color: Color, pos: Ve
 static func build(kind: String, id: int) -> Node3D:
 	var root := Node3D.new()
 	if kind == "block":
-		var cube := _box(Vector3(0.3, 0.3, 0.3), Blocks.color_of(id), Vector3(0, 0.1, 0))
-		root.add_child(cube)
+		# Hold the actual thing, not an anonymous colored cube: plants are
+		# little crossed sprigs, torches glow, slabs are half-height,
+		# stairs are stepped, fences are posts — full blocks keep their
+		# distinct top color like the world mesh does.
+		var color := Blocks.color_of(id)
+		var shape := Blocks.shape_of(id)
+		if id == Blocks.TORCH:
+			root.add_child(_box(Vector3(0.05, 0.26, 0.05), Color("8a6242"), Vector3(0, 0.1, 0)))
+			root.add_child(_box(Vector3(0.07, 0.07, 0.07), Color("ffd166"), Vector3(0, 0.27, 0), true))
+			return root
+		if Blocks.is_cross(id):
+			for angle in [45.0, -45.0]:
+				var sprig := _box(Vector3(0.24, 0.3, 0.02), color, Vector3(0, 0.12, 0))
+				sprig.rotation_degrees.y = angle
+				root.add_child(sprig)
+			return root
+		match shape:
+			"slab":
+				root.add_child(_box(Vector3(0.3, 0.15, 0.3), color, Vector3(0, 0.05, 0)))
+			"carpet":
+				root.add_child(_box(Vector3(0.3, 0.05, 0.3), color, Vector3(0, 0.02, 0)))
+			"stairs":
+				root.add_child(_box(Vector3(0.3, 0.15, 0.3), color, Vector3(0, 0.04, 0)))
+				root.add_child(_box(Vector3(0.3, 0.15, 0.15), color.lightened(0.06), Vector3(0, 0.19, 0.075)))
+			"fence":
+				root.add_child(_box(Vector3(0.06, 0.32, 0.06), color, Vector3(0, 0.12, 0)))
+				root.add_child(_box(Vector3(0.3, 0.05, 0.04), color.lightened(0.1), Vector3(0, 0.16, 0)))
+				root.add_child(_box(Vector3(0.3, 0.05, 0.04), color.lightened(0.1), Vector3(0, 0.04, 0)))
+			"wall":
+				root.add_child(_box(Vector3(0.14, 0.3, 0.14), color, Vector3(0, 0.11, 0)))
+				root.add_child(_box(Vector3(0.3, 0.24, 0.1), color.darkened(0.1), Vector3(0, 0.08, 0)))
+			"pane":
+				root.add_child(_box(Vector3(0.3, 0.3, 0.03), color.lightened(0.15), Vector3(0, 0.12, 0)))
+			_:
+				var glow := Blocks.emit_of(id) > 0.6
+				root.add_child(_box(Vector3(0.3, 0.3, 0.3), color, Vector3(0, 0.1, 0), glow))
+				var top := Blocks.top_color_of(id)
+				if top != color:
+					root.add_child(_box(Vector3(0.31, 0.02, 0.31), top, Vector3(0, 0.26, 0)))
 		return root
 	if kind == "structure":
 		root.add_child(_box(Vector3(0.34, 0.2, 0.3), Structures.spec(id).color, Vector3(0, 0.06, 0)))

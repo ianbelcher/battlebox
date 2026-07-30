@@ -21,6 +21,9 @@ func shoot_local(player: Player, kind: int) -> void:
 	var dir: Vector3
 	if player.fp_mode:
 		dir = player.look_dir()
+	elif kind == 17:
+		# Dragon fire streams out wherever the camera looks.
+		dir = player.camera_look_dir()
 	else:
 		dir = player.heading.normalized()
 	# Shots leave from the right-hand muzzle, then converge on the point the

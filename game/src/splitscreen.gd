@@ -312,6 +312,7 @@ func _process(delta: float) -> void:
 		cell.size = lerpf(cell.size, ZOOM_SIZES[cell.zoom_index], minf(1.0, delta * 5.0))
 		cam.size = cell.size
 		player.camera_yaw = cell.yaw
+		player.camera_pitch = float(cell.get("pitch", DEFAULT_PITCH))
 		# Smooth-follow the player from the current orbit direction.
 		rig.position = rig.position.lerp(player.position, minf(1.0, delta * 6.0))
 		if int(cell.get("view_mode", 0)) == 1:

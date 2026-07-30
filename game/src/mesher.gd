@@ -329,6 +329,10 @@ func _add_shape(block: int, shape: String, x: int, y: int, z: int, cx: int, cz: 
 			for index in [0, 2, 1, 0, 3, 2]:
 				_indices[key].append(start + index)
 
+func _is_opaque_at(x: int, y: int, z: int) -> bool:
+	var n := _block_at(x, y, z)
+	return n > 0 and bool(Blocks.info(n).get("opaque", false))
+
 func _add_cross(block: int, x: int, y: int, z: int, cx: int, cz: int) -> void:
 	var color := Blocks.color_of(block)
 	var jitter := _jitter(x, y, z, cx, cz)
@@ -343,6 +347,25 @@ func _add_cross(block: int, x: int, y: int, z: int, cx: int, cz: int) -> void:
 		[o + Vector3(lo, 0, lo), o + Vector3(hi, 0, hi)],
 		[o + Vector3(lo, 0, hi), o + Vector3(hi, 0, lo)],
 	]
+	# Vines and ladders hang FLAT against the wall they're attached to,
+	# like Minecraft — one sheet per adjacent solid face (a free-floating
+	# one keeps the X so it doesn't vanish).
+	if block == Blocks.VINE or block == Blocks.LADDER:
+		var flat: Array = []
+		var inset := 0.06
+		if _is_opaque_at(x - 1, y, z):
+			flat.append([o + Vector3(inset, 0, 0.02), o + Vector3(inset, 0, 0.98)])
+		if _is_opaque_at(x + 1, y, z):
+			flat.append([o + Vector3(1.0 - inset, 0, 0.02), o + Vector3(1.0 - inset, 0, 0.98)])
+		if _is_opaque_at(x, y, z - 1):
+			flat.append([o + Vector3(0.02, 0, inset), o + Vector3(0.98, 0, inset)])
+		if _is_opaque_at(x, y, z + 1):
+			flat.append([o + Vector3(0.02, 0, 1.0 - inset), o + Vector3(0.98, 0, 1.0 - inset)])
+		if not flat.is_empty():
+			quads = flat
+			tall = 1.0
+			if block == Blocks.LADDER:
+				sway = 0.0
 	for quad: Array in quads:
 		var a: Vector3 = quad[0]
 		var b: Vector3 = quad[1]

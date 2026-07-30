@@ -3,9 +3,17 @@
 A live list of OPEN work only (git history is the record of done).
 
 Ian's playtest list (2026-07-29 evening):
+- [ ] Icons: keep improving toward Minecraft look
+- [ ] ALL-NIGHT DIRECTIVE: act as principal game designer/engineer —
+      screenshot-driven UI polish until it looks like a well-designed
+      website inside; Steam-store quality bar
 - [ ] OVERNIGHT DIRECTIVE (Ian, before bed 2026-07-29): after all items
       are done, iterate on the overall UI and feel of the app and tune
       it as much as possible for the best user experience
+- [ ] VERIFY with Ian: freeze fix (mesh fallback capped — the "crash"
+      was a sync-meshing death spiral), dragon v3 (Aerodactyl shape,
+      neck seat, look-steering + look-fire, ride hints), wall-flat
+      vines/ladders, real held items, "Flying in..." gone
 - [ ] VERIFY with Ian: picker categories (Building/Nature/Colors/
       Lights/Special/Kits), real torch/vine/ladder/bamboo + shaped
       icons, connected fences/walls/panes, 3 new kits, vertical orbit,

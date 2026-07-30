@@ -180,8 +180,9 @@ func _process(delta: float) -> void:
 			# Carried by the rider: sit right under them, face their way.
 			for child in wnode.players.get_children():
 				if child is Player and child.player_id == ridden[id]:
-					node.position = child.position + Vector3(0, -1.9, 0)
 					node.rotation.y = child.rotation.y + PI
+					var head_dir := node.basis * Vector3(0, 0, -1)
+					node.position = child.position + Vector3(0, -1.6, 0) - head_dir * 1.9
 					entry.target = node.position
 					(node.get_child(0) as Node3D).position.y = \
 						lerpf((node.get_child(0) as Node3D).position.y, 0.0, 0.2)
@@ -310,39 +311,76 @@ func _build(kind: int) -> Node3D:
 				wing.material_override = mat
 				visual.add_child(wing)
 		DRAGON:
-			# Aerodactyl-sized: you should feel small next to it.
+			# Aerodactyl silhouette: gray-purple pterosaur — big crested
+			# head out front, slim body, huge HORIZONTAL swept wings, a
+			# long tail with a diamond tip. You should feel small beside it.
 			visual.scale = Vector3(3.2, 3.2, 3.2)
-			var body := _sphere(0.55, Color("7a3a8f"), 0.9)
-			body.position = Vector3(0, 0.4, 0)
-			body.scale = Vector3(1.0, 1.0, 1.7)
+			var hide := Color("8d7ca8")
+			var membrane := Color("6e5a8a")
+			var body := _sphere(0.5, hide, 0.9)
+			body.position = Vector3(0, 0.4, 0.1)
+			body.scale = Vector3(0.9, 0.8, 1.5)
 			visual.add_child(body)
-			var head := _sphere(0.26, Color("8f4aa5"))
-			head.position = Vector3(0, 0.7, -1.0)
+			var chest := _sphere(0.32, hide.lightened(0.18))
+			chest.position = Vector3(0, 0.32, -0.35)
+			visual.add_child(chest)
+			var head := _sphere(0.3, hide.lightened(0.08))
+			head.position = Vector3(0, 0.62, -1.05)
+			head.scale = Vector3(0.8, 0.85, 1.2)
 			visual.add_child(head)
+			var jaw := _sphere(0.16, hide.darkened(0.12))
+			jaw.position = Vector3(0, 0.48, -1.32)
+			jaw.scale = Vector3(0.7, 0.5, 1.5)
+			visual.add_child(jaw)
+			var crest := MeshInstance3D.new()
+			var crest_mesh := CylinderMesh.new()
+			crest_mesh.top_radius = 0.0
+			crest_mesh.bottom_radius = 0.12
+			crest_mesh.height = 0.55
+			crest.mesh = crest_mesh
+			crest.position = Vector3(0, 0.88, -0.82)
+			crest.rotation_degrees = Vector3(-135, 0, 0)
+			crest.material_override = _mat(hide.darkened(0.15))
+			visual.add_child(crest)
 			for side in [-1.0, 1.0]:
 				var eye := _sphere(0.07, Color("ffd166"), 1.0, true)
-				eye.position = Vector3(side * 0.12, 0.8, -1.18)
+				eye.position = Vector3(side * 0.16, 0.68, -1.22)
 				visual.add_child(eye)
+				# Wings lie FLAT (horizontal), swept slightly back, and
+				# flap from the shoulder thanks to the offset mesh center.
 				var wing := MeshInstance3D.new()
 				wing.name = "WingL" if side > 0 else "WingR"
 				var wing_mesh := QuadMesh.new()
-				wing_mesh.size = Vector2(1.6, 0.9)
+				wing_mesh.size = Vector2(2.4, 1.1)
+				wing_mesh.center_offset = Vector3(side * 1.2, 0, 0)
 				wing.mesh = wing_mesh
-				wing.position = Vector3(side * 0.9, 0.55, 0)
-				var wing_mat := _mat(Color("5d2a70"))
+				wing.position = Vector3(side * 0.4, 0.55, 0.05)
+				wing.rotation_degrees = Vector3(-90, side * -16, 0)
+				var wing_mat := _mat(membrane)
 				wing_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 				wing.material_override = wing_mat
 				visual.add_child(wing)
+				var claw := _sphere(0.06, hide.darkened(0.2))
+				claw.position = Vector3(side * 0.5, 0.6, -0.5)
+				visual.add_child(claw)
 			var tail := MeshInstance3D.new()
 			var tail_mesh := CylinderMesh.new()
-			tail_mesh.top_radius = 0.02
-			tail_mesh.bottom_radius = 0.22
-			tail_mesh.height = 1.4
+			tail_mesh.top_radius = 0.03
+			tail_mesh.bottom_radius = 0.16
+			tail_mesh.height = 1.7
 			tail.mesh = tail_mesh
-			tail.position = Vector3(0, 0.5, 1.3)
-			tail.rotation_degrees = Vector3(-75, 0, 0)
-			tail.material_override = _mat(Color("5d2a70"))
+			tail.position = Vector3(0, 0.42, 1.5)
+			tail.rotation_degrees = Vector3(-92, 0, 0)
+			tail.material_override = _mat(hide)
 			visual.add_child(tail)
+			var tail_tip := MeshInstance3D.new()
+			var tip_mesh := PrismMesh.new()
+			tip_mesh.size = Vector3(0.36, 0.36, 0.05)
+			tail_tip.mesh = tip_mesh
+			tail_tip.position = Vector3(0, 0.44, 2.45)
+			tail_tip.rotation_degrees = Vector3(90, 0, 0)
+			tail_tip.material_override = _mat(membrane)
+			visual.add_child(tail_tip)
 		BIRD:
 			var body := _sphere(0.11, Color("4a76c9"), 1.2)
 			visual.add_child(body)

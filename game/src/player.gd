@@ -30,6 +30,7 @@ var world: Node = null
 
 var velocity := Vector3.ZERO
 var camera_yaw := ISO_ROT
+var camera_pitch := 0.718  # orbit elevation, set by the camera rig
 var on_floor := false
 var in_water := false
 var heading := Vector3(0, 0, -1)
@@ -414,18 +415,24 @@ func _local_move(delta: float) -> void:
 		if not world.critter_view.is_dragon(riding):
 			_set_riding(-1)
 		else:
-			# Dragon flight: you steer, the dragon carries you. Jump climbs,
-			# Shift dives, double-tap jump hops off.
+			# Dragon flight: push forward and the dragon flies where you're
+			# LOOKING — camera pitch included — with jump/LT for extra
+			# climb and dive. You always face forward on its neck.
 			var ride_move := input.get_move_vector()
-			var ride_dir := Vector3(ride_move.x, 0, ride_move.y).rotated(Vector3.UP, camera_yaw)
+			var look_fwd := camera_look_dir()
+			var flat_fwd := Vector3(look_fwd.x, 0, look_fwd.z).normalized()
+			var flat_right := flat_fwd.cross(Vector3.UP) * -1.0
+			var ride_dir := (flat_fwd * -ride_move.y + flat_right * -ride_move.x)
 			velocity.x = lerpf(velocity.x, ride_dir.x * 14.0, minf(1.0, delta * 5.0))
 			velocity.z = lerpf(velocity.z, ride_dir.z * 14.0, minf(1.0, delta * 5.0))
-			var ride_vert := 0.0
+			var ride_vert := look_fwd.y * 14.0 * maxf(-ride_move.y, 0.0)
 			if input.is_jump_pressed():
 				ride_vert = 7.0
 			elif input.is_descend_pressed() or input.is_sprint_pressed():
 				ride_vert = -7.0
 			velocity.y = lerpf(velocity.y, ride_vert, minf(1.0, delta * 5.0))
+			rotation.y = lerp_angle(rotation.y, atan2(-flat_fwd.x, -flat_fwd.z),
+				minf(1.0, delta * 8.0))
 			var ride_next := position + velocity * delta
 			ride_next.y = clampf(ride_next.y, 2.0, float(WorldGen.CHUNK_H) + 24.0)
 			if not _collides(ride_next):
@@ -612,6 +619,14 @@ func _check_floor_machines(delta: float) -> void:
 # ------------------------------------------------------------------
 # Local actions: dig / place / hotbar / leave
 # ------------------------------------------------------------------
+
+## Where this player's camera is actually pointing (orbit rig), as a
+## world-space direction — used for dragon flight and dragon fire.
+func camera_look_dir() -> Vector3:
+	if fp_mode:
+		return look_dir()
+	return Vector3(-sin(camera_yaw) * cos(camera_pitch), -sin(camera_pitch),
+		-cos(camera_yaw) * cos(camera_pitch)).normalized()
 
 var _dragon_fire_cd := 0.0
 

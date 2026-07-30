@@ -179,16 +179,16 @@ func apply_edit(pos: Vector3i, block: int) -> int:
 	var old := int(data[index])
 	data[index] = block
 	_data[cpos] = data
-	_queue_mesh(cpos)
+	_queue_mesh(cpos, true)
 	# Border edits change neighbor face culling and AO.
 	if lx == 0:
-		_queue_mesh(cpos + Vector2i(-1, 0))
+		_queue_mesh(cpos + Vector2i(-1, 0), true)
 	elif lx == 15:
-		_queue_mesh(cpos + Vector2i(1, 0))
+		_queue_mesh(cpos + Vector2i(1, 0), true)
 	if lz == 0:
-		_queue_mesh(cpos + Vector2i(0, -1))
+		_queue_mesh(cpos + Vector2i(0, -1), true)
 	elif lz == 15:
-		_queue_mesh(cpos + Vector2i(0, 1))
+		_queue_mesh(cpos + Vector2i(0, 1), true)
 	return old
 
 func get_block(pos: Vector3i) -> int:
@@ -209,11 +209,20 @@ func ground_height(wx: int, wz: int) -> int:
 			return y + 1
 	return WorldGen.SEA_LEVEL
 
-func _queue_mesh(cpos: Vector2i) -> void:
-	if _queued.has(cpos) or not _data.has(cpos):
+func _queue_mesh(cpos: Vector2i, urgent := false) -> void:
+	if not _data.has(cpos):
+		return
+	if _queued.has(cpos):
+		# An edit can promote an already-queued chunk to the front.
+		if urgent:
+			_mesh_queue.erase(cpos)
+			_mesh_queue.push_front(cpos)
 		return
 	_queued[cpos] = true
-	_mesh_queue.append(cpos)
+	if urgent:
+		_mesh_queue.push_front(cpos)
+	else:
+		_mesh_queue.append(cpos)
 
 func _process(_delta: float) -> void:
 	# Watchdog: if the worker ever dies, restart it and log loudly.
@@ -259,12 +268,16 @@ func _process(_delta: float) -> void:
 		_inflight.erase(rpos)
 		_topmaps[rpos] = result.surfaces.get("topmap", PackedByteArray())
 		_apply_surfaces(rpos, result.surfaces)
-	# Stall fallback: if the worker hasn't returned a chunk within 1.5s,
-	# mesh it synchronously so the world NEVER shows stale blocks.
+	# Stall fallback: if the worker hasn't returned a chunk within 4s,
+	# mesh it synchronously so the world never shows stale blocks — but
+	# AT MOST ONE per frame. Sync-meshing every overdue chunk at once
+	# fed a death spiral (main-thread hitches → more stalls → freeze).
 	var now_ms := Time.get_ticks_msec()
+	var fallback_done := false
 	for spos: Vector2i in _inflight.keys().duplicate():
-		if now_ms - int(_inflight[spos]) < 1500:
+		if fallback_done or now_ms - int(_inflight[spos]) < 4000:
 			continue
+		fallback_done = true
 		_inflight.erase(spos)
 		if not _data.has(spos):
 			continue
