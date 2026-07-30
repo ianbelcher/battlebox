@@ -11,6 +11,3 @@ Ian's playtest list (2026-07-29 evening):
 - [ ] VERIFY with Ian: import fidelity pass — stained glass tints,
       species leaf colors, thin snow layers, trapdoor slabs, nether/end
       stand-ins (re-import a map and check it reads right)
-- [ ] Verify the game-loop live (shipped: END -> 20s countdown -> fresh
-      copy of the same map -> new lobby; host = first human, only the
-      host can change settings/start/stop the loop)
