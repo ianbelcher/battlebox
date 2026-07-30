@@ -60,6 +60,7 @@ var _verts := {}
 var _normals := {}
 var _colors := {}
 var _uv2s := {}
+var _uvs := {}
 var _indices := {}
 var lights: Array = []
 var teleporters: Array = []   # local-space Vector3i of warp stones
@@ -70,6 +71,7 @@ func _init() -> void:
 		_normals[key] = PackedVector3Array()
 		_colors[key] = PackedColorArray()
 		_uv2s[key] = PackedVector2Array()
+		_uvs[key] = PackedVector2Array()
 		_indices[key] = PackedInt32Array()
 
 ## Block lookup that sees one block into neighboring chunks.
@@ -145,6 +147,8 @@ func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Di
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = _verts[key]
+		if key == "plants" and _uvs[key].size() == _verts[key].size():
+			arrays[Mesh.ARRAY_TEX_UV] = _uvs[key]
 		arrays[Mesh.ARRAY_NORMAL] = _normals[key]
 		arrays[Mesh.ARRAY_COLOR] = _colors[key]
 		arrays[Mesh.ARRAY_TEX_UV2] = _uv2s[key]
@@ -333,6 +337,33 @@ func _is_opaque_at(x: int, y: int, z: int) -> bool:
 	var n := _block_at(x, y, z)
 	return n > 0 and bool(Blocks.info(n).get("opaque", false))
 
+## Which cutout silhouette the plants shader draws for a cross block.
+## 0 grass tuft · 1 flower · 2 mushroom · 3 flame · 4 leafy bush ·
+## 5 ragged sheet (vines) · 6 grain stalks · 7 bare stick (torch/ladder
+## keeps its own look) · 8 solid quad (no cutout).
+static func _plant_shape(block: int) -> int:
+	match block:
+		Blocks.TALL_GRASS, Blocks.FERN:
+			return 0
+		Blocks.FLOWER_RED, Blocks.FLOWER_YELLOW, Blocks.FLOWER_PINK, \
+				Blocks.DAISY, Blocks.BLUEBELL:
+			return 1
+		Blocks.MUSHROOM:
+			return 2
+		Blocks.FIRE:
+			return 3
+		Blocks.SAPLING, Blocks.BERRY_BUSH, Blocks.DEAD_BUSH:
+			return 4
+		Blocks.VINE:
+			return 5
+		Blocks.WHEAT_PLANT, Blocks.CATTAIL:
+			return 6
+		Blocks.BAMBOO, Blocks.TORCH:
+			return 7
+		Blocks.LADDER:
+			return 9
+	return 8
+
 func _add_cross(block: int, x: int, y: int, z: int, cx: int, cz: int) -> void:
 	var color := Blocks.color_of(block)
 	var jitter := _jitter(x, y, z, cx, cz)
@@ -377,9 +408,13 @@ func _add_cross(block: int, x: int, y: int, z: int, cx: int, cz: int) -> void:
 			Vector3(a.x, y, a.z), Vector3(b.x, y, b.z),
 			Vector3(b.x, y + tall, b.z), Vector3(a.x, y + tall, a.z),
 		]
+		var shape_id := _plant_shape(block)
+		var quad_uvs := [Vector2(shape_id, 1), Vector2(shape_id + 0.999, 1),
+			Vector2(shape_id + 0.999, 0), Vector2(shape_id, 0)]
 		for i in 4:
 			_verts["plants"].append(corners[i])
 			_normals["plants"].append(normal)
+			_uvs["plants"].append(quad_uvs[i])
 			var brightness := jitter * (0.85 if i < 2 else 1.0)
 			_colors["plants"].append(Color(color.r * brightness, color.g * brightness, color.b * brightness))
 			# Only the top two verts sway, so plants stay rooted.

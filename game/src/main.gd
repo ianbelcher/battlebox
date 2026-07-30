@@ -435,6 +435,30 @@ func _maybe_start_autotest() -> void:
 				Game.world.sv_match_start.rpc_id(1, 0)
 				for slot: int in Game.local_inputs.keys():
 					Game.set_local_team(slot, slot % 4))
+	# WORLD_SHOWCASE=1: plant a strip of every foliage/shaped block near
+	# spawn so a screenshot run can judge the look deterministically.
+	if OS.get_environment("WORLD_SHOWCASE") == "1":
+		get_tree().create_timer(9.0).timeout.connect(func() -> void:
+			var world := Game.world
+			if world == null or world.chunks == null or world.players == null:
+				return
+			var anchor: Player = null
+			for child in world.players.get_children():
+				if child is Player and child.is_local:
+					anchor = child
+					break
+			if anchor == null:
+				return
+			var ids := [Blocks.TALL_GRASS, Blocks.FERN, Blocks.FLOWER_RED,
+				Blocks.FLOWER_YELLOW, Blocks.BLUEBELL, Blocks.DAISY,
+				Blocks.MUSHROOM, Blocks.SAPLING, Blocks.BERRY_BUSH,
+				Blocks.WHEAT_PLANT, Blocks.CATTAIL, Blocks.DEAD_BUSH,
+				Blocks.BAMBOO, Blocks.TORCH, Blocks.FIRE]
+			for i in ids.size():
+				var wx := int(anchor.position.x) - 7 + i
+				var wz := int(anchor.position.z) - 5
+				var wy: int = world.chunks.ground_height(wx, wz) + 1
+				world.send_edit(anchor.slot, Vector3i(wx, wy, wz), ids[i]))
 	if OS.get_environment("WORLD_AUTOTEST_SURVIVAL") == "1":
 		get_tree().create_timer(8.0).timeout.connect(func() -> void:
 			if Game.world != null:

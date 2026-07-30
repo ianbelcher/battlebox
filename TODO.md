@@ -2,9 +2,6 @@
 
 A live list of OPEN work only (git history is the record of done).
 
-- [ ] FOLIAGE LOOK: the flat solid-color X-cross "two pieces of paper"
-      plants must go — real grass-blade / petal / flame cutout shapes
-      (UV-based shader cutouts), fire should read like Minecraft fire
 - [ ] ALL VANILLA BLOCKS (confirmed again): every main Minecraft block
       minus redstone-circuitry — imported maps should look right
 - [ ] ICONS MEGA-REDO (BIG — asked multiple times): every block icon
