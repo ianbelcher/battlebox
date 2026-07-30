@@ -197,6 +197,7 @@ func _process(delta: float) -> void:
 		_server_dawn_check()
 		_server_tick_bombs()
 		_server_tick_match(delta)
+		_server_tick_bots(delta)
 		_water_accum += delta
 		if _water_accum > 0.3:
 			_water_accum = 0.0
@@ -1076,6 +1077,132 @@ var battle_size := 250.0
 ## Game-loop mode: matches chain with a countdown + fresh map between.
 var match_loop := true
 
+# ---------------- Server-side computer players ----------------
+# Bots live entirely on the server (peer 1): they appear in the roster
+# like anyone else, replicate through the normal position channel, pick
+# up crates, fight, flee the storm and revive teammates.
+var _bots: Dictionary = {}
+var _next_bot_slot := 100
+
+@rpc("any_peer", "call_local", "reliable")
+func sv_add_bot() -> void:
+	if not multiplayer.is_server() or not _is_host(multiplayer.get_remote_sender_id()):
+		return
+	if Game.roster.size() >= 24:
+		return
+	var slot := _next_bot_slot
+	_next_bot_slot += 1
+	var id := Game.player_id(1, slot)
+	Game.roster[id] = {"peer": 1, "slot": slot, "name": Game._pick_name(),
+		"style": AvatarFactory.random_style(), "team": -1, "bot": true}
+	Game.cl_roster.rpc(Game.roster)
+	var start := Vector3(spawn_pos) + Vector3(randf_range(-8, 8), 2, randf_range(-8, 8))
+	_bots[id] = {"slot": slot, "pos": start, "yaw": 0.0, "think": 0.0,
+		"weapon": 13, "shoot_cd": 0.0, "goal": start}
+	_player_state[id] = {"pos": start, "treasures": 0, "name": Game.roster[id].name, "hp": 5}
+
+@rpc("any_peer", "call_local", "reliable")
+func sv_remove_bot() -> void:
+	if not multiplayer.is_server() or not _is_host(multiplayer.get_remote_sender_id()):
+		return
+	if _bots.is_empty():
+		return
+	var id: String = _bots.keys().back()
+	_bots.erase(id)
+	_player_state.erase(id)
+	_match_alive.erase(id)
+	Game.roster.erase(id)
+	Game.cl_roster.rpc(Game.roster)
+
+func _bot_nearest_enemy(id: String, pos: Vector3, radius: float) -> String:
+	var best := ""
+	var best_dist := radius
+	for other: String in _match_alive.keys():
+		if other == id or _downed_ids.has(other) or not _teams_differ(id, other):
+			continue
+		var other_state: Dictionary = _player_state.get(other, {})
+		if other_state.is_empty():
+			continue
+		var d: float = pos.distance_to(other_state.pos)
+		if d < best_dist:
+			best_dist = d
+			best = other
+	return best
+
+func _bot_pick_goal(id: String, bot: Dictionary) -> Vector3:
+	var pos: Vector3 = bot.pos
+	if match_phase == "BATTLE" and _match_alive.has(id):
+		# Storm first: get inside.
+		if Vector2(pos.x, pos.z).length() > storm_radius - 8.0:
+			var inward := -Vector3(pos.x, 0, pos.z).normalized() * 20.0
+			return pos + inward
+		# Revive a downed teammate.
+		for mate: String in _downed_ids.keys():
+			if mate != id and not _teams_differ(id, mate) and _player_state.has(mate) \
+					and pos.distance_to(_player_state[mate].pos) < 34.0:
+				return _player_state[mate].pos
+		# Loot when unarmed.
+		if int(bot.weapon) == 13:
+			var best_crate := Vector3.INF
+			var best_d := 70.0
+			for crate: Dictionary in _crates.values():
+				var d: float = pos.distance_to(crate.pos)
+				if d < best_d:
+					best_d = d
+					best_crate = crate.pos
+			if best_crate != Vector3.INF:
+				return best_crate
+		# Hunt.
+		var enemy := _bot_nearest_enemy(id, pos, 44.0)
+		if enemy != "":
+			var epos: Vector3 = _player_state[enemy].pos
+			# Stop short and strafe rather than hugging the target.
+			return epos + (pos - epos).normalized() * 9.0 \
+				+ Vector3(randf_range(-4, 4), 0, randf_range(-4, 4))
+	# Otherwise wander somewhere nearby.
+	return pos + Vector3(randf_range(-14, 14), 0, randf_range(-14, 14))
+
+func _server_tick_bots(delta: float) -> void:
+	for id: String in _bots.keys():
+		if not Game.roster.has(id):
+			continue
+		var bot: Dictionary = _bots[id]
+		bot.shoot_cd = maxf(0.0, float(bot.shoot_cd) - delta)
+		bot.think = float(bot.think) - delta
+		var pos: Vector3 = bot.pos
+		var downed := _downed_ids.has(id)
+		if bot.think <= 0.0:
+			bot.think = randf_range(0.35, 0.6)
+			bot.goal = _bot_pick_goal(id, bot)
+		var to_goal: Vector3 = Vector3(bot.goal) - pos
+		var flat := Vector2(to_goal.x, to_goal.z)
+		if flat.length() > 0.8 and not downed:
+			var dir := flat.normalized()
+			pos.x += dir.x * 4.4 * delta
+			pos.z += dir.y * 4.4 * delta
+			bot.yaw = atan2(-dir.x, -dir.y)
+		var gy := store.surface_y(int(pos.x), int(pos.z))
+		pos.y = lerpf(pos.y, float(gy) + 1.0, minf(1.0, delta * 8.0))
+		bot.pos = pos
+		var state: Dictionary = _player_state.get(id, {})
+		if not state.is_empty():
+			state.pos = pos
+		# Fight whatever is in range.
+		if match_phase == "BATTLE" and _match_alive.has(id) and not downed:
+			var enemy := _bot_nearest_enemy(id, pos, 30.0)
+			if enemy != "" and bot.shoot_cd <= 0.0:
+				var epos: Vector3 = _player_state[enemy].pos
+				var dist := pos.distance_to(epos)
+				if int(bot.weapon) != 13:
+					bot.shoot_cd = 1.1
+					cl_orb.rpc(id, pos + Vector3(0, 1.4, 0), (epos - pos).normalized(), int(bot.weapon))
+					if randf() < clampf(1.1 - dist / 30.0, 0.15, 0.8):
+						_match_hurt(enemy, 1, epos)
+				elif dist < 2.6:
+					bot.shoot_cd = 0.8
+					_match_hurt(enemy, 1, epos)
+		cl_pos.rpc(id, pos, bot.yaw, 1)
+
 func _is_host(sender: int) -> bool:
 	var peer := sender if sender != 0 else multiplayer.get_unique_id()
 	return Game.host_peer == 0 or peer == Game.host_peer
@@ -1209,6 +1336,10 @@ func _server_match_drop() -> void:
 		var dist := randf_range(_storm_start() * 0.25, _storm_start() * 0.42)
 		var drop := Vector3(cos(angle) * dist, WorldGen.CHUNK_H - 4, sin(angle) * dist)
 		cl_drop.rpc(id, drop, loot_only)
+		if _bots.has(id):
+			_bots[id].pos = drop
+			_bots[id].weapon = 13
+			_player_state[id].pos = drop
 		i += 1
 	# Fresh loot everywhere so late matches aren't scavenged dry — the
 	# count scales with the battle square's area.
@@ -1641,6 +1772,8 @@ func _server_tick_crates() -> void:
 				var weapon: int = _crates[crate_id].weapon
 				_crates.erase(crate_id)
 				cl_crate_taken.rpc(id, weapon)
+				if _bots.has(id):
+					_bots[id].weapon = weapon
 				_broadcast_crates()
 				break
 

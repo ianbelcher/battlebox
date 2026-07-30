@@ -535,7 +535,8 @@ func _build_game_tab() -> void:
 	bot_btn.text = "➕  Add computer player"
 	bot_btn.add_theme_font_size_override("font_size", _us(20))
 	bot_btn.pressed.connect(func() -> void:
-		Game.join_local(BotSlot.new(randi() % 1000))
+		if Game.world != null:
+			Game.world.sv_add_bot.rpc_id(1)
 		Sfx.play("join"))
 	bot_row.add_child(bot_btn)
 	var bot_off := Button.new()
@@ -543,14 +544,9 @@ func _build_game_tab() -> void:
 	bot_off.text = "➖  Remove computer player"
 	bot_off.add_theme_font_size_override("font_size", _us(20))
 	bot_off.pressed.connect(func() -> void:
-		var slots: Array = Game.local_inputs.keys()
-		slots.sort()
-		slots.reverse()
-		for bot_slot: int in slots:
-			if Game.local_inputs[bot_slot] is BotSlot:
-				Game.leave_local(bot_slot)
-				Sfx.play("pop")
-				return)
+		if Game.world != null:
+			Game.world.sv_remove_bot.rpc_id(1)
+		Sfx.play("pop"))
 	bot_row.add_child(bot_off)
 
 ## Generated themes on one row; the server's imported map library below.
