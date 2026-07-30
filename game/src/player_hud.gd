@@ -334,6 +334,89 @@ func _ready() -> void:
 func is_ui_open() -> bool:
 	return _menu != null and _menu.visible
 
+# ---- Controller navigation over regular menu pages (not the pickers,
+# they have their own grid cursor): left stick moves a highlight between
+# buttons/sliders, A presses, sliders adjust with left/right. ----
+var _nav_focus: Control = null
+var _nav_repeat := 0.0
+var _prev_nav_select := true
+
+func _page_control(page: int) -> Control:
+	var spec: Array = _PAGES[clampi(page, 0, _PAGES.size() - 1)]
+	return _inner_tabs(spec[0]).get_child(spec[1])
+
+func _poll_page_nav(input: InputSlot, delta: float) -> void:
+	var controls: Array = []
+	var root := _page_control(_current_page())
+	for kind in ["BaseButton", "HSlider"]:
+		for node in root.find_children("*", kind, true, false):
+			if (node as Control).is_visible_in_tree():
+				controls.append(node)
+	if controls.is_empty():
+		_set_nav_focus(null)
+		return
+	if _nav_focus == null or not is_instance_valid(_nav_focus) \
+			or not _nav_focus.is_visible_in_tree() or not controls.has(_nav_focus):
+		_set_nav_focus(controls[0])
+	var dir := input.get_move_vector()
+	_nav_repeat -= delta
+	if dir.length() > 0.55:
+		if _nav_repeat <= 0.0:
+			_nav_repeat = 0.24
+			if _nav_focus is HSlider and absf(dir.x) > absf(dir.y):
+				var slider: HSlider = _nav_focus
+				slider.value += slider.step * signf(dir.x)
+				Sfx.play("tick", -14.0)
+			else:
+				_nav_move(controls, dir)
+	else:
+		_nav_repeat = 0.0
+	var select := input.is_primary_pressed()
+	if select and not _prev_nav_select and _nav_focus is BaseButton:
+		var btn: BaseButton = _nav_focus
+		if btn.toggle_mode:
+			btn.button_pressed = not btn.button_pressed
+		else:
+			btn.pressed.emit()
+	_prev_nav_select = select
+
+## Spatial move: nearest control mostly in the pushed direction.
+func _nav_move(controls: Array, dir: Vector2) -> void:
+	if _nav_focus == null:
+		return
+	var from: Vector2 = _nav_focus.get_global_rect().get_center()
+	var n := dir.normalized()
+	var best: Control = null
+	var best_score := INF
+	for c: Control in controls:
+		if c == _nav_focus:
+			continue
+		var to := c.get_global_rect().get_center() - from
+		var along := to.dot(n)
+		if along <= 4.0:
+			continue
+		var score := along + absf(to.cross(n)) * 2.2
+		if score < best_score:
+			best_score = score
+			best = c
+	if best != null:
+		_set_nav_focus(best)
+		Sfx.play("tick", -14.0)
+
+func _set_nav_focus(c: Control) -> void:
+	if _nav_focus == c:
+		return
+	if _nav_focus != null and is_instance_valid(_nav_focus):
+		_nav_focus.modulate = Color.WHITE
+	_nav_focus = c
+	if c != null:
+		c.modulate = Color(1.5, 1.35, 0.85)
+		var p: Node = c.get_parent()
+		while p != null and not (p is ScrollContainer):
+			p = p.get_parent()
+		if p is ScrollContainer:
+			(p as ScrollContainer).ensure_control_visible(c)
+
 func _toggle_menu(player: Player, _tab: int) -> void:
 	if _menu.visible:
 		_close_menu()
@@ -802,7 +885,11 @@ func _refresh_battle_highlights() -> void:
 	for n: int in _bots_btns.keys():
 		(_bots_btns[n] as Button).add_theme_color_override("font_color",
 			Color("ffd166") if n == world.client_bots else Color.WHITE)
+	_refresh_team_box()
 
+## The team matrix: one row per player, one column per team. You can move
+## yourself and any computer player; other humans only move themselves,
+## so their rows are read-only dots.
 func _refresh_team_box() -> void:
 	if _team_box == null:
 		return
@@ -811,44 +898,72 @@ func _refresh_team_box() -> void:
 	if world == null:
 		return
 	var me := multiplayer.get_unique_id()
+	var team_count: int = maxi(world.client_teams, 2)
+	var cell_w := _us(46) if team_count <= 8 else _us(30)
+	var hscroll := ScrollContainer.new()
+	hscroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	hscroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hscroll.custom_minimum_size = Vector2(0, _us(34) * (Game.roster.size() + 1) + _us(12))
+	_team_box.add_child(hscroll)
+	var grid := GridContainer.new()
+	grid.columns = team_count + 1
+	grid.add_theme_constant_override("h_separation", _us(4))
+	grid.add_theme_constant_override("v_separation", _us(4))
+	hscroll.add_child(grid)
+	grid.add_child(Label.new())
+	for t in team_count:
+		var head := Label.new()
+		head.text = WorldNode.TEAM_NAMES[t] if team_count <= 8 else str(t + 1)
+		head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		head.add_theme_font_size_override("font_size", _us(14))
+		head.add_theme_color_override("font_color", WorldNode.TEAM_COLORS[t])
+		head.custom_minimum_size = Vector2(cell_w, 0)
+		grid.add_child(head)
 	for id: String in Game.roster.keys():
 		var entry: Dictionary = Game.roster[id]
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", _us(10))
-		_team_box.add_child(row)
-		var name_label := Label.new()
-		name_label.text = str(entry.name) + ("  🤖" if entry.get("bot", false) else "")
-		name_label.custom_minimum_size = Vector2(_us(170), 0)
-		name_label.add_theme_font_size_override("font_size", _us(22))
 		var team := int(entry.get("team", -1))
-		name_label.add_theme_color_override("font_color",
-			WorldNode.TEAM_COLORS[team] if team >= 0 else Color.WHITE)
-		row.add_child(name_label)
 		var mine: bool = int(entry.peer) == me and int(entry.slot) == slot
 		var bot: bool = bool(entry.get("bot", false))
-		if mine or bot:
-			var team_btn := Button.new()
-			team_btn.focus_mode = Control.FOCUS_NONE
-			team_btn.text = "  " + (WorldNode.TEAM_NAMES[team] if team >= 0 else "Pick team") + "  "
-			team_btn.add_theme_font_size_override("font_size", _us(20))
-			var max_teams: int = Game.world.client_teams if Game.world != null else 4
-			var next_team := (team + 1) % maxi(max_teams, 2)
-			var target_id := id
-			var target_slot := int(entry.slot)
-			team_btn.pressed.connect(func() -> void:
-				if bot and not mine:
-					if Game.world != null:
-						Game.world.sv_set_bot_team.rpc_id(1, target_id, next_team)
-				else:
-					Game.set_local_team(target_slot, next_team)
-				Sfx.play("tick", -8.0))
-			row.add_child(team_btn)
-		else:
-			var wait_label := Label.new()
-			wait_label.text = WorldNode.TEAM_NAMES[team] if team >= 0 else "picking..."
-			wait_label.add_theme_font_size_override("font_size", _us(20))
-			wait_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
-			row.add_child(wait_label)
+		var name_label := Label.new()
+		name_label.text = ("▶ " if mine else "") + str(entry.name) + ("  🤖" if bot else "")
+		name_label.custom_minimum_size = Vector2(_us(150), 0)
+		name_label.add_theme_font_size_override("font_size", _us(18))
+		name_label.add_theme_color_override("font_color",
+			WorldNode.TEAM_COLORS[team] if team >= 0 else Color.WHITE)
+		grid.add_child(name_label)
+		var target_id := id
+		var target_slot := int(entry.slot)
+		for t in team_count:
+			if mine or bot:
+				var cell_btn := Button.new()
+				cell_btn.focus_mode = Control.FOCUS_NONE
+				cell_btn.custom_minimum_size = Vector2(cell_w, _us(26))
+				var style := StyleBoxFlat.new()
+				style.bg_color = WorldNode.TEAM_COLORS[t] * (1.0 if t == team else 0.3)
+				style.bg_color.a = 1.0
+				style.set_corner_radius_all(6)
+				if t == team:
+					style.border_color = Color.WHITE
+					style.set_border_width_all(2)
+				for state in ["normal", "hover", "pressed"]:
+					cell_btn.add_theme_stylebox_override(state, style)
+				var pick_team := t
+				cell_btn.pressed.connect(func() -> void:
+					if bot and not mine:
+						if Game.world != null:
+							Game.world.sv_set_bot_team.rpc_id(1, target_id, pick_team)
+					else:
+						Game.set_local_team(target_slot, pick_team)
+					Sfx.play("tick", -8.0))
+				grid.add_child(cell_btn)
+			else:
+				var dot := Label.new()
+				dot.text = "●" if t == team else "·"
+				dot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				dot.add_theme_font_size_override("font_size", _us(18))
+				dot.add_theme_color_override("font_color",
+					WorldNode.TEAM_COLORS[t] if t == team else Color(1, 1, 1, 0.25))
+				grid.add_child(dot)
 
 ## Its own tab: every video setting individually — numbers get sliders,
 ## switches get checkboxes. No presets, no magic.
@@ -917,6 +1032,8 @@ func _add_video_slider(tab: Control, label_text: String, key: String,
 
 func _close_menu() -> void:
 	_menu.visible = false
+	_set_nav_focus(null)
+	_prev_nav_select = true
 	var player := _player()
 	if player != null:
 		player.ui_locked = false
@@ -1023,6 +1140,8 @@ func _process(_delta: float) -> void:
 			var page := _current_page()
 			if page < 4:
 				_pickers[page].poll(input, _delta)
+			else:
+				_poll_page_nav(input, _delta)
 	if not _menu.visible and player.ui_locked:
 		player.ui_locked = false
 	if OS.get_environment("WORLD_AUTOTEST_MENU") == "1" and slot == 0 \
@@ -1063,6 +1182,10 @@ func _process(_delta: float) -> void:
 		_selected_label.add_theme_font_size_override("font_size",
 			int(clampf(size.x / 45.0, 16.0, 34.0)))
 		_last_index = -1
+	if _menu != null:
+		# Scale around the middle so the shrunken menu stays centered in
+		# this player's cell instead of hugging the top-left corner.
+		_menu.pivot_offset = _menu.size / 2.0
 	if _chip != null:
 		_chip.visible = not _menu.visible
 	if _water_tint != null and world != null and world.chunks != null:

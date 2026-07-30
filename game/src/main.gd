@@ -346,8 +346,14 @@ func _maybe_start_autotest() -> void:
 	var bots := OS.get_environment("WORLD_AUTOTEST")
 	if not bots.is_valid_int() or bots.to_int() <= 0:
 		return
+	# WORLD_AUTOTEST_HUMAN=1: the first seat is a plain keyboard slot, so
+	# the roster contains a "human" (idle) — exercises the humans-only
+	# paths like the battle loop's countdown.
 	for i in mini(bots.to_int(), Game.MAX_LOCAL):
-		Game.join_local(BotSlot.new(i))
+		if i == 0 and OS.get_environment("WORLD_AUTOTEST_HUMAN") == "1":
+			Game.join_local(InputSlot.new(InputSlot.Kind.KEYBOARD_WASD))
+		else:
+			Game.join_local(BotSlot.new(i))
 	_split.update_layout()
 	# Exercise the customization RPCs the way HUD swatch clicks would.
 	get_tree().create_timer(3.0).timeout.connect(func() -> void:
@@ -355,6 +361,14 @@ func _maybe_start_autotest() -> void:
 			Game.cycle_local_style(slot, ["body", "shirt", "hat"][slot % 3], 1))
 	# WORLD_AUTOTEST_BLOCK=<id>: pin every bot's hotbar to one block so a
 	# smoke test can hammer a specific mechanic (booms, warp stones...).
+	# WORLD_AUTOTEST_SERVER_BOTS=<n>: ask the server for n computer players
+	# so headless runs exercise the server-side bot AI.
+	var server_bots := OS.get_environment("WORLD_AUTOTEST_SERVER_BOTS")
+	if server_bots.is_valid_int() and server_bots.to_int() > 0:
+		get_tree().create_timer(4.0).timeout.connect(func() -> void:
+			if Game.world != null:
+				for i in server_bots.to_int():
+					Game.world.sv_add_bot.rpc_id(1))
 	if OS.get_environment("WORLD_AUTOTEST_MATCH") == "1":
 		get_tree().create_timer(6.0).timeout.connect(func() -> void:
 			if Game.world != null:
@@ -627,20 +641,39 @@ func _poll_banner_dismiss() -> void:
 			_banner_sticky = false
 			return
 
+## A twin pad is a second enumeration of a controller someone already
+## plays with: same joypad name, mirroring the same A press right now.
+func _twin_pad_pressed(candidate: InputSlot) -> bool:
+	if candidate.kind != InputSlot.Kind.GAMEPAD:
+		return false
+	var cand_name := Input.get_joy_name(candidate.device)
+	for input: InputSlot in Game.local_inputs.values():
+		if input is InputSlot and input.kind == InputSlot.Kind.GAMEPAD \
+				and Input.get_joy_name(input.device) == cand_name \
+				and Input.is_joy_button_pressed(input.device, JOY_BUTTON_A):
+			return true
+	return false
+
 func _poll_join_leave(delta: float) -> void:
 	_poll_banner_dismiss()
 	# Unclaimed devices can hop in any time — but only one join per press
-	# (some pads show up twice on macOS and double-joined).
+	# (some pads show up twice on macOS and double-joined), never while a
+	# menu is open (A is a menu click there), and never when a claimed pad
+	# with the same name is pressing A this very frame (that's the ghost
+	# enumeration of an already-joined controller, not a new player).
+	var menu_open := _split != null and _split.any_menu_open()
 	for slot: InputSlot in InputSlot.candidate_slots():
 		var key := slot.claim_key()
 		if _claimed_keys().has(key):
 			continue
-		if slot.is_primary_pressed() and not _prev_pressed.get(key, false) \
+		var pressed := slot.is_primary_pressed()
+		if pressed and not menu_open and not _prev_pressed.get(key, false) \
+				and not _twin_pad_pressed(slot) \
 				and Time.get_ticks_msec() - _last_join_ms > 700:
 			_last_join_ms = Time.get_ticks_msec()
 			Game.join_local(slot)
 			_split.update_layout()
-		_prev_pressed[key] = slot.is_primary_pressed()
+		_prev_pressed[key] = pressed
 	# Claimed devices leave by HOLDING their leave control.
 	for slot_index: int in Game.local_inputs.keys().duplicate():
 		var input: InputSlot = Game.local_inputs[slot_index]

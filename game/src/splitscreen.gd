@@ -35,6 +35,14 @@ func set_low_fx(low: bool) -> void:
 			var viewport: SubViewport = cell.viewport
 			viewport.msaa_3d = Viewport.MSAA_DISABLED if low else Viewport.MSAA_2X
 			viewport.scaling_3d_scale = 0.7 if low else 1.0
+## True while any local player has their menu open — A presses are menu
+## clicks then, never join requests.
+func any_menu_open() -> bool:
+	for cell: Dictionary in _cells:
+		if cell.hud != null and cell.hud.is_ui_open():
+			return true
+	return false
+
 var _cells: Array = []   # [{slot:int(-1=spectator), container, viewport, rig, cam, hud,
                          #   yaw_index, yaw, zoom_index, size, prev_rot, prev_zoom}]
 var _orbit_angle := 0.0

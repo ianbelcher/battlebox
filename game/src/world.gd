@@ -1181,6 +1181,13 @@ func _bot_pick_goal(id: String, bot: Dictionary) -> Vector3:
 		if Vector2(pos.x, pos.z).length() > storm_radius - 8.0:
 			var inward := -Vector3(pos.x, 0, pos.z).normalized() * 20.0
 			return pos + inward
+		# Hurt? Break contact and look for loot instead of trading.
+		var hp := int(_player_state.get(id, {}).get("hp", 5))
+		if hp <= 2:
+			var threat := _bot_nearest_enemy(id, pos, 26.0)
+			if threat != "":
+				var away := (pos - Vector3(_player_state[threat].pos)).normalized()
+				return pos + away * 24.0 + Vector3(randf_range(-5, 5), 0, randf_range(-5, 5))
 		# Revive a downed teammate.
 		for mate: String in _downed_ids.keys():
 			if mate != id and not _teams_differ(id, mate) and _player_state.has(mate) \
@@ -1197,15 +1204,26 @@ func _bot_pick_goal(id: String, bot: Dictionary) -> Vector3:
 					best_crate = crate.pos
 			if best_crate != Vector3.INF:
 				return best_crate
-		# Hunt.
+		# Hunt — swordsmen close in, shooters hold their preferred range.
 		var enemy := _bot_nearest_enemy(id, pos, 44.0)
 		if enemy != "":
 			var epos: Vector3 = _player_state[enemy].pos
-			# Stop short and strafe rather than hugging the target.
-			return epos + (pos - epos).normalized() * 9.0 \
+			var standoff := 1.2 if int(bot.weapon) == 13 else randf_range(9.0, 14.0)
+			return epos + (pos - epos).normalized() * standoff \
 				+ Vector3(randf_range(-4, 4), 0, randf_range(-4, 4))
 	# Otherwise wander somewhere nearby.
 	return pos + Vector3(randf_range(-14, 14), 0, randf_range(-14, 14))
+
+## True when a bot can walk from `pos` one step toward `dir` without a
+## cliff-face climb or a swim: the ground ahead must be near walkable
+## height and dry.
+func _bot_step_ok(pos: Vector3, dir: Vector2) -> bool:
+	var ahead := Vector2(pos.x, pos.z) + dir * 1.6
+	var gy := store.surface_y(int(ahead.x), int(ahead.y))
+	if float(gy) - pos.y > 1.6:
+		return false
+	var ground := store.get_block(Vector3i(int(ahead.x), gy, int(ahead.y)))
+	return ground != Blocks.WATER
 
 func _server_tick_bots(delta: float) -> void:
 	for id: String in _bots.keys():
@@ -1223,9 +1241,30 @@ func _server_tick_bots(delta: float) -> void:
 		var flat := Vector2(to_goal.x, to_goal.z)
 		if flat.length() > 0.8 and not downed:
 			var dir := flat.normalized()
-			pos.x += dir.x * 4.4 * delta
-			pos.z += dir.y * 4.4 * delta
-			bot.yaw = atan2(-dir.x, -dir.y)
+			# Steer around cliffs and water: try straight, then angled
+			# detours, before giving up and re-thinking.
+			if not _bot_step_ok(pos, dir):
+				var found := false
+				for turn in [0.8, -0.8, 1.6, -1.6]:
+					var side := dir.rotated(turn)
+					if _bot_step_ok(pos, side):
+						dir = side
+						found = true
+						break
+				if not found:
+					bot.think = 0.0
+					dir = Vector2.ZERO
+			if dir != Vector2.ZERO:
+				pos.x += dir.x * 4.4 * delta
+				pos.z += dir.y * 4.4 * delta
+				bot.yaw = atan2(-dir.x, -dir.y)
+			# Barely moving while far from the goal means wedged — re-think.
+			bot.moved = float(bot.get("moved", 0.0)) + pos.distance_to(Vector3(bot.get("last_pos", pos)))
+			bot.last_pos = pos
+			if bot.think <= 0.05 and float(bot.moved) < 0.6 and flat.length() > 3.0:
+				bot.goal = pos + Vector3(randf_range(-10, 10), 0, randf_range(-10, 10))
+			if bot.think <= 0.05:
+				bot.moved = 0.0
 		var gy := store.surface_y(int(pos.x), int(pos.z))
 		pos.y = lerpf(pos.y, float(gy) + 1.0, minf(1.0, delta * 8.0))
 		bot.pos = pos
@@ -1353,6 +1392,7 @@ func _server_tick_match(delta: float) -> void:
 				match_phase = "LOBBY"
 				_match_timer = LOBBY_SECONDS
 				cl_match.rpc("LOBBY", LOBBY_SECONDS)
+				print("Battle royale loop: fresh lobby open")
 
 ## Everyone gets a team (auto-balanced if unpicked), full hearts, and a drop
 ## point high above a spread ring. Gliding down is automatic.
