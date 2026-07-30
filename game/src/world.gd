@@ -1461,6 +1461,11 @@ func sv_select_world(map_name: String) -> void:
 	selected_map = map_name
 	cl_world_sel.rpc(selected_map)
 	_save_battle_setup()
+	# Battle royale is a MODE: with no battle running, picking a world
+	# takes you there right away.
+	if match_phase == "IDLE" and map_name != store.current_map_key \
+			and not (map_name == store.theme and store.current_map_key.is_empty()):
+		_do_world_reset(map_name)
 
 @rpc("authority", "call_local", "reliable")
 func cl_world_sel(map_name: String) -> void:

@@ -283,23 +283,14 @@ func _draw() -> void:
 ## Faces: 0 = top diamond, 1 = left, 2 = right. (u,v) in [0,1] maps
 ## across each face so patterns can be drawn in flat face-space.
 func _face_pt(face: int, u: float, v: float) -> Vector2:
+	# Flat, Minecraft-texture-style icons: one full square face. "Top"
+	# pattern elements land on the upper strip; side elements cover the
+	# whole tile.
 	var w := size.x
 	var h := size.y
-	var mid := w * 0.5
-	var ty := h * 0.26
-	var my := h * 0.74
-	var by := h * 0.97
-	match face:
-		0:
-			var n := Vector2(mid, h * 0.03)
-			return n + u * (Vector2(w * 0.97, ty * 0.55) - n) \
-				+ v * (Vector2(w * 0.03, ty * 0.55) - n)
-		1:
-			var tl := Vector2(w * 0.03, ty * 0.55)
-			return tl + u * (Vector2(mid, ty) - tl) + v * Vector2(0, my - ty * 0.55)
-		_:
-			var tr := Vector2(mid, ty)
-			return tr + u * (Vector2(w * 0.97, ty * 0.55) - tr) + v * Vector2(0, by - ty)
+	if face == 0:
+		return Vector2(w * (0.07 + u * 0.86), h * (0.07 + v * 0.26))
+	return Vector2(w * (0.07 + u * 0.86), h * (0.07 + v * 0.86))
 
 func _face_quad(face: int, u0: float, v0: float, u1: float, v1: float, color: Color) -> void:
 	draw_colored_polygon(PackedVector2Array([_face_pt(face, u0, v0),
@@ -315,18 +306,17 @@ func _draw_iso_cube(w: float, h: float) -> void:
 	var mid := Vector2(w, h) * 0.5
 	var top := _dim(Blocks.top_color_of(block_id))
 	var side := _dim(Blocks.color_of(block_id))
-	# Minecraft-proportioned iso cube: a shallower top diamond and a less
-	# pointy base (small hotbar chips used to read as "shields"), with
-	# brighter side faces.
-	var ty := h * 0.26
-	var my := h * 0.74
-	var by := h * 0.97
-	draw_colored_polygon(PackedVector2Array([Vector2(mid.x, h * 0.03), Vector2(w * 0.97, ty * 0.55),
-		Vector2(mid.x, ty), Vector2(w * 0.03, ty * 0.55)]), Color(top.r, top.g, top.b))
-	draw_colored_polygon(PackedVector2Array([Vector2(w * 0.03, ty * 0.55), Vector2(mid.x, ty),
-		Vector2(mid.x, by), Vector2(w * 0.03, my)]), Color(side.r * 0.8, side.g * 0.8, side.b * 0.8))
-	draw_colored_polygon(PackedVector2Array([Vector2(mid.x, ty), Vector2(w * 0.97, ty * 0.55),
-		Vector2(w * 0.97, my), Vector2(mid.x, by)]), Color(side.r * 0.6, side.g * 0.6, side.b * 0.6))
+	# Flat tile, like a Minecraft texture square: the block's face IS the
+	# icon. Blocks with a distinct top get a strip of it along the top
+	# edge (the grass-block look); everything else is one clean face.
+	draw_rect(Rect2(w * 0.05, h * 0.05, w * 0.9, h * 0.9),
+		Color(side.r, side.g, side.b))
+	if top != side:
+		draw_rect(Rect2(w * 0.05, h * 0.05, w * 0.9, h * 0.28),
+			Color(top.r, top.g, top.b))
+	# A soft edge so tiles read as tiles on any background.
+	draw_rect(Rect2(w * 0.05, h * 0.05, w * 0.9, h * 0.9),
+		Color(0, 0, 0, 0.35), false, w * 0.028)
 	_draw_cube_pattern(side, top)
 	# Symbol overlays so the machine blocks read at a glance.
 	var overlay := Color(1, 1, 1, 0.9)
@@ -438,7 +428,7 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 	var lite := Color(1, 1, 1, 0.22)
 	if b == Blocks.GRASS or b == 122 or b == 123:
 		# The icon of icons: dirt sides with a grass fringe dripping down.
-		for face in [1, 2]:
+		for face in [1]:
 			_face_quad(face, 0.0, 0.0, 1.0, 0.18, Color(top.r * 0.9, top.g * 0.9, top.b * 0.9))
 			for i in 4:
 				_face_quad(face, 0.08 + 0.24 * i, 0.14, 0.2 + 0.24 * i,
@@ -447,13 +437,13 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 			Blocks.BAMBOO_BLOCK]:
 		for ring in [0.32, 0.6]:
 			draw_arc(_face_pt(0, 0.5, 0.5), size.x * 0.5 * ring * 0.42, 0, TAU, 16, dark, size.x * 0.02)
-		for face in [1, 2]:
+		for face in [1]:
 			for i in 3:
 				_face_line(face, 0.2 + 0.3 * i, 0.05, 0.2 + 0.3 * i, 0.95, dark, size.x * 0.025)
 	elif b == Blocks.PLANKS or b in [Blocks.BIRCH_PLANKS, Blocks.DARK_PLANKS,
 			Blocks.CHERRY_PLANKS, 129, 131, Blocks.WARPED_PLANKS,
 			Blocks.CRIMSON_PLANKS, Blocks.MANGROVE_PLANKS]:
-		for face in [1, 2]:
+		for face in [1]:
 			for i in 3:
 				_face_line(face, 0.0, 0.25 * (i + 1), 1.0, 0.25 * (i + 1), dark, size.x * 0.02)
 			_face_line(face, 0.5, 0.0, 0.5, 0.25, faint, size.x * 0.02)
@@ -461,7 +451,7 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 		_face_line(0, 0.0, 0.33, 1.0, 0.33, dark, size.x * 0.02)
 		_face_line(0, 0.0, 0.66, 1.0, 0.66, dark, size.x * 0.02)
 	elif b == Blocks.BRICK or b in [101, 102, 103, 109, 115, 119]:
-		for face in [1, 2]:
+		for face in [1]:
 			for row in 3:
 				_face_line(face, 0.0, 0.33 * (row + 1), 1.0, 0.33 * (row + 1), dark, size.x * 0.02)
 				var off := 0.25 if row % 2 == 0 else 0.5
@@ -469,7 +459,7 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 				_face_line(face, minf(off + 0.5, 0.95), 0.33 * row, minf(off + 0.5, 0.95),
 					0.33 * (row + 1), dark, size.x * 0.02)
 	elif b == Blocks.COBBLE or b == Blocks.MOSSY_COBBLE or b == 121:
-		for face in [0, 1, 2]:
+		for face in [1]:
 			for i in 4:
 				var cu := 0.2 + 0.5 * _hashf(float(i * 3 + face))
 				var cv := 0.2 + 0.55 * _hashf(float(i * 7 + face + 1))
@@ -478,7 +468,7 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 	elif b == Blocks.LEAVES or b in [Blocks.LEAVES_DARK, Blocks.LEAVES_LIGHT,
 			Blocks.LEAVES_PINK, 133]:
 		# Mottled leaf clumps, lighter and darker — clearly a bush cube.
-		for face in [0, 1, 2]:
+		for face in [1]:
 			for i in 5:
 				var lu := 0.12 + 0.75 * _hashf(float(i * 5 + face * 2))
 				var lv := 0.12 + 0.75 * _hashf(float(i * 11 + face))
@@ -487,11 +477,11 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 				_face_quad(face, lu, lv, minf(lu + 0.2, 0.98), minf(lv + 0.2, 0.98), leaf_col)
 	elif b >= Blocks.WOOL_RED and b <= Blocks.WOOL_BLACK or b in [Blocks.WOOL_PINK,
 			Blocks.WOOL_TEAL, Blocks.WOOL_BROWN]:
-		for face in [1, 2]:
+		for face in [1]:
 			for i in 3:
 				_face_line(face, 0.0, 0.25 * (i + 1) - 0.06, 1.0, 0.25 * (i + 1), faint, size.x * 0.03)
 	elif b in [Blocks.GOLD, Blocks.DIAMOND, 141, 142, 143, 144, 145, 146, Blocks.STEEL]:
-		for face in [1, 2]:
+		for face in [1]:
 			_face_quad(face, 0.28, 0.28, 0.72, 0.72, Color(side.lightened(0.35), 0.9))
 			_face_quad(face, 0.38, 0.38, 0.62, 0.62, Color(side.darkened(0.15), 0.9))
 	elif b == Blocks.MAGMA:
@@ -505,24 +495,24 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 		_face_line(2, 0.4, 0.15, 0.75, 0.8, lite, size.x * 0.02)
 		_face_line(0, 0.2, 0.6, 0.8, 0.35, lite, size.x * 0.02)
 	elif b == Blocks.PUMPKIN:
-		for face in [1, 2]:
+		for face in [1]:
 			for i in 3:
 				_face_line(face, 0.25 + 0.25 * i, 0.05, 0.25 + 0.25 * i, 0.95,
 					Color(side.darkened(0.3), 0.8), size.x * 0.03)
 		_face_quad(0, 0.42, 0.42, 0.58, 0.58, Color("4f6a2f"))
 	elif b == 137:
-		for face in [1, 2]:
+		for face in [1]:
 			for i in 3:
 				_face_line(face, 0.2 + 0.3 * i, 0.05, 0.2 + 0.3 * i, 0.95,
 					Color("3f6a2c"), size.x * 0.045)
 	elif b == 138:
-		for face in [1, 2]:
+		for face in [1]:
 			for i in 3:
 				_face_line(face, 0.0, 0.28 * (i + 1), 1.0, 0.28 * (i + 1),
 					Color("9a7c2a"), size.x * 0.035)
 		_face_quad(0, 0.1, 0.42, 0.9, 0.58, Color("9a7c2a"))
 	elif b == 132:
-		for face in [1, 2]:
+		for face in [1]:
 			for i in 4:
 				_face_quad(face, 0.1 + 0.2 * i, 0.3, 0.24 + 0.2 * i, 0.7,
 					[Color("b04030"), Color("3a6ab0"), Color("3f8a4f"), Color("caa53d")][i])
@@ -534,7 +524,7 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 		_face_quad(1, 0.15, 0.2, 0.45, 0.55, Color("b5975f"))
 		_face_quad(2, 0.55, 0.2, 0.85, 0.55, Color("9aa0a8"))
 	elif b == Blocks.CHEST:
-		for face in [1, 2]:
+		for face in [1]:
 			_face_line(face, 0.0, 0.4, 1.0, 0.4, dark, size.x * 0.03)
 		_face_quad(2, 0.4, 0.3, 0.6, 0.55, Color("6c6f78"))
 		_face_quad(1, 0.4, 0.3, 0.6, 0.55, Color("6c6f78"))
@@ -547,15 +537,15 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 		_face_line(2, 0.3, 0.4, 0.85, 0.7, faint, size.x * 0.02)
 		_face_line(0, 0.2, 0.55, 0.75, 0.3, faint, size.x * 0.02)
 	elif b in [Blocks.SANDSTONE, 116]:
-		for face in [1, 2]:
+		for face in [1]:
 			_face_line(face, 0.0, 0.35, 1.0, 0.35, faint, size.x * 0.025)
 			_face_line(face, 0.0, 0.7, 1.0, 0.7, faint, size.x * 0.025)
 	elif b in [108, 110, 112, Blocks.CHARRED]:
-		for face in [1, 2]:
+		for face in [1]:
 			for i in 2:
 				_face_line(face, 0.15 + 0.5 * i, 0.1, 0.3 + 0.5 * i, 0.9, faint, size.x * 0.02)
 	elif b == Blocks.SAND or b == 124 or b == Blocks.DIRT or b == Blocks.PATH:
-		for face in [0, 1, 2]:
+		for face in [1]:
 			for i in 4:
 				draw_circle(_face_pt(face, 0.15 + 0.7 * _hashf(float(i * 3 + face)),
 					0.15 + 0.7 * _hashf(float(i * 5 + face + 2))), size.x * 0.018, dark)

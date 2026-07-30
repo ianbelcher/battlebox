@@ -22,8 +22,6 @@ func _init(p_category := "blocks") -> void:
 	category = p_category
 	if category == "tools":
 		COLUMNS = 7
-	elif category == "lights" or category == "special":
-		COLUMNS = 6
 	elif category == "kits":
 		COLUMNS = 4  # big preview chips
 	visible = false
