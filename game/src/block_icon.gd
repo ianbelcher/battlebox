@@ -544,6 +544,16 @@ func _draw_cube_pattern(side: Color, top: Color) -> void:
 		for face in [1]:
 			for i in 2:
 				_face_line(face, 0.15 + 0.5 * i, 0.1, 0.3 + 0.5 * i, 0.9, faint, size.x * 0.02)
+	elif b in [Blocks.STONE, 105, 110, Blocks.SLATE, Blocks.MYCELIUM]:
+		for i in 5:
+			draw_circle(_face_pt(1, 0.12 + 0.76 * _hashf(float(i * 7 + b)),
+				0.12 + 0.76 * _hashf(float(i * 3 + b + 1))), size.x * 0.022, dark)
+	elif b == Blocks.PURPUR:
+		for pu in [0.16, 0.56]:
+			for pv in [0.16, 0.56]:
+				_face_quad(1, pu, pv, pu + 0.28, pv + 0.28, Color(0, 0, 0, 0.16))
+				_face_quad(1, pu + 0.07, pv + 0.07, pu + 0.21, pv + 0.21,
+					Color(1, 1, 1, 0.12))
 	elif b == Blocks.SAND or b == 124 or b == Blocks.DIRT or b == Blocks.PATH:
 		for face in [1]:
 			for i in 4:

@@ -283,7 +283,7 @@ func _read_payload(stream: StreamPeerBuffer, tag_type: int):
 
 const NAME_MAP := {
 	"air": Blocks.AIR, "cave_air": Blocks.AIR, "void_air": Blocks.AIR,
-	"grass_block": Blocks.GRASS,
+	"grass_block": Blocks.GRASS, "mycelium": Blocks.MYCELIUM, "podzol": 123,
 	"dirt": Blocks.DIRT, "coarse_dirt": Blocks.DIRT, "rooted_dirt": Blocks.DIRT,
 	"farmland": Blocks.DIRT, "clay": 122,
 	"dirt_path": Blocks.PATH, "grass_path": Blocks.PATH,
@@ -332,7 +332,7 @@ const NAME_MAP := {
 	"warped_nylium": Blocks.WOOL_TEAL, "warped_wart_block": Blocks.WOOL_TEAL,
 	"nether_wart": Blocks.MUSHROOM, "soul_sand": 118, "soul_soil": 118,
 	"end_stone": Blocks.SANDSTONE, "end_stone_bricks": Blocks.SANDSTONE,
-	"purpur_block": Blocks.WOOL_PURPLE, "purpur_pillar": Blocks.WOOL_PURPLE,
+	"purpur_block": Blocks.PURPUR, "purpur_pillar": Blocks.PURPUR,
 	"chorus_plant": Blocks.WOOL_PURPLE, "chorus_flower": Blocks.WOOL_PURPLE,
 	"nether_portal": Blocks.GLASS_RED + 5, "end_portal": Blocks.WOOL_BLACK,
 	"end_gateway": Blocks.WOOL_BLACK, "respawn_anchor": 113,
@@ -452,6 +452,18 @@ static func map_entry(entry: Dictionary) -> int:
 			return Blocks.BRICK if double else Blocks.SLAB_BRICK
 		return _wood_slab(name, double)
 	if name.ends_with("_fence") or name.ends_with("_fence_gate"):
+		if name.begins_with("spruce"):
+			return Blocks.FENCE_SPRUCE
+		if name.begins_with("birch") or name.begins_with("bamboo"):
+			return Blocks.FENCE_BIRCH
+		if name.begins_with("dark_oak") or name.begins_with("pale_oak"):
+			return Blocks.FENCE_DARK
+		if name.begins_with("crimson") or name.begins_with("cherry"):
+			return Blocks.FENCE_CRIMSON
+		if name.begins_with("mangrove"):
+			return Blocks.FENCE_MANGROVE
+		if name.begins_with("warped"):
+			return Blocks.FENCE_WARPED
 		return Blocks.FENCE
 	if name.ends_with("_wall"):
 		return Blocks.WALL

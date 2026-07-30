@@ -152,6 +152,15 @@ const SLAB_DARK := 235
 const SLAB_CRIMSON := 236
 const SLAB_MANGROVE := 237
 const SLAB_WARPED := 238
+## Per-species fences + the last two audit leftovers.
+const FENCE_SPRUCE := 239
+const FENCE_BIRCH := 240
+const FENCE_DARK := 241
+const FENCE_CRIMSON := 242
+const FENCE_MANGROVE := 243
+const FENCE_WARPED := 244
+const PURPUR := 245
+const MYCELIUM := 246
 
 static func shape_of(id: int) -> String:
 	return str(info(id).get("shape", ""))
@@ -336,6 +345,13 @@ static func _static_init() -> void:
 		EXTRA[SLAB_SPRUCE + sp_i] = {"name": str(species_mats[sp_i][0]) + " Slab",
 			"color": species_mats[sp_i][1], "solid": true, "opaque": false,
 			"shape": "slab", "hard": 1}
+		EXTRA[FENCE_SPRUCE + sp_i] = {"name": str(species_mats[sp_i][0]) + " Fence",
+			"color": species_mats[sp_i][1], "solid": true, "opaque": false,
+			"shape": "fence", "hard": 1}
+	EXTRA[PURPUR] = {"name": "Purpur", "color": Color("a678a6"),
+		"solid": true, "opaque": true, "hard": 2}
+	EXTRA[MYCELIUM] = {"name": "Mycelium", "color": Color("8a6242"),
+		"top": Color("7a6d80"), "solid": true, "opaque": true, "hard": 0}
 	_build_lookups()
 
 ## Flat per-id lookup tables for the mesher's hot loop — dictionary
@@ -548,7 +564,7 @@ const HOTBAR: Array[int] = [
 	193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206,
 	207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220,
 	221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234,
-	235, 236, 237, 238,
+	235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246,
 ]
 
 ## Picker categories (what each tab shows).
@@ -593,10 +609,11 @@ static func picker_category(cat: String) -> Array:
 				STAIRS_STONE, STAIRS_BRICK, STAIRS_QUARTZ,
 				SLAB_WOOD, SLAB_SPRUCE, SLAB_BIRCH, SLAB_DARK, SLAB_CRIMSON,
 				SLAB_MANGROVE, SLAB_WARPED, SLAB_STONE, SLAB_BRICK, SLAB_QUARTZ,
-				FENCE, WALL, LADDER])
+				FENCE, FENCE_SPRUCE, FENCE_BIRCH, FENCE_DARK, FENCE_CRIMSON,
+				FENCE_MANGROVE, FENCE_WARPED, WALL, LADDER, PURPUR])
 		"nature":
 			out = [GRASS, DIRT, PATH, SAND, 124, 118, 120, 122, 123, SHELL,
-				LILY_PAD, MAGMA,
+				LILY_PAD, MAGMA, MYCELIUM,
 				LEAVES, LEAVES_DARK, LEAVES_LIGHT, LEAVES_PINK, 133,
 				SNOW, SNOW_LAYER, ICE, 134, 135,
 				PUMPKIN, 136, 137, 138, 139, 140,
