@@ -289,10 +289,30 @@ func _physics_process(delta: float) -> void:
 		if _spawned and not ui_locked:
 			_local_move(delta)
 			_local_actions(delta)
+		# Safety net: nothing legitimate moves faster than a grapple zip
+		# or leaves the island's surroundings. If physics ever blows up
+		# (impulse bursts after a frame hitch), clamp instead of flying
+		# to the horizon.
+		if velocity.length_squared() > 60.0 * 60.0:
+			push_warning("Speed clamp: %s at %.0f m/s" % [player_id, velocity.length()])
+			velocity = velocity.limit_length(60.0)
+		if absf(position.x) > 900.0 or absf(position.z) > 900.0 \
+				or position.y < -40.0 or position.y > WorldGen.CHUNK_H + 120.0:
+			push_warning("Bounds clamp: %s at %v" % [player_id, position])
+			position.x = clampf(position.x, -900.0, 900.0)
+			position.z = clampf(position.z, -900.0, 900.0)
+			position.y = clampf(position.y, -40.0, WorldGen.CHUNK_H + 120.0)
+			velocity = Vector3.ZERO
+			carry_time = 0.0
 		if _spawned:
 			_send_state(delta)
 	else:
-		position = position.lerp(_remote_target, minf(1.0, delta * 10.0))
+		# Teleports (match drops, resets) snap: smoothing across half the
+		# map looks like the player being flung at hyperspeed.
+		if position.distance_to(_remote_target) > 40.0:
+			position = _remote_target
+		else:
+			position = position.lerp(_remote_target, minf(1.0, delta * 10.0))
 		rotation.y = lerp_angle(rotation.y, _remote_yaw, minf(1.0, delta * 10.0))
 	swing_time = maxf(0.0, swing_time - delta)
 	_refresh_hand()

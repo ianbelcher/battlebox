@@ -1472,7 +1472,9 @@ func _storm_damage() -> void:
 			_storm_hurt_ms[id] = now + 1600
 			state.hp = int(state.get("hp", 5)) - 1
 			cl_hearts.rpc(id, state.hp)
-			cl_bonk.rpc(id, pos + Vector3(1, -1, 1))
+			# No knockback from the storm: pushing players while they're
+			# already outside fed back into more storm damage and once
+			# launched Ian 142 km off the map.
 			if state.hp <= 0:
 				_match_eliminate(id)
 
@@ -2109,6 +2111,8 @@ func _client_setup() -> void:
 ## Keep one Player node per roster entry; local ones get their InputSlot and
 ## ask the server where they should stand (saved spot or the spawn).
 func _client_sync_players() -> void:
+	if multiplayer == null or multiplayer.multiplayer_peer == null or players == null:
+		return  # tearing down after a lost connection
 	var me := multiplayer.get_unique_id()
 	var wanted := {}
 	for id: String in Game.roster.keys():
@@ -2324,6 +2328,7 @@ func cl_bonk(id: String, monster_pos: Vector3) -> void:
 			var away: Vector3 = child.position - monster_pos
 			away.y = 0
 			child.velocity += away.normalized() * 8.0 + Vector3.UP * 7.0
+			child.velocity = child.velocity.limit_length(30.0)
 			child.carry_time = 0.6
 			child.on_floor = false
 			Sfx.play("bonk")
@@ -2393,6 +2398,7 @@ func cl_boom_fx(pos: Vector3i) -> void:
 				away.y = 0
 				var push := (7.0 - dist) / 7.0
 				child.velocity += away.normalized() * 10.0 * push + Vector3.UP * 9.0 * push
+				child.velocity = child.velocity.limit_length(30.0)
 				child.carry_time = 0.6
 				child.on_floor = false
 

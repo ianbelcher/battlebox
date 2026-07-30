@@ -324,7 +324,7 @@ func _on_connected() -> void:
 			message = "TEAM %s WINS THE BATTLE!" % WorldNode.TEAM_NAMES[winner].to_upper()
 		elif winner == -2:
 			message = "Everyone's out — no winner this time!"
-		_show_banner(message + "\n(jump to close)", true))
+		_show_banner(message + "\n(Ⓐ to close)", true))
 	world.reset_vote_started.connect(func() -> void: _vote_panel.visible = true)
 	world.reset_result.connect(func(happened: bool) -> void:
 		_vote_panel.visible = false
@@ -664,13 +664,14 @@ const _MIRROR_AXES: Array = [JOY_AXIS_LEFT_X, JOY_AXIS_LEFT_Y,
 	JOY_AXIS_TRIGGER_RIGHT]
 
 func _mirrors_pad(candidate_device: int, claimed_device: int) -> bool:
+	# Buttons ONLY. Axes lag a frame between the ghost and the real
+	# device during fast stick motion, which read as false divergence
+	# and let the ghost join anyway. Button states are discrete: a ghost
+	# can never hold a button its twin isn't holding for 6 frames, while
+	# a real second controller's A press is itself the divergence proof.
 	for btn: int in _MIRROR_BUTTONS:
 		if Input.is_joy_button_pressed(candidate_device, btn) \
 				!= Input.is_joy_button_pressed(claimed_device, btn):
-			return false
-	for axis: int in _MIRROR_AXES:
-		if absf(Input.get_joy_axis(candidate_device, axis)
-				- Input.get_joy_axis(claimed_device, axis)) > 0.08:
 			return false
 	return true
 
