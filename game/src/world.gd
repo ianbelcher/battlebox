@@ -400,6 +400,8 @@ func sv_pos(slot: int, pos: Vector3, yaw: float, anim: int) -> void:
 func sv_edit(slot: int, pos: Vector3i, block: int) -> void:
 	if not multiplayer.is_server():
 		return
+	if match_phase == "LOBBY" or match_phase == "DROP":
+		return  # pre-battle: run around, touch nothing
 	var peer := multiplayer.get_remote_sender_id()
 	var id := Game.player_id(peer, slot)
 	if not Game.roster.has(id):
@@ -490,6 +492,24 @@ func sv_shoot(slot: int, origin: Vector3, dir: Vector3, kind: int) -> void:
 func cl_orb(shooter_id: String, origin: Vector3, dir: Vector3, kind: int) -> void:
 	if orbs != null:
 		orbs.spawn(shooter_id, origin, dir, kind)
+	# Other people's gunfire is audible, scaled by how close it is — so
+	# you can HEAR a fight before you see it.
+	if not shooter_id in Game.local_player_ids():
+		var shot_vol := -_nearest_local_dist(origin) * 0.5
+		if shot_vol > -40.0:
+			match kind:
+				0: Sfx.play("click", shot_vol - 8.0)
+				1, 9, 15, 17: Sfx.play("thoomp", shot_vol - 4.0)
+				13: pass
+				_: Sfx.play("whoosh", shot_vol - 6.0, 1.1)
+
+func _nearest_player_dist(id: String) -> float:
+	if players == null:
+		return 999.0
+	for child in players.get_children():
+		if child is Player and child.player_id == id:
+			return _nearest_local_dist(child.position)
+	return 999.0
 
 ## Projectile impact. Pellets pop the single block they hit (or light a Boom
 ## Block from afar); shells detonate like a lit charge, splashing Grumps too.
@@ -646,7 +666,9 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 			if false:
 				pass
 			return
-		10:  # Grump Whistle: a wild Grump, raid or not.
+		10:  # Grump Whistle: a wild Grump, raid or not (never mid-battle).
+			if match_phase != "IDLE":
+				return
 			if _monsters.size() < 30:
 				_monsters[_next_monster_id] = {"pos": Vector3(cell) + Vector3(0.5, 1.0, 0.5),
 					"hp": 3, "next_bonk_ms": 0}
@@ -1088,7 +1110,7 @@ func _do_world_reset(map_name := "") -> void:
 # ------------------------------------------------------------------
 # Battle royale match
 # ------------------------------------------------------------------
-const LOBBY_SECONDS := 25.0
+const LOBBY_SECONDS := 20.0
 const STORM_START := 360.0
 
 ## Battle square side in blocks (the storm starts at its edge).
@@ -1249,7 +1271,7 @@ func _bot_pick_goal(id: String, bot: Dictionary) -> Vector3:
 			if best_crate != Vector3.INF:
 				return best_crate
 		# Hunt — swordsmen close in, shooters hold their preferred range.
-		var enemy := _bot_nearest_enemy(id, pos, 44.0)
+		var enemy := _bot_nearest_enemy(id, pos, 28.0)
 		if enemy != "":
 			var epos: Vector3 = _player_state[enemy].pos
 			var standoff := 1.2 if int(bot.weapon) == 13 else randf_range(9.0, 14.0)
@@ -1318,14 +1340,14 @@ func _server_tick_bots(delta: float) -> void:
 			state.pos = pos
 		# Fight whatever is in range.
 		if match_phase == "BATTLE" and _match_alive.has(id) and not downed:
-			var enemy := _bot_nearest_enemy(id, pos, 30.0)
+			var enemy := _bot_nearest_enemy(id, pos, 20.0)
 			if enemy != "" and bot.shoot_cd <= 0.0:
 				var epos: Vector3 = _player_state[enemy].pos
 				var dist := pos.distance_to(epos)
 				if int(bot.weapon) != 13:
 					bot.shoot_cd = 1.1
 					cl_orb.rpc(id, pos + Vector3(0, 1.4, 0), (epos - pos).normalized(), int(bot.weapon))
-					if randf() < clampf(1.1 - dist / 30.0, 0.15, 0.8):
+					if randf() < clampf(1.0 - dist / 22.0, 0.12, 0.7):
 						_match_hurt(enemy, 1, epos)
 				elif dist < 2.6:
 					bot.shoot_cd = 0.8
@@ -1417,13 +1439,20 @@ func sv_match_start(_slot: int) -> void:
 	if not multiplayer.is_server() or match_phase != "IDLE" or Game.roster.is_empty() \
 			or not _is_host(multiplayer.get_remote_sender_id()):
 		return
-	# The battle plays on the SELECTED world — switch now if it differs.
-	if not selected_map.is_empty() and selected_map != store.current_map_key \
-			and not (selected_map == store.theme and store.current_map_key.is_empty()):
-		_do_world_reset(selected_map)
-	# Every human gets a team the moment the lobby opens; nobody is ever
-	# team-less (they can still move themselves in the menu).
+	_begin_battle_lobby()
+
+## The single 20-second pre-battle period: the map resets fresh,
+## everyone lands together at the middle so it streams in around them,
+## nobody can touch blocks, teams settle — then the drop.
+func _begin_battle_lobby() -> void:
+	_do_world_reset(selected_map if not selected_map.is_empty() \
+		else store.current_map_key)
 	_assign_stray_humans()
+	_monsters.clear()
+	for id: String in _bots.keys():
+		_bots[id].pos = Vector3(spawn_pos) + Vector3(randf_range(-6, 6), 1, randf_range(-6, 6))
+		if _player_state.has(id):
+			_player_state[id].pos = _bots[id].pos
 	match_phase = "LOBBY"
 	_match_timer = LOBBY_SECONDS
 	print("Battle royale lobby open")
@@ -1516,21 +1545,11 @@ func _server_tick_match(delta: float) -> void:
 						humans = true
 						break
 				if match_loop and humans:
-					match_phase = "COUNTDOWN"
-					_match_timer = 20.0
-					cl_match.rpc("COUNTDOWN", 20.0)
+					_begin_battle_lobby()
+					print("Battle royale loop: fresh lobby open")
 				else:
 					match_phase = "IDLE"
 					cl_match.rpc("IDLE", 0.0)
-		"COUNTDOWN":
-			if _match_timer <= 0.0:
-				# Fresh copy of the SAME map, then straight into a new lobby.
-				_do_world_reset(selected_map if not selected_map.is_empty() \
-					else store.current_map_key)
-				match_phase = "LOBBY"
-				_match_timer = LOBBY_SECONDS
-				cl_match.rpc("LOBBY", LOBBY_SECONDS)
-				print("Battle royale loop: fresh lobby open")
 
 ## Everyone gets a team (auto-balanced if unpicked), full hearts, and a drop
 ## point high above a spread ring. Gliding down is automatic.
@@ -1756,10 +1775,28 @@ func _teams_differ(a: String, b: String) -> bool:
 		return true
 	return int(Game.roster[a].get("team", -1)) != int(Game.roster[b].get("team", -2))
 
+signal match_score_changed
+var ghost_ids: Dictionary = {}
+var alive_ids: Dictionary = {}
+
 @rpc("authority", "reliable")
 func cl_match(phase: String, seconds: float) -> void:
 	match_phase = phase
 	match_seconds = seconds
+	if phase == "DROP":
+		ghost_ids.clear()
+		alive_ids.clear()
+		for rid: String in Game.roster.keys():
+			alive_ids[rid] = true
+		for child in players.get_children():
+			if child is Player:
+				child.visible = true
+		match_score_changed.emit()
+	elif phase == "IDLE" or phase == "LOBBY":
+		ghost_ids.clear()
+		for child in players.get_children():
+			if child is Player:
+				child.visible = true
 	if chunks != null:
 		chunks.match_mode = phase != "IDLE"
 		if phase == "LOBBY":
@@ -1811,10 +1848,17 @@ func cl_revive_noise(pos: Vector3) -> void:
 func cl_eliminated(id: String) -> void:
 	hearts[id] = 0
 	hearts_changed.emit()
+	ghost_ids[id] = true
+	alive_ids.erase(id)
+	match_score_changed.emit()
 	for child in players.get_children():
-		if child is Player and child.player_id == id and child.is_local:
-			child.teleport(Vector3(spawn_pos) + Vector3(0.5, 2.0, 0.5))
-			Sfx.play("drop")
+		if child is Player and child.player_id == id:
+			if child.is_local:
+				child.teleport(Vector3(spawn_pos) + Vector3(0.5, 2.0, 0.5))
+				Sfx.play("drop", -6.0)
+			else:
+				# The fallen are invisible to everyone still playing.
+				child.visible = false
 
 signal match_won(winner: int)
 
@@ -2313,6 +2357,8 @@ func send_edit(slot: int, pos: Vector3i, block: int) -> void:
 	# synchronous remesh of its chunk) instead of waiting for the server
 	# echo to fight through the mesh queue. The echo re-applies the same
 	# value, which is a no-op visually.
+	if match_phase == "LOBBY" or match_phase == "DROP":
+		return  # pre-battle lockdown: the server would refuse anyway
 	if chunks != null:
 		chunks.apply_edit_now(pos, block)
 	sv_edit.rpc_id(1, slot, pos, block)
@@ -2407,8 +2453,10 @@ func cl_edits(pairs: Array) -> void:
 	for entry in pairs:
 		if entry is Array and entry.size() == 2 and entry[0] is Vector3i:
 			chunks.apply_edit(entry[0], entry[1])
-	Sfx.play("place")
-	Sfx.play("whoosh", -8.0)
+	if not pairs.is_empty() and pairs[0] is Array and pairs[0][0] is Vector3i:
+		var stamp_vol := -_nearest_local_dist(Vector3(pairs[0][0])) * 0.6
+		Sfx.play("place", stamp_vol)
+		Sfx.play("whoosh", stamp_vol - 8.0)
 
 @rpc("authority", "reliable")
 func cl_survival(active: bool, seconds: float, bonked: int) -> void:
@@ -2459,7 +2507,7 @@ func cl_world_reset() -> void:
 
 @rpc("authority", "reliable")
 func cl_suck(id: String, block: int) -> void:
-	Sfx.play("collect", -6.0)
+	Sfx.play("collect", -6.0 - _nearest_player_dist(id) * 0.8)
 	for child in players.get_children():
 		if child is Player and child.player_id == id and child.is_local:
 			var slot_index: int = (child.selected_slot + 1) % 8
@@ -2476,7 +2524,7 @@ func cl_fling(id: String) -> void:
 
 @rpc("authority", "reliable")
 func cl_party_fx(pos: Vector3i) -> void:
-	Sfx.play("cheer")
+	Sfx.play("cheer", -_nearest_local_dist(Vector3(pos)) * 0.5)
 	for color in [Color("ff6b6b"), Color("ffd166"), Color("4a9df8"), Color("ef9fc8")]:
 		_burst_particles(pos, color)
 	_flash_light(Vector3(pos), Color("ffd166"), 4.0)
@@ -2554,7 +2602,7 @@ func cl_boom_fx(pos: Vector3i) -> void:
 	if chunks == null:
 		return
 	var center := Vector3(pos) + Vector3(0.5, 0.5, 0.5)
-	Sfx.play("boom")
+	Sfx.play("boom", -_nearest_local_dist(center) * 0.35)
 	_explosion_particles(center)
 	_flash_light(center, Color(1.0, 0.7, 0.35), 6.0)
 	# Harmless, hilarious: anyone close gets launched.
@@ -2574,13 +2622,14 @@ func cl_boom_fx(pos: Vector3i) -> void:
 func cl_firework_fx(pos: Vector3i) -> void:
 	if chunks == null:
 		return
-	Sfx.play("whoosh")
+	var fw_vol := -_nearest_local_dist(Vector3(pos)) * 0.5
+	Sfx.play("whoosh", fw_vol)
 	var burst_at := Vector3(pos) + Vector3(0.5, 11.0, 0.5)
 	get_tree().create_timer(0.7).timeout.connect(func() -> void:
 		var colors := [Color("ff6b6b"), Color("ffd166"), Color("4a9df8"),
 			Color("51c979"), Color("ef8fc0")]
-		Sfx.play("pop")
-		Sfx.play("collect", -4.0)
+		Sfx.play("pop", fw_vol)
+		Sfx.play("collect", fw_vol - 4.0)
 		_flash_light(burst_at, colors[randi() % colors.size()], 4.0)
 		for ring in 2:
 			var burst := CPUParticles3D.new()

@@ -317,6 +317,17 @@ func _ready() -> void:
 	_center_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_center_note.visible = false
 	add_child(_center_note)
+	_score_label = Label.new()
+	_score_label.add_theme_font_size_override("font_size", _us(17))
+	_score_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
+	_score_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
+	_score_label.add_theme_constant_override("outline_size", 5)
+	_score_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_score_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_score_label.offset_top = _us(8)
+	_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_score_label.visible = false
+	add_child(_score_label)
 	_damage_flash = ColorRect.new()
 	_damage_flash.color = Color(0.9, 0.1, 0.05, 0.0)
 	_damage_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -415,6 +426,7 @@ func _ready() -> void:
 		world.hearts_changed.connect(_refresh_identity)
 		world.match_changed.connect(_on_match_changed)
 		world.battle_config_changed.connect(_refresh_battle_highlights)
+		world.match_score_changed.connect(func() -> void: pass)
 	Game.roster_changed.connect(_refresh_identity)
 	_refresh_identity()
 
@@ -888,11 +900,17 @@ func _update_radar() -> void:
 		for crate in world.crates.get_children():
 			if crate is Node3D:
 				_blip(image, center, yaw, crate.position, Color("ffd166"))
+	var my_team := int(Game.roster.get(Game.player_id(multiplayer.get_unique_id(), slot),
+		{}).get("team", -1))
 	for child in world.players.get_children():
-		if child is Player and child != player:
+		if child is Player and child != player and child.visible \
+				and not world.ghost_ids.has(child.player_id):
 			var team := int(Game.roster.get(child.player_id, {}).get("team", -1))
-			_blip(image, center, yaw, child.position,
-				WorldNode.TEAM_COLORS[team] if team >= 0 else Color("ff4426"))
+			var blip_color: Color = WorldNode.TEAM_COLORS[team] if team >= 0 \
+				else Color("ff4426")
+			if team == my_team and my_team >= 0:
+				blip_color = blip_color.lightened(0.35)
+			_blip(image, center, yaw, child.position, blip_color)
 	_blip(image, center, yaw, player.position, Color.WHITE)
 	_radar.texture = ImageTexture.create_from_image(image)
 	_update_clock()
@@ -921,6 +939,7 @@ var _lobby_countdown: Label
 var _battle_start: Button
 var _add_bot_btn: Button
 var _center_note: Label
+var _score_label: Label
 var _ride_hint: Label
 var _damage_flash: ColorRect
 var _damage_arrow: Label
@@ -992,7 +1011,12 @@ func _refresh_team_box() -> void:
 		head.focus_mode = Control.FOCUS_NONE
 		head.flat = true
 		head.text = str(names[t]) if t < names.size() else str(t + 1)
-		head.add_theme_font_size_override("font_size", _us(15))
+		head.add_theme_font_size_override("font_size", _us(14))
+		var head_style := StyleBoxFlat.new()
+		head_style.bg_color = Color(0, 0, 0, 0)
+		head_style.set_content_margin_all(_us(2))
+		for head_state in ["normal", "hover", "pressed"]:
+			head.add_theme_stylebox_override(head_state, head_style)
 		head.add_theme_color_override("font_color", WorldNode.TEAM_COLORS[t])
 		head.custom_minimum_size = Vector2(cell_w, 0)
 		var team_index := t
@@ -1049,7 +1073,13 @@ func _refresh_team_box() -> void:
 			var kick := Button.new()
 			kick.focus_mode = Control.FOCUS_NONE
 			kick.text = "✕"
-			kick.add_theme_font_size_override("font_size", _us(16))
+			kick.add_theme_font_size_override("font_size", _us(13))
+			var kick_style := StyleBoxFlat.new()
+			kick_style.bg_color = Color(0.14, 0.16, 0.23)
+			kick_style.set_corner_radius_all(6)
+			kick_style.set_content_margin_all(_us(3))
+			for kick_state in ["normal", "hover", "pressed"]:
+				kick.add_theme_stylebox_override(kick_state, kick_style)
 			kick.add_theme_color_override("font_color", Color("ff6b6b"))
 			kick.pressed.connect(func() -> void:
 				if Game.world != null:
@@ -1357,14 +1387,32 @@ func _process(_delta: float) -> void:
 			_ride_hint.visible = false
 	if _center_note != null and world != null:
 		var secs := int(ceil(world.match_seconds))
-		if world.match_phase == "COUNTDOWN":
+		if world.match_phase == "LOBBY" and not _menu.visible:
 			_center_note.visible = true
-			_center_note.text = "🏆  Next battle in %d" % secs
-		elif world.match_phase == "LOBBY" and not _menu.visible:
+			_center_note.text = "🏆  Next battle in %d — pick your team in the menu!" % secs
+		elif world.match_phase == "DROP":
 			_center_note.visible = true
-			_center_note.text = "🏆  Battle in %d — open the menu to pick your team" % secs
+			_center_note.text = "🪂  Dropping in — steer with the stick, land near loot!"
 		else:
 			_center_note.visible = false
+	if _score_label != null and world != null:
+		var in_battle: bool = world.match_phase == "BATTLE"
+		_score_label.visible = in_battle
+		if in_battle:
+			var me_id := Game.player_id(multiplayer.get_unique_id(), slot)
+			var team := int(Game.roster.get(me_id, {}).get("team", -1))
+			var mates_alive := 0
+			var mates_total := 0
+			for rid: String in Game.roster.keys():
+				if int(Game.roster[rid].get("team", -2)) == team:
+					mates_total += 1
+					if world.alive_ids.has(rid):
+						mates_alive += 1
+			var team_name := "?"
+			if team >= 0 and team < world.client_team_names.size():
+				team_name = str(world.client_team_names[team])
+			_score_label.text = "🚩 %s  %d/%d alive   ·   %d players left" % [
+				team_name, mates_alive, mates_total, world.alive_ids.size()]
 	if _damage_flash != null:
 		_damage_t = maxf(0.0, _damage_t - _delta)
 		_damage_flash.color.a = minf(_damage_t, 0.45) * 0.8

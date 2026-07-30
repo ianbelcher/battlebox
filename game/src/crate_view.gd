@@ -33,8 +33,8 @@ func update_crates(payload: Array) -> void:
 		gem.position = Vector3(0, 1.25, 0)
 		node.add_child(gem)
 		var light := OmniLight3D.new()
-		light.light_color = color
-		light.light_energy = 1.6
+		light.light_color = Color(1, 1, 1)
+		light.light_energy = 1.8
 		light.omni_range = 5.0
 		light.shadow_enabled = false
 		light.position = Vector3(0, 1.2, 0)
@@ -44,7 +44,7 @@ func update_crates(payload: Array) -> void:
 		tag.font_size = 52
 		tag.pixel_size = 0.008
 		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		tag.modulate = color
+		tag.modulate = Color(1, 1, 1)
 		tag.outline_size = 12
 		tag.position = Vector3(0, 1.9, 0)
 		node.add_child(tag)
