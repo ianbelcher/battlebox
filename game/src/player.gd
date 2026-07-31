@@ -189,11 +189,9 @@ func refresh_overhead(hp: int, team_color: Color, downed_now: bool,
 ## Ghost look while downed: the whole character fades to a shimmer.
 func set_ghost(ghost: bool) -> void:
 	for node in _avatar.find_children("*", "MeshInstance3D", true, false):
-		var mesh_instance := node as MeshInstance3D
-		var mat := mesh_instance.material_override as StandardMaterial3D
-		if mat != null:
-			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if ghost else BaseMaterial3D.TRANSPARENCY_DISABLED
-			mat.albedo_color.a = 0.6 if ghost else 1.0
+		# GeometryInstance3D.transparency fades ANY mesh, including
+		# imported ones whose materials are shared between players.
+		(node as MeshInstance3D).transparency = 0.55 if ghost else 0.0
 
 func refresh_from_roster(entry: Dictionary) -> void:
 	set_team_glow(int(entry.get("team", -1)))
@@ -305,6 +303,8 @@ func _refresh_hand() -> void:
 		_hand_item = null
 	var arm: Node3D = _avatar.get_node_or_null("ArmR")
 	if arm == null:
+		arm = _avatar.find_child("arm-right", true, false)
+	if arm == null:
 		return
 	if riding >= 0:
 		# Dragonback: the head lives on the camera viewmodel (splitscreen)
@@ -313,7 +313,15 @@ func _refresh_hand() -> void:
 	if item.kind == "empty":
 		return
 	_hand_item = ItemFactory.build(str(item.kind), int(item.id))
-	_hand_item.position = Vector3(0, -0.42, -0.05)
+	if arm.name == "arm-right":
+		# Inside the scaled Kenney rig: cancel the rig's scale and sit the
+		# item at the hand.
+		var rig_scale := maxf(arm.get_parent_node_3d().global_basis.get_scale().y, 0.01) \
+			/ maxf(scale.y, 0.01)
+		_hand_item.scale = Vector3.ONE * (1.0 / maxf(rig_scale, 0.01))
+		_hand_item.position = Vector3(0, -1.1, 0.2)
+	else:
+		_hand_item.position = Vector3(0, -0.42, -0.05)
 	arm.add_child(_hand_item)
 	for node in _hand_item.find_children("*", "VisualInstance3D", true, false):
 		(node as VisualInstance3D).layers = render_layer_bit()
@@ -920,6 +928,9 @@ func _send_state(delta: float) -> void:
 func _animate(delta: float) -> void:
 	if _avatar == null:
 		return
+	if _avatar.has_meta("ap"):
+		_animate_kenney(delta)
+		return
 	_bob_time += delta
 	var swing := 0.0
 	var arms_up := 0.0
@@ -989,6 +1000,28 @@ func _animate(delta: float) -> void:
 				var sweep := minf((t - 0.3) / 0.7 * 1.2, 1.0)
 				arm.rotation.x = lerpf(1.9, -0.9, sweep)
 				arm.rotation.z = lerpf(0.25, -0.3, sweep)
+
+## Kenney Blocky Characters animate themselves — pick the right clip.
+func _animate_kenney(_delta: float) -> void:
+	var ap := _avatar.get_meta("ap") as AnimationPlayer
+	if not is_instance_valid(ap):
+		return
+	var want := "idle"
+	var ground_speed := Vector2(velocity.x, velocity.z).length()
+	if swing_time > 0.0:
+		want = "attack-melee-right"
+	elif downed:
+		want = "die"
+	elif anim == Anim.SNEAK:
+		want = "sit"
+	elif ground_speed > 5.2:
+		want = "sprint"
+	elif ground_speed > 0.6 or anim == Anim.WALK:
+		want = "walk"
+	elif held().kind == "weapon":
+		want = "holding-right"
+	if ap.current_animation != want:
+		ap.play(want, 0.18)
 
 ## Limbs ease toward their pose so animation switches never pop. arms_up
 ## rotates the pivot so hands point skyward (jumping — kids love it).

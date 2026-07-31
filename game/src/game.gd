@@ -122,6 +122,9 @@ func set_local_name(slot: int, pname: String) -> void:
 func cycle_local_style(slot: int, attr: String, direction: int) -> void:
 	sv_cycle_style.rpc_id(1, slot, attr, direction)
 
+func set_local_style(slot: int, style: Dictionary) -> void:
+	sv_set_style.rpc_id(1, slot, style)
+
 func local_player_ids() -> Array[String]:
 	var ids: Array[String] = []
 	var me := multiplayer.get_unique_id()
@@ -235,7 +238,11 @@ func sv_cycle_style(slot: int, attr: String, direction: int) -> void:
 	if not roster.has(id) or not (attr in AvatarFactory.ATTRS):
 		return
 	var style: Dictionary = AvatarFactory.normalize_style(roster[id].style)
-	style[attr] = int(style[attr]) + signi(direction)
+	# Characters are picked whole now: any attribute nudge steps through
+	# the roster of Kenney characters instead.
+	var index := AvatarFactory.KENNEY_CHARS.find(str(style.get("who", "a")))
+	style = {"who": AvatarFactory.KENNEY_CHARS[posmod(index + signi(direction),
+		AvatarFactory.KENNEY_CHARS.size())]}
 	roster[id].style = AvatarFactory.normalize_style(style)
 	_broadcast_roster()
 
@@ -264,9 +271,14 @@ func _load_profile(device_key: String) -> Dictionary:
 	var config := ConfigFile.new()
 	config.load(PROFILE_PATH)
 	var style := AvatarFactory.random_style()
-	if config.has_section_key(device_key, "body"):
+	if config.has_section_key(device_key, "who"):
+		style = AvatarFactory.normalize_style(
+			{"who": str(config.get_value(device_key, "who", "a"))})
+	elif config.has_section_key(device_key, "body"):
+		# Legacy editor profile: maps to a stable Kenney pick.
 		var saved := {}
-		for attr in AvatarFactory.ATTRS:
+		for attr: String in ["body", "face", "hair", "hat", "shirt", "pants",
+				"shoes", "gear"]:
 			saved[attr] = int(config.get_value(device_key, attr, 0))
 		style = AvatarFactory.normalize_style(saved)
 	return {
@@ -287,10 +299,9 @@ func _save_local_profiles() -> void:
 		var device_key: String = str(profile_keys.get(entry.slot,
 			local_inputs[entry.slot].claim_key()))
 		var style: Dictionary = AvatarFactory.normalize_style(entry.get("style"))
-		for attr in AvatarFactory.ATTRS:
-			if int(config.get_value(device_key, attr, -1)) != int(style[attr]):
-				config.set_value(device_key, attr, int(style[attr]))
-				dirty = true
+		if str(config.get_value(device_key, "who", "")) != str(style.who):
+			config.set_value(device_key, "who", str(style.who))
+			dirty = true
 		if str(config.get_value(device_key, "name", "")) != entry.name:
 			config.set_value(device_key, "name", entry.name)
 			dirty = true

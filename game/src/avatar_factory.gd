@@ -56,30 +56,17 @@ const SHOE_COLORS: Array[Color] = [
 ]
 
 static func random_style() -> Dictionary:
-	return {
-		"body": randi() % SKIN_COLORS.size(),
-		"face": randi() % FACE_COUNT,
-		"hair": randi() % HAIRS.size(),
-		"hat": randi() % HAT_COUNT,
-		"shirt": randi() % SHIRTS.size(),
-		"pants": randi() % PANTS_COLORS.size(),
-		"shoes": randi() % SHOE_COLORS.size(),
-		"gear": randi() % GEAR_COUNT,
-	}
+	return {"who": KENNEY_CHARS[randi() % KENNEY_CHARS.size()]}
 
+## Everyone is a Kenney character now. Legacy editor styles map to a
+## stable pick (hash of the old dict) so returning players keep one
+## consistent look until they choose their own.
 static func normalize_style(style) -> Dictionary:
 	if not (style is Dictionary):
 		return random_style()
-	return {
-		"body": posmod(int(style.get("body", 0)), SKIN_COLORS.size()),
-		"face": posmod(int(style.get("face", 0)), FACE_COUNT),
-		"hair": posmod(int(style.get("hair", 1)), HAIRS.size()),
-		"hat": posmod(int(style.get("hat", 0)), HAT_COUNT),
-		"shirt": posmod(int(style.get("shirt", 0)), SHIRTS.size()),
-		"pants": posmod(int(style.get("pants", 0)), PANTS_COLORS.size()),
-		"shoes": posmod(int(style.get("shoes", 0)), SHOE_COLORS.size()),
-		"gear": posmod(int(style.get("gear", 0)), GEAR_COUNT),
-	}
+	if style.has("who") and str(style.who) in KENNEY_CHARS:
+		return {"who": str(style.who)}
+	return {"who": KENNEY_CHARS[posmod(str(style).hash(), KENNEY_CHARS.size())]}
 
 static func skin_color(style: Dictionary) -> Color:
 	return SKIN_COLORS[posmod(int(style.get("body", 0)), SKIN_COLORS.size())]
@@ -136,8 +123,32 @@ static func _cylinder(radius: float, height: float, color: Color) -> MeshInstanc
 
 ## The character faces -Z. Total height ~1.5 (fits the 1.25 collision box
 ## with the head poking into the generous 2-block clearance).
+## Kenney Blocky Characters (CC0): 18 ready-made kids to pick from.
+const KENNEY_CHARS := ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+	"k", "l", "m", "n", "o", "p", "q", "r"]
+
 static func build_character(style: Dictionary) -> Node3D:
 	style = normalize_style(style)
+	if style.has("who"):
+		var scene: PackedScene = load("res://assets/models/chars/character-%s.glb" % str(style.who))
+		if scene != null:
+			var root := Node3D.new()
+			var inst: Node3D = scene.instantiate()
+			inst.scale = Vector3.ONE * 0.52
+			inst.rotation_degrees = Vector3(0, 180, 0)
+			root.add_child(inst)
+			var ap := inst.find_child("AnimationPlayer", true, false) as AnimationPlayer
+			if ap != null:
+				for anim_name in ["idle", "walk", "sprint", "holding-right", "die", "sit"]:
+					if ap.has_animation(anim_name):
+						ap.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
+				ap.play("idle")
+				root.set_meta("ap", ap)
+			root.set_meta("style", str(style))
+			return root
+	return _build_legacy(style)
+
+static func _build_legacy(style: Dictionary) -> Node3D:
 	var skin := skin_color(style)
 	var shirt_spec: Dictionary = SHIRTS[int(style.shirt)]
 	var shirt: Color = shirt_spec.c

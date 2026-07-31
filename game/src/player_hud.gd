@@ -37,6 +37,7 @@ func _uscale() -> float:
 	if w < 50.0:
 		w = float(DisplayServer.window_get_size().x)
 	return clampf(w / 1100.0, 0.75, 3.0)
+var _char_buttons: Dictionary = {}
 var _menu: PanelContainer
 var _menu_dim: ColorRect
 # Two-level menu: a top row of groups, each holding a row of small tabs.
@@ -733,34 +734,39 @@ func _build_character_tab() -> void:
 		Game.set_local_name(slot, text)
 		Sfx.play("pop", -4.0))
 	name_row.add_child(name_edit)
-	for attr in AvatarFactory.ATTRS:
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", _us(10))
-		tab.add_child(row)
-		var attr_label := Label.new()
-		attr_label.text = {"body": "Skin tone:", "face": "Face:", "hair": "Hair:",
-			"hat": "Hat:", "shirt": "Shirt:", "pants": "Pants:", "shoes": "Shoes:",
-			"gear": "Gear:"}[attr]
-		attr_label.custom_minimum_size = Vector2(_us(140), 0)
-		attr_label.add_theme_font_size_override("font_size", _us(22))
-		row.add_child(attr_label)
-		var attr_name := str(attr)
-		for direction in [-1, 1]:
-			var btn := Button.new()
-			btn.text = "◀" if direction < 0 else "▶"
-			btn.add_theme_font_size_override("font_size", _us(15))
-			var d: int = direction
-			btn.pressed.connect(func() -> void:
-				Game.cycle_local_style(slot, attr_name, d)
-				Sfx.play("pop", -6.0))
-			row.add_child(btn)
+	var pick_label := Label.new()
+	pick_label.text = "Pick your character:"
+	pick_label.add_theme_font_size_override("font_size", _us(22))
+	tab.add_child(pick_label)
+	var char_grid := GridContainer.new()
+	char_grid.columns = 6
+	char_grid.add_theme_constant_override("h_separation", _us(6))
+	char_grid.add_theme_constant_override("v_separation", _us(6))
+	tab.add_child(char_grid)
+	for who in AvatarFactory.KENNEY_CHARS:
+		var cbtn := Button.new()
+		cbtn.focus_mode = Control.FOCUS_NONE
+		cbtn.custom_minimum_size = Vector2(_us(72), _us(72))
+		var cicon := TextureRect.new()
+		cicon.texture = load("res://assets/ui/chars/character-%s.png" % who)
+		cicon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		cicon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		cicon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		cicon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cbtn.add_child(cicon)
+		var pick_who := str(who)
+		cbtn.pressed.connect(func() -> void:
+			Game.set_local_style(slot, {"who": pick_who})
+			Sfx.play("pop", -6.0))
+		char_grid.add_child(cbtn)
+		_char_buttons[pick_who] = cbtn
 	var dice := Button.new()
 	dice.focus_mode = Control.FOCUS_NONE
 	dice.text = "🎲  Surprise me!"
 	dice.add_theme_font_size_override("font_size", _us(20))
 	dice.pressed.connect(func() -> void:
-		for dice_attr in ["body", "face", "hair", "hat", "shirt", "pants", "shoes", "gear"]:
-			Game.cycle_local_style(slot, str(dice_attr), randi_range(1, 5))
+		var pool: Array = AvatarFactory.KENNEY_CHARS
+		Game.set_local_style(slot, {"who": pool[randi() % pool.size()]})
 		Sfx.play("cheer", -12.0))
 	tab.add_child(dice)
 	_preview_viewport = SubViewport.new()
@@ -1495,6 +1501,9 @@ func _refresh_identity() -> void:
 	if entry.is_empty():
 		return
 	_name_label.text = str(entry.name)
+	var my_who := str(AvatarFactory.normalize_style(entry.get("style")).get("who", ""))
+	for who_key: String in _char_buttons:
+		_mark_selected(_char_buttons[who_key] as Button, who_key == my_who)
 	if _menu != null and _menu.visible and _current_page() == PAGE_CHARACTER:
 		_refresh_preview()
 	var team := int(entry.get("team", -1))
