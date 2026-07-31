@@ -404,6 +404,10 @@ func _ready() -> void:
 	_crosshair.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_crosshair)
+	# The menu (and its dim) must sit ABOVE the water/storm/damage tints —
+	# opening the menu underwater used to render it behind the blue wash.
+	move_child(_menu_dim, get_child_count() - 1)
+	move_child(_menu, get_child_count() - 1)
 
 	_pickers = []
 	for spec in [["Tools", "tools"], ["Building", "building"],
@@ -740,9 +744,12 @@ func _build_game_tab() -> void:
 			Sfx.play("tick", -8.0))
 		mode_row.add_child(mode_btn)
 		_mode_btns[mode_key] = mode_btn
+	_battle_opts = VBoxContainer.new()
+	_battle_opts.add_theme_constant_override("separation", _us(10))
+	tab.add_child(_battle_opts)
 	var length_row := HBoxContainer.new()
 	length_row.add_theme_constant_override("separation", _us(8))
-	tab.add_child(length_row)
+	_battle_opts.add_child(length_row)
 	var length_label := Label.new()
 	length_label.text = "Game length:"
 	length_label.add_theme_font_size_override("font_size", _us(20))
@@ -761,7 +768,7 @@ func _build_game_tab() -> void:
 		_length_btns[minutes] = preset_btn
 	var size_row := HBoxContainer.new()
 	size_row.add_theme_constant_override("separation", _us(8))
-	tab.add_child(size_row)
+	_battle_opts.add_child(size_row)
 	var size_label := Label.new()
 	size_label.text = "Arena size:"
 	size_label.add_theme_font_size_override("font_size", _us(20))
@@ -1006,6 +1013,7 @@ var _length_btns: Dictionary = {}
 var _size_btns: Dictionary = {}
 var _lobby_countdown: Label
 var _mode_btns: Dictionary = {}
+var _battle_opts: VBoxContainer
 var _battle_start: Button
 var _add_bot_btn: Button
 var _center_note: Label
@@ -1067,6 +1075,8 @@ func _refresh_battle_highlights() -> void:
 		_mark_selected(_size_btns[arena], arena == world.client_size)
 	for mode_key: String in _mode_btns.keys():
 		_mark_selected(_mode_btns[mode_key], mode_key == world.client_mode)
+	if _battle_opts != null:
+		_battle_opts.visible = world.client_mode == "battle"
 	_refresh_team_box()
 
 ## The team matrix: one row per player, one column per team. You can move

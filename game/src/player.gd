@@ -136,6 +136,7 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	_tag.outline_modulate = Color(0.05, 0.05, 0.1, 0.9)
 	_tag.outline_size = 14
 	_tag.position = Vector3(0, 2.1, 0)
+	_tag.visible = not is_local  # your own tag is pure noise to you
 	add_child(_tag)
 
 ## Overhead display: hearts in two rows of four, trimmed in team color —
@@ -197,6 +198,7 @@ func refresh_from_roster(entry: Dictionary) -> void:
 		_avatar = AvatarFactory.build_character(style)
 		_avatar.scale = Vector3(1.15, 1.15, 1.15)
 		_avatar.rotation = old.rotation
+		_avatar.visible = not (is_local and fp_mode)
 		add_child(_avatar)
 		old.queue_free()
 		_apply_render_layer()
@@ -217,6 +219,11 @@ func set_fp(enabled: bool) -> void:
 	if fp_mode == enabled:
 		return
 	fp_mode = enabled
+	# In first person your entire body simply doesn't render for you —
+	# belt and braces on top of the per-camera layer culling, which
+	# missed late-added pieces like hats.
+	if is_local and _avatar != null:
+		_avatar.visible = not enabled
 	if enabled:
 		look_yaw = atan2(-heading.x, -heading.z)
 		look_pitch = -0.2
