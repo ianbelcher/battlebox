@@ -104,11 +104,17 @@ func _ready() -> void:
 	_treasure_label.add_theme_color_override("font_color", Color("ffd166"))
 	row.add_child(_treasure_label)
 	_hearts_label = Label.new()
-	_hearts_label.add_theme_font_size_override("font_size", _us(30))
+	_hearts_label.add_theme_font_size_override("font_size", _us(26))
 	_hearts_label.add_theme_color_override("font_color", Color("ff4438"))
 	_hearts_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	_hearts_label.add_theme_constant_override("outline_size", 6)
-	row.add_child(_hearts_label)
+	_hearts_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_hearts_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_hearts_label.offset_top = -_us(148)
+	_hearts_label.offset_bottom = -_us(118)
+	_hearts_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(_hearts_label)
+	_name_label.visible = false
 
 	# Bottom: hotbar.
 	var bar_holder := CenterContainer.new()
@@ -328,6 +334,14 @@ func _ready() -> void:
 	_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_score_label.visible = false
 	add_child(_score_label)
+	_team_panel = VBoxContainer.new()
+	_team_panel.add_theme_constant_override("separation", _us(1))
+	_team_panel.visible = false
+	add_child(_team_panel)
+	_feed_box = VBoxContainer.new()
+	_feed_box.add_theme_constant_override("separation", _us(2))
+	_feed_box.position = Vector2(_us(10), _us(60))
+	add_child(_feed_box)
 	_damage_flash = ColorRect.new()
 	_damage_flash.color = Color(0.9, 0.1, 0.05, 0.0)
 	_damage_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -426,7 +440,22 @@ func _ready() -> void:
 		world.hearts_changed.connect(_refresh_identity)
 		world.match_changed.connect(_on_match_changed)
 		world.battle_config_changed.connect(_refresh_battle_highlights)
-		world.match_score_changed.connect(func() -> void: pass)
+		world.match_score_changed.connect(_refresh_team_panel)
+		world.knockout.connect(func(attacker: String, victim: String) -> void:
+			var line := Label.new()
+			line.text = ("%s  ⟶  %s ✕" % [attacker, victim]) if not attacker.is_empty() \
+				else "☁  %s ✕" % victim
+			line.add_theme_font_size_override("font_size", _us(15))
+			line.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
+			line.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
+			line.add_theme_constant_override("outline_size", 4)
+			_feed_box.add_child(line)
+			if _feed_box.get_child_count() > 5:
+				_feed_box.get_child(0).queue_free()
+			var fade := create_tween()
+			fade.tween_interval(6.0)
+			fade.tween_property(line, "modulate:a", 0.0, 1.5)
+			fade.tween_callback(line.queue_free))
 	Game.roster_changed.connect(_refresh_identity)
 	_refresh_identity()
 
@@ -690,7 +719,7 @@ func _build_game_tab() -> void:
 	size_label.text = "Arena size:"
 	size_label.add_theme_font_size_override("font_size", _us(20))
 	size_row.add_child(size_label)
-	for arena in [50, 100, 150, 200, 250]:
+	for arena in [50, 100, 150, 200, 250, 300, 350]:
 		var size_btn := Button.new()
 		size_btn.focus_mode = Control.FOCUS_NONE
 		size_btn.text = str(arena)
@@ -890,8 +919,8 @@ func _update_radar() -> void:
 		var ring: float = world.storm_radius
 		for angle_i in 200:
 			var a := angle_i * TAU / 200.0
-			var rs := Vector2(cos(a) * ring - center.x,
-				sin(a) * ring - center.z).rotated(yaw) / 1.5
+			var rs := Vector2(world.storm_center.x + cos(a) * ring - center.x,
+				world.storm_center.z + sin(a) * ring - center.z).rotated(yaw) / 1.5
 			var rx := 64 + int(rs.x)
 			var ry := 64 + int(rs.y)
 			if rx >= 0 and rx < 128 and ry >= 0 and ry < 128:
@@ -940,6 +969,8 @@ var _battle_start: Button
 var _add_bot_btn: Button
 var _center_note: Label
 var _score_label: Label
+var _team_panel: VBoxContainer
+var _feed_box: VBoxContainer
 var _ride_hint: Label
 var _damage_flash: ColorRect
 var _damage_arrow: Label
@@ -1106,6 +1137,29 @@ func _refresh_team_box() -> void:
 				Sfx.play("pop"))
 			grid.add_child(del_btn)
 		grid.add_child(Label.new())
+
+## Under-radar panel: one colored row per team with its alive count.
+func _refresh_team_panel() -> void:
+	if _team_panel == null or world == null:
+		return
+	for child in _team_panel.get_children():
+		child.queue_free()
+	var names: Array = world.client_team_names
+	for t in names.size():
+		var alive := 0
+		for rid: String in Game.roster.keys():
+			if int(Game.roster[rid].get("team", -1)) == t and world.alive_ids.has(rid):
+				alive += 1
+		if alive == 0:
+			continue
+		var row_label := Label.new()
+		row_label.text = "%s  %d" % [str(names[t]), alive]
+		row_label.add_theme_font_size_override("font_size", _us(14))
+		row_label.add_theme_color_override("font_color", WorldNode.TEAM_COLORS[t])
+		row_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
+		row_label.add_theme_constant_override("outline_size", 4)
+		row_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_team_panel.add_child(row_label)
 
 ## Swap a team header button for a LineEdit; commit renames server-side.
 func _rename_team(head: Button, index: int) -> void:
@@ -1395,6 +1449,8 @@ func _process(_delta: float) -> void:
 			_center_note.text = "🪂  Dropping in — steer with the stick, land near loot!"
 		else:
 			_center_note.visible = false
+	if _team_panel != null and world != null:
+		_team_panel.visible = world.match_phase == "BATTLE"
 	if _score_label != null and world != null:
 		var in_battle: bool = world.match_phase == "BATTLE"
 		_score_label.visible = in_battle
@@ -1437,6 +1493,9 @@ func _process(_delta: float) -> void:
 		_radar.size = Vector2(map_px, map_px)
 		_clock.position = Vector2(size.x - map_px - 10, 12 + map_px)
 		_clock.size.x = map_px
+		if _team_panel != null:
+			_team_panel.position = Vector2(size.x - map_px - 10, 34 + map_px)
+			_team_panel.custom_minimum_size = Vector2(map_px, 0)
 		_clock.add_theme_font_size_override("font_size", maxi(11, int(map_px / 11.0)))
 		# Split-screen: fonts are sized for the full window, so shrink the
 		# whole menu to fit this player's cell instead of spilling over.
@@ -1469,12 +1528,14 @@ func _process(_delta: float) -> void:
 	if _storm_tint != null and world != null:
 		var danger := 0.0
 		if world.match_phase == "BATTLE" \
-				and Vector2(player.position.x, player.position.z).length() > world.storm_radius:
+				and Vector2(player.position.x - world.storm_center.x,
+					player.position.z - world.storm_center.z).length() > world.storm_radius:
 			danger = 0.25
 		_storm_tint.color.a = lerpf(_storm_tint.color.a, danger, 0.1)
 	# Caught outside the storm: a big arrow home plus the distance.
 	if world != null and world.match_phase == "BATTLE":
-		var flat := Vector2(player.position.x, player.position.z)
+		var flat := Vector2(player.position.x - world.storm_center.x,
+			player.position.z - world.storm_center.z)
 		var outside: float = flat.length() - world.storm_radius
 		if outside > 0.0:
 			var to_center := -flat

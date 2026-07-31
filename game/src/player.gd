@@ -477,6 +477,9 @@ func _local_move(delta: float) -> void:
 
 	if fly_mode and (world.survival_active or world.match_phase != "IDLE"):
 		fly_mode = false  # no flying away from raids or matches
+	if world != null and world.match_phase == "DROP":
+		# Everyone drifts down together — no diving ahead of the pack.
+		velocity.y = maxf(velocity.y, -8.0)
 	if fly_mode:
 		var vert := 0.0
 		if jump_now:
@@ -906,14 +909,15 @@ func _animate(delta: float) -> void:
 	if swing_time > 0.0:
 		var arm: Node3D = _avatar.get_node_or_null("ArmR")
 		if arm != null:
+			# Point the blade DOWN, then slash upward across the body.
 			var t := 1.0 - swing_time / 0.25
-			if t < 0.35:
-				arm.rotation.x = lerpf(0.4, 2.7, t / 0.35)
-				arm.rotation.z = lerpf(0.0, 0.35, t / 0.35)
+			if t < 0.3:
+				arm.rotation.x = lerpf(0.5, -0.65, t / 0.3)
+				arm.rotation.z = lerpf(0.0, -0.4, t / 0.3)
 			else:
-				var chop := minf((t - 0.35) / 0.65 * 1.25, 1.0)
-				arm.rotation.x = lerpf(2.7, 0.15, chop)
-				arm.rotation.z = lerpf(0.35, -0.75, chop)
+				var sweep := minf((t - 0.3) / 0.7 * 1.2, 1.0)
+				arm.rotation.x = lerpf(-0.65, 2.4, sweep)
+				arm.rotation.z = lerpf(-0.4, 0.45, sweep)
 
 ## Limbs ease toward their pose so animation switches never pop. arms_up
 ## rotates the pivot so hands point skyward (jumping — kids love it).

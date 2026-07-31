@@ -516,8 +516,8 @@ func _update_minimap() -> void:
 		var ring: float = Game.world.storm_radius
 		for angle_i in 140:
 			var a := angle_i * TAU / 140.0
-			var px := 48 + int((cos(a) * ring - center.x) / 2.0)
-			var py := 48 + int((sin(a) * ring - center.z) / 2.0)
+			var px := 48 + int((Game.world.storm_center.x + cos(a) * ring - center.x) / 2.0)
+			var py := 48 + int((Game.world.storm_center.z + sin(a) * ring - center.z) / 2.0)
 			if px >= 0 and px < 96 and py >= 0 and py < 96:
 				image.set_pixel(px, py, Color(1.0, 0.25, 0.2))
 	for child in Game.world.players.get_children():

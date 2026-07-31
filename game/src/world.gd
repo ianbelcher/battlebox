@@ -325,11 +325,14 @@ func _drain_chunk_queues() -> void:
 			_chunk_send_queues.erase(peer)
 			continue
 		var queue: Array = _chunk_send_queues[peer]
-		var sent := 0
-		while sent < 5 and not queue.is_empty():
+		var batch: Array = []
+		while batch.size() < 6 and not queue.is_empty():
 			var cpos: Vector2i = queue.pop_front()
-			cl_chunk.rpc_id(peer, cpos.x, cpos.y, store.get_chunk_compressed(cpos))
-			sent += 1
+			batch.append([cpos.x, cpos.y, store.get_chunk_compressed(cpos)])
+		if batch.size() == 1:
+			cl_chunk.rpc_id(peer, batch[0][0], batch[0][1], batch[0][2])
+		elif not batch.is_empty():
+			cl_chunk_batch.rpc_id(peer, batch)
 		if queue.is_empty():
 			_chunk_send_queues.erase(peer)
 
@@ -534,7 +537,7 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 					if pid != id and _teams_differ(id, pid) \
 							and _player_state.has(pid) \
 							and Vector3(cell).distance_to(_player_state[pid].pos) < 6.0:
-						_match_hurt(pid, 2, Vector3(cell))
+						_match_hurt(pid, 2, Vector3(cell), Game.player_id(multiplayer.get_remote_sender_id(), slot))
 			return
 		14:  # Flare: a sky light, nothing to break.
 			return
@@ -545,7 +548,7 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 					if pid != id and _teams_differ(id, pid) \
 							and _player_state.has(pid) \
 							and Vector3(cell).distance_to(_player_state[pid].pos) < 8.0:
-						_match_hurt(pid, 3, Vector3(cell))
+						_match_hurt(pid, 3, Vector3(cell), Game.player_id(multiplayer.get_remote_sender_id(), slot))
 			return
 		1:  # Bazooka
 			_blast(cell, 3.4, [], cell)
@@ -554,7 +557,7 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 					if pid != id and _teams_differ(id, pid) \
 							and _player_state.has(pid) \
 							and Vector3(cell).distance_to(_player_state[pid].pos) < 5.0:
-						_match_hurt(pid, 2, Vector3(cell))
+						_match_hurt(pid, 2, Vector3(cell), Game.player_id(multiplayer.get_remote_sender_id(), slot))
 			for monster_id: int in _monsters.keys().duplicate():
 				if Vector3(cell).distance_to(_monsters[monster_id].pos) < 4.5:
 					_monsters[monster_id].hp = int(_monsters[monster_id].hp) - 2
@@ -710,7 +713,7 @@ func sv_orb_hit(slot: int, target_id: String, hit_pos: Vector3) -> void:
 	if target_state.is_empty() or Vector3(target_state.pos).distance_to(hit_pos) > 4.0:
 		return
 	if match_phase == "BATTLE" and _teams_differ(shooter, target_id):
-		_match_hurt(target_id, 1, hit_pos)
+		_match_hurt(target_id, 1, hit_pos, Game.player_id(multiplayer.get_remote_sender_id(), slot))
 		return
 	cl_bonk.rpc(target_id, hit_pos)
 
@@ -1256,8 +1259,9 @@ func _bot_pick_goal(id: String, bot: Dictionary) -> Vector3:
 	var pos: Vector3 = bot.pos
 	if match_phase == "BATTLE" and _match_alive.has(id):
 		# Storm first: get inside.
-		if Vector2(pos.x, pos.z).length() > storm_radius - 8.0:
-			var inward := -Vector3(pos.x, 0, pos.z).normalized() * 20.0
+		if Vector2(pos.x - storm_center.x, pos.z - storm_center.z).length() > storm_radius - 8.0:
+			var inward := (storm_center - Vector3(pos.x, 0, pos.z)).normalized() * 20.0
+			inward.y = 0
 			return pos + inward
 		# Hurt? Break contact and look for loot instead of trading.
 		var hp := int(_player_state.get(id, {}).get("hp", 5))
@@ -1345,7 +1349,11 @@ func _server_tick_bots(delta: float) -> void:
 			if bot.think <= 0.05:
 				bot.moved = 0.0
 		var gy := store.surface_y(int(pos.x), int(pos.z))
-		pos.y = lerpf(pos.y, float(gy) + 1.0, minf(1.0, delta * 8.0))
+		if pos.y > float(gy) + 4.0:
+			# Still airborne (the drop): glide down at human pace.
+			pos.y = maxf(pos.y - 8.0 * delta, float(gy) + 1.0)
+		else:
+			pos.y = lerpf(pos.y, float(gy) + 1.0, minf(1.0, delta * 8.0))
 		bot.pos = pos
 		var state: Dictionary = _player_state.get(id, {})
 		if not state.is_empty():
@@ -1360,11 +1368,11 @@ func _server_tick_bots(delta: float) -> void:
 					bot.shoot_cd = 1.1
 					cl_orb.rpc(id, pos + Vector3(0, 1.4, 0), (epos - pos).normalized(), int(bot.weapon))
 					if randf() < clampf(1.0 - dist / 22.0, 0.12, 0.7):
-						_match_hurt(enemy, 1, epos)
+						_match_hurt(enemy, 1, epos, id)
 				elif dist < 2.6:
 					bot.shoot_cd = 0.8
 					cl_pos.rpc(id, pos, bot.yaw, 9)
-					_match_hurt(enemy, 1, epos)
+					_match_hurt(enemy, 1, epos, id)
 		if bot.send_t <= 0.0:
 			bot.send_t = 1.0 / 12.0
 			cl_pos.rpc(id, pos, bot.yaw, 1)
@@ -1415,7 +1423,7 @@ func sv_set_loop(on: bool) -> void:
 	match_loop = on
 
 func _storm_start() -> float:
-	return battle_size * 0.5
+	return battle_size * 0.72
 const STORM_END := 16.0
 var storm_minutes := 5.0
 var loot_only := false
@@ -1543,7 +1551,7 @@ func _server_tick_match(delta: float) -> void:
 				_match_timer = 9999.0
 			var frac := 1.0 - clampf(_match_timer / (storm_minutes * 60.0), 0.0, 1.0)
 			storm_radius = lerpf(_storm_start(), STORM_END, frac)
-			cl_storm.rpc(storm_radius)
+			cl_storm.rpc(storm_radius, storm_center)
 			_storm_damage()
 			_storm_bite()
 			_tick_revives()
@@ -1629,6 +1637,12 @@ func _server_match_drop() -> void:
 	_broadcast_crates()
 	Game.cl_roster.rpc(Game.roster)
 	storm_radius = _storm_start()
+	# The circle closes on a RANDOM spot each battle, and the wall starts
+	# beyond the arena edge so no red is visible at the drop.
+	var storm_angle := randf() * TAU
+	var storm_dist := randf() * battle_size * 0.22
+	storm_center = Vector3(cos(storm_angle) * storm_dist, 0, sin(storm_angle) * storm_dist)
+	clock = randf()  # every battle gets its own time of day
 	clock = 0.79  # dusk falls as the match starts: hunt loot in the dark
 	cl_clock.rpc(clock)
 	cl_match.rpc("DROP", 6.0)
@@ -1643,7 +1657,8 @@ func _storm_damage() -> void:
 		var pos: Vector3 = state.pos
 		# The first dozen blocks outside the wall are a warning zone; deeper
 		# than that the storm hits hard.
-		if Vector2(pos.x, pos.z).length() > storm_radius + 12.0:
+		if Vector2(pos.x - storm_center.x, pos.z - storm_center.z).length() \
+				> storm_radius + 12.0:
 			_storm_hurt_ms[id] = now + 1600
 			state.hp = int(state.get("hp", MATCH_HP)) - 1
 			cl_hearts.rpc(id, state.hp)
@@ -1665,8 +1680,8 @@ func _storm_bite() -> void:
 	for n in 6:
 		var a := randf() * TAU
 		var r := storm_radius + randf_range(2.0, 14.0)
-		var wx := int(cos(a) * r)
-		var wz := int(sin(a) * r)
+		var wx := int(storm_center.x + cos(a) * r)
+		var wz := int(storm_center.z + sin(a) * r)
 		var y := store.surface_y(wx, wz)
 		if y <= WorldGen.SEA_LEVEL or y >= WorldGen.CHUNK_H - 2:
 			continue
@@ -1683,7 +1698,7 @@ var _revive_progress: Dictionary = {}
 
 ## Down-but-not-out: if living teammates remain you crawl and can be
 ## revived (teammate stands close for ~3s); alone, you're out.
-func _match_eliminate(id: String) -> void:
+func _match_eliminate(id: String, attacker := "") -> void:
 	if not _match_alive.has(id) or _downed_ids.has(id):
 		return
 	var team := int(Game.roster.get(id, {}).get("team", -1))
@@ -1699,6 +1714,9 @@ func _match_eliminate(id: String) -> void:
 	_match_alive.erase(id)
 	_downed_ids.erase(id)
 	cl_eliminated.rpc(id)
+	var victim_name := str(Game.roster.get(id, {}).get("name", "?"))
+	var attacker_name := str(Game.roster.get(attacker, {}).get("name", ""))
+	cl_feed.rpc(attacker_name, victim_name)
 	_check_match_win()
 
 func _tick_revives() -> void:
@@ -1765,7 +1783,7 @@ func _server_match_end(winner: int) -> void:
 	cl_match_end.rpc(winner)
 
 ## Match damage between enemies (orbs and blast splash call this).
-func _match_hurt(id: String, amount: int, from_pos: Vector3) -> void:
+func _match_hurt(id: String, amount: int, from_pos: Vector3, attacker := "") -> void:
 	if match_phase != "BATTLE" or not _match_alive.has(id):
 		return
 	if _downed_ids.has(id):
@@ -1781,7 +1799,7 @@ func _match_hurt(id: String, amount: int, from_pos: Vector3) -> void:
 	cl_hearts.rpc(id, state.hp)
 	cl_bonk.rpc(id, from_pos)
 	if state.hp <= 0:
-		_match_eliminate(id)
+		_match_eliminate(id, attacker)
 
 func _teams_differ(a: String, b: String) -> bool:
 	if not (Game.roster.has(a) and Game.roster.has(b)):
@@ -1789,6 +1807,7 @@ func _teams_differ(a: String, b: String) -> bool:
 	return int(Game.roster[a].get("team", -1)) != int(Game.roster[b].get("team", -2))
 
 signal match_score_changed
+signal knockout(attacker: String, victim: String)
 var ghost_ids: Dictionary = {}
 var alive_ids: Dictionary = {}
 
@@ -1812,8 +1831,6 @@ func cl_match(phase: String, seconds: float) -> void:
 				child.visible = true
 	if chunks != null:
 		chunks.match_mode = phase != "IDLE"
-		if phase == "LOBBY":
-			chunks.prefetch(15)  # whole arena in RAM before the drop
 	match_changed.emit()
 	if phase == "DROP":
 		Sfx.play("whoosh")
@@ -1821,8 +1838,9 @@ func cl_match(phase: String, seconds: float) -> void:
 		Sfx.play("boom", -8.0)
 
 @rpc("authority", "reliable")
-func cl_storm(radius: float) -> void:
+func cl_storm(radius: float, center: Vector3 = Vector3.ZERO) -> void:
 	storm_radius = radius
+	storm_center = center
 	storm_changed.emit()
 
 @rpc("authority", "reliable")
@@ -1856,6 +1874,10 @@ func cl_revive_noise(pos: Vector3) -> void:
 			dist = minf(dist, child.position.distance_to(pos))
 	if dist < 40.0:
 		Sfx.play("warp", -2.0 - dist * 0.4, 0.6)
+
+@rpc("authority", "reliable")
+func cl_feed(attacker_name: String, victim_name: String) -> void:
+	knockout.emit(attacker_name, victim_name)
 
 @rpc("authority", "reliable")
 func cl_eliminated(id: String) -> void:
@@ -2292,7 +2314,8 @@ func _client_setup() -> void:
 	storm_changed.connect(func() -> void:
 		_storm_wall.visible = match_phase == "BATTLE"
 		_storm_wall.scale = Vector3(storm_radius, 1.0, storm_radius)
-		_storm_wall.position = Vector3(0, float(WorldGen.SEA_LEVEL) + 8.0, 0))
+		_storm_wall.position = Vector3(storm_center.x,
+			float(WorldGen.SEA_LEVEL) + 8.0, storm_center.z))
 	match_changed.connect(func() -> void:
 		if match_phase != "BATTLE":
 			_storm_wall.visible = false)
@@ -2406,6 +2429,12 @@ func cl_chunk(cx: int, cz: int, blob: PackedByteArray) -> void:
 		chunks.receive_chunk(cx, cz, blob)
 
 @rpc("authority", "reliable")
+func cl_chunk_batch(entries: Array) -> void:
+	for entry in entries:
+		if entry is Array and entry.size() == 3:
+			cl_chunk(int(entry[0]), int(entry[1]), entry[2])
+
+@rpc("authority", "reliable")
 func cl_where(slot: int, pos: Vector3, count: int) -> void:
 	var id := Game.player_id(multiplayer.get_unique_id(), slot)
 	treasures[id] = count
@@ -2419,6 +2448,8 @@ func cl_pos(id: String, pos: Vector3, yaw: float, anim: int) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id and not child.is_local:
 			child.remote_update(pos, yaw, anim)
+			if ghost_ids.has(id) and child.visible:
+				child.visible = false
 
 func _nearest_local_dist(pos: Vector3) -> float:
 	var best := 999.0

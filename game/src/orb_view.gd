@@ -193,7 +193,11 @@ func _spawn_flare(pos: Vector3) -> void:
 	light.shadow_enabled = false
 	flare.add_child(light)
 	add_child(flare)
-	Sfx.play("collect", -4.0)
+	var flare_world: Node = get_parent()
+	if flare_world != null and flare_world.has_method("_nearest_local_dist"):
+		var flare_dist: float = flare_world._nearest_local_dist(pos)
+		if flare_dist < 50.0:
+			Sfx.play("pop", -10.0 - flare_dist * 0.6)
 	var tween := create_tween()
 	tween.tween_property(flare, "position", pos + Vector3(0, -9.0, 0), 8.0)
 	tween.parallel().tween_property(light, "light_energy", 0.0, 8.0)

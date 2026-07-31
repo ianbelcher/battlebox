@@ -281,7 +281,17 @@ func _process(_delta: float) -> void:
 	var backlog: int = _mesh_jobs.size()
 	_mesh_mutex.unlock()
 	while backlog < 4 and not _mesh_queue.is_empty():
-		var cpos: Vector2i = _mesh_queue.pop_front()
+		# Nearest chunk to a player first — the world grows outward from
+		# each player instead of sweeping across the map row by row.
+		var best_i := 0
+		var best_d := 1e18
+		for qi in _mesh_queue.size():
+			var qd := _dist_to_focus(_mesh_queue[qi])
+			if qd < best_d:
+				best_d = qd
+				best_i = qi
+		var cpos: Vector2i = _mesh_queue[best_i]
+		_mesh_queue.remove_at(best_i)
 		_queued.erase(cpos)
 		if not _data.has(cpos):
 			continue
@@ -368,6 +378,9 @@ func _apply_surfaces(cpos: Vector2i, surfaces: Dictionary) -> void:
 		holder.queue_free()
 	holder = Node3D.new()
 	holder.position = Vector3(cpos.x * 16, 0, cpos.y * 16)
+	# Born with the right visibility: chunks beyond the draw distance
+	# used to pop in visible until the next interest pass.
+	holder.visible = _dist_to_focus(cpos) <= float((view_radius + 1) * (view_radius + 1))
 	add_child(holder)
 	_holders[cpos] = holder
 
