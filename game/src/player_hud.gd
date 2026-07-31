@@ -18,6 +18,8 @@ var _name_label: Label
 var _name_edit: LineEdit
 var _treasure_label: Label
 var _hearts_label: Label
+var _hearts_row: HBoxContainer
+var _heart_cells: Array = []
 var _selected_label: Label
 var _picker: BlockPicker
 var _pickers: Array = []
@@ -116,8 +118,8 @@ func _ready() -> void:
 	# Bottom: hotbar.
 	var bar_holder := CenterContainer.new()
 	bar_holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	bar_holder.offset_top = -175
-	bar_holder.offset_bottom = -8
+	bar_holder.offset_top = -185
+	bar_holder.offset_bottom = -12
 	bar_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bar_holder)
 	var bar_stack := VBoxContainer.new()
@@ -1313,6 +1315,7 @@ func _build_video_tab() -> void:
 		var tbtn := Button.new()
 		tbtn.focus_mode = Control.FOCUS_NONE
 		tbtn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		tbtn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tbtn.add_theme_font_size_override("font_size", _us(20))
 		tbtn.text = ("☑  " if Game.video[key] else "☐  ") + str(spec[1])
 		var label_text := str(spec[1])
@@ -1328,9 +1331,10 @@ func _build_video_tab() -> void:
 	var lite_btn := Button.new()
 	lite_btn.focus_mode = Control.FOCUS_NONE
 	lite_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	lite_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lite_btn.add_theme_font_size_override("font_size", _us(20))
 	lite_btn.text = "🎨  Renderer: " + ("Lite" if is_lite else "Full") \
-		+ " — restart required"
+		+ " (restart required)"
 	lite_btn.pressed.connect(func() -> void:
 		Game.relaunch_with_renderer(not is_lite))
 	tab.add_child(lite_btn)
@@ -1402,12 +1406,14 @@ func _refresh_identity() -> void:
 		WorldNode.TEAM_COLORS[team] if team >= 0 else Color.WHITE)
 	_treasure_label.text = ""
 	var id := Game.player_id(multiplayer.get_unique_id(), slot)
-	if world != null and (world.survival_active or world.match_phase in ["DROP", "BATTLE"]):
-		var hp: int = world.hearts.get(id, 5)
-		_hearts_label.text = "♥".repeat(maxi(hp, 0))
-		_hearts_label.visible = true
-	else:
-		_hearts_label.visible = false
+	var hearts_on: bool = world != null and (world.survival_active \
+		or world.match_phase in ["DROP", "BATTLE"])
+	if _hearts_row != null:
+		_hearts_row.visible = hearts_on
+		if hearts_on:
+			var hp: int = world.hearts.get(id, 8)
+			for i in _heart_cells.size():
+				(_heart_cells[i] as Label).modulate.a = 1.0 if i < hp else 0.18
 
 func _edit_name() -> void:
 	var entry := _entry()
@@ -1544,7 +1550,7 @@ func _process(_delta: float) -> void:
 		var secs := int(ceil(world.match_seconds))
 		if world.match_phase == "LOBBY" and not _menu.visible:
 			_center_note.visible = true
-			_center_note.text = "🏆  Next battle in %d — pick your team in the menu!" % secs
+			_center_note.text = "🏆  Next battle in %d" % secs
 		elif world.match_phase == "DROP":
 			_center_note.visible = true
 			_center_note.text = "🪂  Dropping in — steer with the stick, land near loot!"
@@ -1598,6 +1604,8 @@ func _process(_delta: float) -> void:
 		var chip_px := clampf(size.y * 0.05, 34.0, 72.0)
 		for hb_frame in _hotbar.get_children():
 			(hb_frame as Control).custom_minimum_size = Vector2(chip_px, chip_px)
+		for cell in _heart_cells:
+			(cell as Control).custom_minimum_size = Vector2(chip_px + 2, 0)
 		_radar.position = Vector2(size.x - map_px - 10, 10)
 		_radar.size = Vector2(map_px, map_px)
 		_clock.position = Vector2(size.x - map_px - 10, 12 + map_px)

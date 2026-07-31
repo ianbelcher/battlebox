@@ -487,7 +487,7 @@ func _local_move(delta: float) -> void:
 	carry_time = maxf(0.0, carry_time - delta)
 	# Leaving the water is a hop, not a breaching whale.
 	if _was_in_water and not in_water:
-		velocity.y = minf(velocity.y, 5.0)
+		velocity.y = minf(velocity.y, 3.2)
 	_was_in_water = in_water
 	# Ladders: touching one lets you climb.
 	var body_block := _chunks().get_block(Vector3i(floori(position.x),
@@ -963,12 +963,14 @@ func _animate(delta: float) -> void:
 			# Point the blade DOWN, then slash upward across the body.
 			var t := 1.0 - swing_time / 0.25
 			if t < 0.3:
-				arm.rotation.x = lerpf(0.5, -0.65, t / 0.3)
-				arm.rotation.z = lerpf(0.0, -0.4, t / 0.3)
+				# Blade points DOWN first...
+				arm.rotation.x = lerpf(-0.4, 0.7, t / 0.3)
+				arm.rotation.z = lerpf(0.0, 0.35, t / 0.3)
 			else:
+				# ...then sweeps UP past the shoulder.
 				var sweep := minf((t - 0.3) / 0.7 * 1.2, 1.0)
-				arm.rotation.x = lerpf(-0.65, 2.4, sweep)
-				arm.rotation.z = lerpf(-0.4, 0.45, sweep)
+				arm.rotation.x = lerpf(0.7, -2.3, sweep)
+				arm.rotation.z = lerpf(0.35, -0.5, sweep)
 
 ## Limbs ease toward their pose so animation switches never pop. arms_up
 ## rotates the pivot so hands point skyward (jumping — kids love it).

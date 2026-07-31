@@ -1718,19 +1718,24 @@ func _server_match_drop() -> void:
 	_crates.clear()
 	var crate_count := clampi(maxi(int(pow(_storm_start() / 125.0, 2.0) * 40.0),
 		Game.roster.size() * 4), 8, 140)
-	for n in crate_count:
-		var langle := randf() * TAU
-		var ldist := sqrt(randf()) * (_storm_start() * 0.85)
-		var lx := int(cos(langle) * ldist)
-		var lz := int(sin(langle) * ldist)
-		var ly := store.surface_y(lx, lz)
-		if ly > 2 and ly < WorldGen.CHUNK_H - 6 \
-				and store.get_block(Vector3i(lx, ly, lz)) != Blocks.WATER \
-				and (store.theme != "sky" or ly > WorldGen.SEA_LEVEL + 6):
-			var lpool := [1, 1, 1, 2, 3, 9, 9, 11, 12, 12, 15, 15]
-			_crates[_next_crate_id] = {"weapon": lpool[randi() % lpool.size()],
-				"pos": Vector3(lx + 0.5, ly + 1.0, lz + 0.5)}
+	var placed := 0
+	var attempts := 0
+	while placed < crate_count and attempts < crate_count * 12:
+		attempts += 1
+		var langle2 := randf() * TAU
+		var ldist2 := sqrt(randf()) * (_storm_start() * 0.85)
+		var lx2 := int(cos(langle2) * ldist2)
+		var lz2 := int(sin(langle2) * ldist2)
+		var ly2 := store.surface_y(lx2, lz2)
+		if ly2 > 2 and ly2 < WorldGen.CHUNK_H - 6 \
+				and store.get_block(Vector3i(lx2, ly2, lz2)) != Blocks.WATER \
+				and (store.theme != "sky" or ly2 > WorldGen.SEA_LEVEL + 6):
+			var pool2 := [1, 1, 1, 2, 3, 9, 9, 11, 12, 12, 15, 15]
+			_crates[_next_crate_id] = {"weapon": pool2[randi() % pool2.size()],
+				"pos": Vector3(lx2 + 0.5, ly2 + 1.0, lz2 + 0.5)}
 			_next_crate_id += 1
+			placed += 1
+	print("Battle loot: %d/%d crates placed (%d attempts)" % [placed, crate_count, attempts])
 	_broadcast_crates()
 	Game.cl_roster.rpc(Game.roster)
 	storm_radius = _storm_start()
