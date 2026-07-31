@@ -245,6 +245,14 @@ func _sender_id() -> int:
 
 func _broadcast_roster() -> void:
 	cl_roster.rpc(roster)
+	cl_host.rpc(host_peer)
+
+## Clients need to know who the host is too — the World menu (Map/Mode/
+## Start) only shows for them. This was server-only before, so the check
+## failed on every client and NOBODY saw the battle controls.
+@rpc("authority", "call_local", "reliable")
+func cl_host(peer: int) -> void:
+	host_peer = peer
 
 # ------------------------------------------------------------------
 # Server -> client RPCs
@@ -304,6 +312,7 @@ func _on_peer_connected(peer: int) -> void:
 		return
 	print("Peer %d connected (%d peers total)" % [peer, multiplayer.get_peers().size()])
 	cl_roster.rpc_id(peer, roster)
+	cl_host.rpc_id(peer, host_peer)
 
 func _on_peer_disconnected(peer: int) -> void:
 	if not multiplayer.is_server():
