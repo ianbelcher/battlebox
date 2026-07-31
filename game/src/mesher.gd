@@ -23,6 +23,11 @@ static var ao_step := 0.16
 
 ## Cross-quad footprint (width, height) per plant so flowers read as flowers
 ## rather than block-sized billboards.
+## Ground cover drawn as Kenney Nature Kit models (chunk_view foliage
+## layer) instead of crossed silhouette quads.
+const MODEL_PLANTS := {Blocks.TALL_GRASS: 1, Blocks.FERN: 1,
+	Blocks.FLOWER_RED: 1, Blocks.FLOWER_YELLOW: 1, Blocks.MUSHROOM: 1}
+
 const CROSS_SIZES := {
 	Blocks.FLOWER_RED: Vector2(0.5, 0.7),
 	Blocks.FLOWER_YELLOW: Vector2(0.5, 0.65),
@@ -123,7 +128,8 @@ func build(data: PackedByteArray, neighbors: Dictionary, cx: int, cz: int) -> Di
 					continue
 				topmap[z * SIZE + x] = block
 				if Blocks.LK_CROSS[block] == 1:
-					_add_cross(block, x, y, z, cx, cz)
+					if not MODEL_PLANTS.has(block):
+						_add_cross(block, x, y, z, cx, cz)
 					continue
 				var shape := int(Blocks.LK_SHAPE[block])
 				if shape != 0:

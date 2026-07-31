@@ -398,6 +398,8 @@ func _apply_surfaces(cpos: Vector2i, surfaces: Dictionary) -> void:
 			instance.transparency = 0.0
 		holder.add_child(instance)
 
+	_add_foliage(holder, cpos)
+
 	var lights: Array = surfaces.get("lights", [])
 	var count := 0
 	for spec: Dictionary in lights:
@@ -502,3 +504,67 @@ func _drop_chunk(cpos: Vector2i) -> void:
 		_forget_flickers(holder)
 		holder.queue_free()
 		_holders.erase(cpos)
+
+
+# ------------------------------------------------------------------
+# Ground foliage: Kenney Nature Kit models via one MultiMesh per plant
+# type per chunk — grass, ferns, flowers and mushrooms become real
+# little models while staying ordinary diggable blocks underneath.
+# ------------------------------------------------------------------
+const FOLIAGE_MODELS := {Blocks.TALL_GRASS: "grass_large",
+	Blocks.FERN: "grass_leafs", Blocks.FLOWER_RED: "flower_redA",
+	Blocks.FLOWER_YELLOW: "flower_yellowA", Blocks.MUSHROOM: "mushroom_red"}
+const FOLIAGE_SCALES := {Blocks.TALL_GRASS: 1.6, Blocks.FERN: 1.5,
+	Blocks.FLOWER_RED: 1.2, Blocks.FLOWER_YELLOW: 1.2, Blocks.MUSHROOM: 1.1}
+var _foliage_meshes: Dictionary = {}
+
+func _foliage_mesh(model: String) -> Mesh:
+	if _foliage_meshes.has(model):
+		return _foliage_meshes[model]
+	var mesh: Mesh = null
+	var scene: PackedScene = load("res://assets/models/nature/%s.glb" % model)
+	if scene != null:
+		var inst := scene.instantiate()
+		for node in inst.find_children("*", "MeshInstance3D", true, false):
+			mesh = (node as MeshInstance3D).mesh
+			break
+		inst.free()
+	_foliage_meshes[model] = mesh
+	return mesh
+
+func _add_foliage(holder: Node3D, cpos: Vector2i) -> void:
+	if world == null or world.store == null:
+		return
+	var data: PackedByteArray = world.store.get_chunk(cpos)
+	if data.is_empty():
+		return
+	var buckets: Dictionary = {}
+	for i in data.size():
+		var block := data[i]
+		if not FOLIAGE_MODELS.has(block):
+			continue
+		var x := i % 16
+		var z := (i / 16) % 16
+		var y := i / 256
+		var yaw := WorldGen.hash01(cpos.x * 16 + x, cpos.y * 16 + z, y) * TAU
+		var t := Transform3D(Basis(Vector3.UP, yaw)
+			.scaled(Vector3.ONE * float(FOLIAGE_SCALES.get(block, 1.2))),
+			Vector3(x + 0.5, y, z + 0.5))
+		if not buckets.has(block):
+			buckets[block] = []
+		(buckets[block] as Array).append(t)
+	for block: int in buckets:
+		var mesh := _foliage_mesh(str(FOLIAGE_MODELS[block]))
+		if mesh == null:
+			continue
+		var transforms: Array = buckets[block]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = mesh
+		mm.instance_count = transforms.size()
+		for j in transforms.size():
+			mm.set_instance_transform(j, transforms[j])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(mmi)
