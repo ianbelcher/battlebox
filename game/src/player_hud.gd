@@ -18,8 +18,6 @@ var _name_label: Label
 var _name_edit: LineEdit
 var _treasure_label: Label
 var _storm_label: Label
-var _storm_was_on := false
-var _storm_pop := 0.0
 var _death_note: Label
 var _death_flash: ColorRect
 var _death_t := 0.0
@@ -1647,7 +1645,8 @@ func _process(_delta: float) -> void:
 		var secs := int(ceil(world.match_seconds))
 		if world.match_phase == "LOBBY" and not _menu.visible:
 			_center_note.visible = true
-			_center_note.text = "🏆  Next battle in %d" % secs
+			_center_note.text = ("🏆  Next battle in %d" % secs) if secs > 0 \
+				else "🏆  Battle starting…"
 		elif world.match_phase == "BATTLE" and not world.alive_ids.has(
 				Game.player_id(multiplayer.get_unique_id(), slot)) \
 				and not world.ghost_ids.has(
@@ -1658,21 +1657,11 @@ func _process(_delta: float) -> void:
 			_center_note.visible = false
 	if _storm_label != null and world != null:
 		var storm_on: bool = world.match_phase == "BATTLE" and world.storm_radius > 0.0
-		if storm_on and not _storm_was_on and world.match_phase == "BATTLE":
-			_storm_pop = 4.0
-		_storm_was_on = storm_on
-		_storm_pop = maxf(0.0, _storm_pop - _delta)
-		var battle_total := float(world.client_minutes) * 60.0
-		if world.match_phase == "BATTLE" and battle_total > 0.0:
-			_storm_label.visible = true
-			if not storm_on:
-				var to_storm := maxi(int(ceil(world.match_seconds - battle_total * 0.5)), 0)
-				_storm_label.text = "⛈  Storm starts in %ds" % to_storm
-			else:
-				_storm_label.text = "⛈  STORM!  Fully closed in %ds" \
-					% int(ceil(world.match_seconds))
-		else:
-			_storm_label.visible = false
+		# Silent until the storm is actually live — then a real countdown
+		# to its minimum size (the storm bottoms out when the timer does).
+		_storm_label.visible = storm_on
+		if storm_on:
+			_storm_label.text = "⛈  STORM!  %d" % int(ceil(world.match_seconds))
 	if _death_note != null and world != null:
 		var my_pid := Game.player_id(multiplayer.get_unique_id(), slot)
 		var down_now: bool = bool(world.client_downed.get(my_pid, false))

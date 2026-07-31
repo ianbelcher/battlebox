@@ -217,6 +217,10 @@ func _server_setup() -> void:
 
 func _process(delta: float) -> void:
 	clock = fposmod(clock + delta / day_seconds(), 1.0)
+	if not multiplayer.is_server() and match_phase != "IDLE":
+		# The server only sends match_seconds at phase transitions — tick
+		# it locally so countdowns actually count.
+		match_seconds = maxf(0.0, match_seconds - delta)
 	if multiplayer.is_server():
 		_drain_chunk_queues()
 		_server_dawn_check()
@@ -1839,15 +1843,21 @@ func _match_eliminate(id: String, attacker := "") -> void:
 	if has_standing_mate:
 		_downed_ids[id] = Time.get_ticks_msec()
 		cl_downed_state.rpc(id, true)
+		_emit_feed(id, attacker)
 		return
 	_match_alive.erase(id)
 	_downed_ids.erase(id)
 	cl_eliminated.rpc(id)
+	_emit_feed(id, attacker)
+	_check_match_win()
+
+## One feed line per knockout — downs included (that IS the kill as far
+## as the scrap that caused it goes; bleed-outs don't double-report).
+func _emit_feed(id: String, attacker := "") -> void:
 	var victim_name := str(Game.roster.get(id, {}).get("name", "?"))
 	var attacker_name := str(Game.roster.get(attacker, {}).get("name", ""))
 	cl_feed.rpc(attacker_name, int(Game.roster.get(attacker, {}).get("team", -1)),
 		victim_name, int(Game.roster.get(id, {}).get("team", -1)))
-	_check_match_win()
 
 ## Out-of-combat healing: untouched for 8s, a heart every 3s.
 var _last_regen_ms: Dictionary = {}
