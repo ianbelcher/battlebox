@@ -609,10 +609,6 @@ func _refresh_match() -> void:
 	_lobby_panel.visible = false  # the lobby lives in each player's menu now
 	if phase == "LOBBY":
 		_rebuild_team_rows()
-	elif phase == "DROP":
-		_show_banner("DROP! Glide to a good spot!")
-	elif phase == "BATTLE":
-		_show_banner("FIGHT! Stay inside the storm circle!")
 	elif phase == "END":
 		pass  # cl_match_end banner below
 

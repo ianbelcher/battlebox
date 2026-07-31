@@ -33,7 +33,12 @@ var _menu_slots_row: HBoxContainer
 var _menu_slot_buttons: Array = []
 
 func _uscale() -> float:
-	return clampf(DisplayServer.window_get_size().x / 1100.0, 1.15, 3.0)
+	# Scale from THIS HUD's size (each split-screen cell has its own), not
+	# the OS window — fullscreen vs windowed must not change proportions.
+	var w := size.x
+	if w < 50.0:
+		w = float(DisplayServer.window_get_size().x)
+	return clampf(w / 1100.0, 0.75, 3.0)
 var _menu: PanelContainer
 var _menu_dim: ColorRect
 # Two-level menu: a top row of groups, each holding a row of small tabs.
@@ -59,7 +64,7 @@ var _hotbar: HBoxContainer
 var _chips: Array = []
 var _last_index := -1
 var _last_style := -1
-var _last_width := -1.0
+var _last_size := Vector2(-1, -1)
 var _last_held := ""
 var _slots_dirty := true
 var _prev_slot_pick_menu := -1
@@ -339,10 +344,12 @@ func _ready() -> void:
 	_center_note.add_theme_color_override("font_color", Color("ffd166"))
 	_center_note.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
 	_center_note.add_theme_constant_override("outline_size", 6)
-	_center_note.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_center_note.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_center_note.offset_top = _us(120)
-	_center_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_center_note.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_center_note.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_center_note.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_center_note.offset_right = -_us(12)
+	_center_note.offset_bottom = -_us(116)
+	_center_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_center_note.visible = false
 	add_child(_center_note)
 	# Storm status: always-on countdown at the top of the screen so kids
@@ -1641,19 +1648,12 @@ func _process(_delta: float) -> void:
 		if world.match_phase == "LOBBY" and not _menu.visible:
 			_center_note.visible = true
 			_center_note.text = "🏆  Next battle in %d" % secs
-		elif _storm_pop > 0.0 and world.match_phase == "BATTLE" \
-				and not _menu.visible:
-			_center_note.visible = true
-			_center_note.text = "⛈  THE STORM IS CLOSING IN — STAY IN THE CIRCLE!"
 		elif world.match_phase == "BATTLE" and not world.alive_ids.has(
 				Game.player_id(multiplayer.get_unique_id(), slot)) \
 				and not world.ghost_ids.has(
 				Game.player_id(multiplayer.get_unique_id(), slot)):
 			_center_note.visible = true
 			_center_note.text = "🏆  Battle in progress — you drop into the next one!"
-		elif world.match_phase == "DROP":
-			_center_note.visible = true
-			_center_note.text = "🪂  Steer with the stick!"
 		else:
 			_center_note.visible = false
 	if _storm_label != null and world != null:
@@ -1727,13 +1727,28 @@ func _process(_delta: float) -> void:
 				+ Vector2(sin(threat_angle), -cos(threat_angle)) * _us(90)
 	_crosshair.visible = player.fp_mode and not _menu.visible
 	_crosshair.add_theme_font_size_override("font_size", _us(int(30 * (1.0 + player.fp_zoom * 0.8))))
-	if size.x != _last_width:
-		_last_width = size.x
+	if size != _last_size:
+		_last_size = size
 		var map_px := clampf(size.y * 0.24, 110.0, 380.0)
 		# Hotbar chips scale with the cell so small screens aren't swamped.
-		var chip_px := clampf(size.y * 0.05, 34.0, 72.0)
+		var chip_px := clampf(size.y * 0.045, 30.0, 64.0)
 		for hb_frame in _chips:
 			(hb_frame as Control).custom_minimum_size = Vector2(chip_px, chip_px)
+			(hb_frame.get_child(1) as Label).add_theme_font_size_override(
+				"font_size", maxi(9, int(chip_px * 0.24)))
+		for cell in _heart_cells:
+			(cell as Label).add_theme_font_size_override(
+				"font_size", maxi(11, int(chip_px * 0.38)))
+		_selected_label.add_theme_font_size_override(
+			"font_size", maxi(11, int(chip_px * 0.3)))
+		_center_note.add_theme_font_size_override(
+			"font_size", maxi(12, int(chip_px * 0.36)))
+		if _storm_label != null:
+			_storm_label.add_theme_font_size_override(
+				"font_size", maxi(12, int(chip_px * 0.4)))
+		if _death_note != null:
+			_death_note.add_theme_font_size_override(
+				"font_size", maxi(20, int(chip_px * 0.85)))
 		_radar.position = Vector2(size.x - map_px - 10, 10)
 		_radar.size = Vector2(map_px, map_px)
 		_clock.position = Vector2(size.x - map_px - 10, 12 + map_px)
