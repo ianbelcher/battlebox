@@ -176,14 +176,26 @@ func _add_join_hint(frac: Rect2) -> void:
 ## render layer only your own camera draws.
 func _update_viewmodel(cell: Dictionary, player: Player) -> void:
 	var cam: Camera3D = cell.cam
-	var sig := str(player.held())
+	var sig := str(player.held()) + ("+dragon" if player.riding >= 0 else "")
 	if cell.get("vm_sig", "") != sig:
 		cell.vm_sig = sig
 		if cell.get("vm") != null and is_instance_valid(cell.vm):
 			cell.vm.queue_free()
 			cell.vm = null
 		var item: Dictionary = player.held()
-		if item.kind != "empty":
+		if player.riding >= 0:
+			# Dragonback: the head IS your weapon — centered under the
+			# crosshair, where the fire streams from.
+			var head := ItemFactory.build("dragon_head", 0)
+			var head_layer := 1 << (10 + player.slot)
+			for head_node in head.find_children("*", "VisualInstance3D", true, false):
+				(head_node as VisualInstance3D).layers = head_layer
+			cam.add_child(head)
+			var head_base := Vector3(0, -0.68, -0.55)
+			head.position = head_base
+			cell.vm = head
+			cell.vm_base = head_base
+		elif item.kind != "empty":
 			var model := ItemFactory.build(str(item.kind), int(item.id))
 			model.scale = Vector3(0.9, 0.9, 0.9)
 			var vm_layer := 1 << (10 + player.slot)
@@ -264,7 +276,7 @@ func _process(delta: float) -> void:
 			var vm: Node3D = cell.get("vm")
 			if vm != null and is_instance_valid(vm):
 				# Tuck the gun away while zoomed in (aiming down sights).
-				vm.visible = int(cell.get("fp_zoom", 0)) == 0
+				vm.visible = int(cell.get("fp_zoom", 0)) == 0 or player.riding >= 0
 				# Doom-style bob: the gun sweeps a parabolic arc while running.
 				var run := Vector2(player.velocity.x, player.velocity.z).length()
 				if not player.on_floor:
@@ -276,7 +288,9 @@ func _process(delta: float) -> void:
 					+ Vector3(cos(float(cell.bob_phase)) * amp, -absf(sin(float(cell.bob_phase))) * amp * 1.3, 0)
 				# Sword rests held UP at guard and sweeps across when swung;
 				# other weapons just kick back.
-				if str(player.held().kind) == "weapon" and int(player.held().id) == 13:
+				if player.riding >= 0:
+					vm.rotation_degrees = Vector3.ZERO
+				elif str(player.held().kind) == "weapon" and int(player.held().id) == 13:
 					# Guard rest with the blade up; a swing winds it higher
 					# overhead, then chops it DOWN across the view.
 					if player.swing_time <= 0.0:

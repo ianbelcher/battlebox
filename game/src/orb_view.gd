@@ -31,6 +31,8 @@ func shoot_local(player: Player, kind: int) -> void:
 	var eye: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT, 0)
 	var side := dir.cross(Vector3.UP)
 	side = side.normalized() if side.length() > 0.01 else Vector3.ZERO
+	if kind == 17:
+		side = Vector3.ZERO  # dragon fire pours straight from the head
 	var origin: Vector3 = eye + Vector3(0, -0.34, 0) + side * 0.3 + dir * 0.3
 	dir = (eye + dir * 40.0 - origin).normalized()
 	_add_orb(player.player_id, origin, dir, true, player.slot, kind)

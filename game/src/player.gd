@@ -307,14 +307,8 @@ func _refresh_hand() -> void:
 	if arm == null:
 		return
 	if riding >= 0:
-		# Riding: the dragon's head rides out in front on YOUR cockpit
-		# layer — visible to you in first or third person even though
-		# your avatar (and the dragon itself) are hidden from you.
-		_hand_item = ItemFactory.build("dragon_head", 0)
-		_hand_item.position = Vector3(0, 0.6, -1.4)
-		add_child(_hand_item)
-		for vm_node in _hand_item.find_children("*", "VisualInstance3D", true, false):
-			(vm_node as VisualInstance3D).layers = 1 << (10 + slot)
+		# Dragonback: the head lives on the camera viewmodel (splitscreen)
+		# so it tracks your look like any weapon — no body-mounted copy.
 		return
 	if item.kind == "empty":
 		return

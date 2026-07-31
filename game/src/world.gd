@@ -1644,6 +1644,11 @@ func _server_tick_match(delta: float) -> void:
 			else:
 				var frac := (elapsed - 0.5) * 2.0
 				storm_radius = lerpf(_storm_start(), STORM_END, frac)
+				if _match_timer <= 0.0:
+					# Overtime: the storm keeps closing to a tiny eye —
+					# the battle only ends when one team is left standing,
+					# never on a most-players-alive countback.
+					storm_radius = maxf(STORM_END + _match_timer * 0.35, 2.0)
 				cl_storm.rpc(storm_radius, storm_center)
 				_storm_damage()
 				_storm_bite()
@@ -1653,21 +1658,6 @@ func _server_tick_match(delta: float) -> void:
 				_tick_crate_gravity()
 			_tick_revives()
 			_check_match_win()
-			if _match_timer <= 0.0:
-				# Time's up: the team with the most players standing wins.
-				var per_team: Dictionary = {}
-				for alive_id: String in _match_alive.keys():
-					if _downed_ids.has(alive_id):
-						continue
-					var at := int(Game.roster.get(alive_id, {}).get("team", -1))
-					per_team[at] = int(per_team.get(at, 0)) + 1
-				var best_team := -1
-				var best_n := 0
-				for pt: int in per_team.keys():
-					if per_team[pt] > best_n:
-						best_n = per_team[pt]
-						best_team = pt
-				_server_match_end(best_team)
 		"END":
 			if _match_timer <= 0.0:
 				var humans := false
@@ -2517,9 +2507,10 @@ func _client_setup() -> void:
 	add_child(_storm_wall)
 	storm_changed.connect(func() -> void:
 		_storm_wall.visible = match_phase == "BATTLE" and storm_radius > 0.0
-		_storm_wall.scale = Vector3(storm_radius, 3.2, storm_radius)
-		_storm_wall.position = Vector3(storm_center.x,
-			float(WorldGen.SEA_LEVEL) + 8.0, storm_center.z))
+		var wall_top := float(WorldGen.CHUNK_H) + 10.0
+		_storm_wall.scale = Vector3(storm_radius, wall_top / 12.0, storm_radius)
+		_storm_wall.position = Vector3(storm_center.x, wall_top * 0.5,
+			storm_center.z))
 	match_changed.connect(func() -> void:
 		if match_phase != "BATTLE":
 			_storm_wall.visible = false)

@@ -1661,7 +1661,9 @@ func _process(_delta: float) -> void:
 		# to its minimum size (the storm bottoms out when the timer does).
 		_storm_label.visible = storm_on
 		if storm_on:
-			_storm_label.text = "⛈  STORM!  %d" % int(ceil(world.match_seconds))
+			var storm_secs := int(ceil(world.match_seconds))
+			_storm_label.text = ("⛈  STORM!  %d" % storm_secs) if storm_secs > 0 \
+				else "⛈  STORM!"
 	if _death_note != null and world != null:
 		var my_pid := Game.player_id(multiplayer.get_unique_id(), slot)
 		var down_now: bool = bool(world.client_downed.get(my_pid, false))
