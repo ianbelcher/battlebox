@@ -1645,10 +1645,10 @@ func _server_tick_match(delta: float) -> void:
 				var frac := (elapsed - 0.5) * 2.0
 				storm_radius = lerpf(_storm_start(), STORM_END, frac)
 				if _match_timer <= 0.0:
-					# Overtime: the storm keeps closing to a tiny eye —
-					# the battle only ends when one team is left standing,
-					# never on a most-players-alive countback.
-					storm_radius = maxf(STORM_END + _match_timer * 0.35, 2.0)
+					# Overtime: close on down to a 30-block-wide arena and
+					# hold — the battle only ends when one team is left
+					# standing (dig fights welcome), never on a countback.
+					storm_radius = maxf(STORM_END + _match_timer * 0.35, 15.0)
 				cl_storm.rpc(storm_radius, storm_center)
 				_storm_damage()
 				_storm_bite()
@@ -1675,6 +1675,10 @@ func _server_tick_match(delta: float) -> void:
 ## Everyone gets a team (auto-balanced if unpicked), full hearts, and a drop
 ## point high above a spread ring. Gliding down is automatic.
 func _server_match_drop() -> void:
+	# Nobody drops into a fresh battle still riding last game's dragon.
+	if not riding_map.is_empty():
+		riding_map.clear()
+		cl_riding.rpc(riding_map)
 	match_phase = "DROP"
 	_match_timer = 6.0
 	_match_alive.clear()
