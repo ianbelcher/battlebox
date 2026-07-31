@@ -34,6 +34,7 @@ var client_size := 250
 var client_loot := false
 var client_team_names: Array = ["A", "B", "C", "D"]
 var client_world := ""
+var client_mode := "battle"
 ## player_id -> dragon critter id, replicated so everyone sees who rides.
 var riding_map: Dictionary = {}
 
@@ -124,6 +125,8 @@ const TEAM_COLORS := [Color("ff5a5a"), Color("4a9df8"), Color("51c979"),
 	Color("484858")]
 var team_count := 4
 var selected_map := ""
+## "battle" = matches loop continuously · "creative" = free build/play.
+var game_mode := "battle"
 ## Kid-tuned battle health: plenty of hearts, and after any hit you're
 ## untouchable for a moment — no more getting deleted in one volley.
 const MATCH_HP := 8
@@ -299,6 +302,7 @@ func sv_hello() -> void:
 	cl_overview.rpc_id(peer, overview)
 	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only)
 	cl_teams.rpc_id(peer, team_names)
+	cl_mode.rpc_id(peer, game_mode)
 	cl_world_sel.rpc_id(peer, selected_map if not selected_map.is_empty() \
 		else (store.current_map_key if not store.current_map_key.is_empty() else store.theme))
 	var payload: Array = []
@@ -1189,6 +1193,52 @@ func sv_remove_bot(target_id: String = "") -> void:
 	Game.cl_roster.rpc(Game.roster)
 	_save_battle_setup()
 
+## The host flips between Battle and Creative. Creative immediately and
+## gracefully ends any running battle: nobody dies, weapons are kept,
+## the world stays, everyone just goes back to playing.
+@rpc("any_peer", "call_local", "reliable")
+func sv_set_mode(mode: String) -> void:
+	if not multiplayer.is_server() or not _is_host(multiplayer.get_remote_sender_id()):
+		return
+	if mode != "battle" and mode != "creative":
+		return
+	game_mode = mode
+	match_loop = mode == "battle"
+	if mode == "creative" and match_phase != "IDLE":
+		match_phase = "IDLE"
+		_match_alive.clear()
+		_downed_ids.clear()
+		cl_match.rpc("IDLE", 0.0)
+	elif mode == "battle" and match_phase == "IDLE":
+		_begin_battle_lobby()
+	cl_mode.rpc(game_mode)
+	_save_battle_setup()
+
+@rpc("authority", "call_local", "reliable")
+func cl_mode(mode: String) -> void:
+	client_mode = mode
+	if not multiplayer.is_server():
+		battle_config_changed.emit()
+
+## New humans get a balanced team the moment they register.
+func auto_team(id: String) -> void:
+	if not multiplayer.is_server() or not Game.roster.has(id):
+		return
+	if int(Game.roster[id].get("team", -1)) >= 0:
+		return
+	var counts: Array[int] = []
+	counts.resize(team_count)
+	for other: String in Game.roster.keys():
+		var ot := int(Game.roster[other].get("team", -1))
+		if ot >= 0 and ot < team_count:
+			counts[ot] += 1
+	var best := 0
+	for t in team_count:
+		if counts[t] < counts[best]:
+			best = t
+	Game.roster[id].team = best
+	Game.cl_roster.rpc(Game.roster)
+
 ## Teams are managed from the Players view: add/remove columns, rename.
 ## Computer players redistribute into contiguous, even groups (1,2,3 on
 ## the first team, 4,5,6 on the next...) whenever the layout changes;
@@ -1406,6 +1456,7 @@ func _save_battle_setup() -> void:
 	cfg.set_value("battle", "team_names", team_names)
 	cfg.set_value("battle", "bots", _bots.size())
 	cfg.set_value("battle", "world", selected_map)
+	cfg.set_value("battle", "mode", game_mode)
 	cfg.save(store.data_dir.path_join("battle.cfg"))
 
 func _load_battle_setup() -> void:
@@ -1419,6 +1470,8 @@ func _load_battle_setup() -> void:
 	if names.size() >= 2:
 		team_names = names
 		team_count = names.size()
+	game_mode = str(cfg.get_value("battle", "mode", "battle"))
+	match_loop = game_mode == "battle"
 	selected_map = str(cfg.get_value("battle", "world", ""))
 	if not _known_map(selected_map):
 		selected_map = ""

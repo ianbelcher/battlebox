@@ -180,6 +180,8 @@ func sv_register_player(slot: int, pname: String, style: Dictionary, bot := fals
 		host_peer = peer
 	print("Player joined: %s (%s), %d in world" % [pname, id, roster.size()])
 	_broadcast_roster()
+	if not bot and world != null and world.has_method("auto_team"):
+		world.auto_team(id)
 
 @rpc("any_peer", "call_local", "reliable")
 func sv_unregister_player(slot: int) -> void:

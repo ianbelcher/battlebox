@@ -3,22 +3,7 @@
 A live list of OPEN work only (git history is the record of done).
 
 
-SLICE 2 menu/mode restructure:
-- [ ] Top-level: Build · World · Character · Video (no Options group)
-- [ ] World group (host only): Map (first: Generated + Designed maps) ·
-      Mode (Battle ⇄ Creative switch; Battle shows length/arena; no
-      stop-toggle — switching to Creative kills the current battle,
-      everyone keeps weapons, nobody dies) · Players (humans at TOP,
-      auto-assigned; + Computer player DISABLED at cap, not hidden)
-- [ ] Non-hosts: no Map/Mode; they get Teams + Character + Video
-- [ ] "Battle" not "Battle Royale"; drop redundant section titles;
-      remove "brand new world" vote UI; fix selected-button BACKGROUND
-      state (3 min / Classic look stuck-selected)
 
-SLICE 3 Skylands:
-- [ ] Waterfalls must top out in a POND you can swim into and exit;
-      half the islands should have waterfalls; bridges must connect at
-      matching heights (currently big vertical mismatches)
 
 
 

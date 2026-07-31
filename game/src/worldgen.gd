@@ -551,8 +551,10 @@ func _skylands_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int)
 					for y in range(p.top + 1, mini(sat_top, CHUNK_H - 1)):
 						if data[idx(lx, y, lz)] == Blocks.AIR:
 							data[idx(lx, y, lz)] = Blocks.WATER
-			# Waterfall off one rim point of some islands.
-			if hash01(dgx, dgz, 953) < 0.35:
+			# Waterfall off one rim point of most islands — and it tops out
+			# in a small POND sunk into the island, so swimming up the
+			# fall lands you somewhere you can actually climb out of.
+			if hash01(dgx, dgz, 953) < 0.55:
 				var fall_a := hash01(dgx, dgz, 954) * TAU
 				var fx: int = p.ax + int(cos(fall_a) * (p.r - 1.5))
 				var fz: int = p.az + int(sin(fall_a) * (p.r - 1.5))
@@ -560,6 +562,12 @@ func _skylands_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int)
 					for y in range(SEA_LEVEL - 1, p.top + 1):
 						if data[idx(lx, y, lz)] == Blocks.AIR:
 							data[idx(lx, y, lz)] = Blocks.WATER
+				var pond_d := Vector2(wx - fx, wz - fz).length()
+				var isl_d := Vector2(wx - p.ax, wz - p.az).length()
+				if pond_d < 2.4 and isl_d < p.r - 0.5 and int(p.top) < CHUNK_H - 1:
+					data[idx(lx, p.top, lz)] = Blocks.WATER
+					if int(p.top) - 1 > SEA_LEVEL:
+						data[idx(lx, p.top - 1, lz)] = Blocks.STONE
 			# Bridges to the +x and +z neighbor islands.
 			for step_axis in 2:
 				var np := _sky_params(dgx + (1 if step_axis == 0 else 0),
@@ -574,7 +582,11 @@ func _skylands_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int)
 				var t := clampf((Vector2(wx, wz) - a_pos).dot(seg) / seg.length_squared(), 0.0, 1.0)
 				var closest := a_pos + seg * t
 				if Vector2(wx, wz).distance_to(closest) < 1.0 and t > 0.02 and t < 0.98:
-					var by := int(lerpf(float(p.top), float(np.top), t) - 3.0 * sin(PI * t))
+					# Hold each end flat at its island's top so the bridge
+					# actually MEETS the ground on both sides, ramping only
+					# through the middle.
+					var ramp := smoothstep(0.18, 0.82, t)
+					var by := int(lerpf(float(p.top), float(np.top), ramp) - 2.0 * sin(PI * t))
 					if by > SEA_LEVEL and by < CHUNK_H - 4 \
 							and data[idx(lx, by, lz)] == Blocks.AIR:
 						data[idx(lx, by, lz)] = Blocks.PLANKS
