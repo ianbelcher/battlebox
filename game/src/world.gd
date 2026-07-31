@@ -713,7 +713,8 @@ func sv_orb_hit(slot: int, target_id: String, hit_pos: Vector3) -> void:
 	if target_state.is_empty() or Vector3(target_state.pos).distance_to(hit_pos) > 4.0:
 		return
 	if match_phase == "BATTLE" and _teams_differ(shooter, target_id):
-		_match_hurt(target_id, 1, hit_pos, Game.player_id(multiplayer.get_remote_sender_id(), slot))
+		var shooter_pos: Vector3 = _player_state.get(shooter, {}).get("pos", hit_pos)
+		_match_hurt(target_id, 1, shooter_pos, shooter)
 		return
 	cl_bonk.rpc(target_id, hit_pos)
 
@@ -1336,7 +1337,10 @@ func _server_tick_bots(delta: float) -> void:
 						found = true
 						break
 				if not found:
-					bot.think = 0.0
+					# Fully blocked (usually the water's edge): turn
+					# around and pick business elsewhere.
+					bot.goal = pos - (Vector3(bot.goal) - pos)
+					bot.think = randf_range(0.6, 1.2)
 					dir = Vector2.ZERO
 			if dir != Vector2.ZERO:
 				pos.x += dir.x * 3.4 * delta
@@ -1369,11 +1373,11 @@ func _server_tick_bots(delta: float) -> void:
 					bot.shoot_cd = 1.1
 					cl_orb.rpc(id, pos + Vector3(0, 1.4, 0), (epos - pos).normalized(), int(bot.weapon))
 					if randf() < clampf(1.0 - dist / 22.0, 0.12, 0.7):
-						_match_hurt(enemy, 1, epos, id)
+						_match_hurt(enemy, 1, pos, id)
 				elif dist < 2.6:
 					bot.shoot_cd = 0.8
 					cl_pos.rpc(id, pos, bot.yaw, 9)
-					_match_hurt(enemy, 1, epos, id)
+					_match_hurt(enemy, 1, pos, id)
 		if bot.send_t <= 0.0:
 			bot.send_t = 1.0 / 15.0
 			cl_pos.rpc(id, pos, bot.yaw, 1)
@@ -1467,8 +1471,12 @@ func sv_match_start(_slot: int) -> void:
 ## everyone lands together at the middle so it streams in around them,
 ## nobody can touch blocks, teams settle — then the drop.
 func _begin_battle_lobby() -> void:
-	_do_world_reset(selected_map if not selected_map.is_empty() \
-		else store.current_map_key)
+	# The battle scars stay: the world only resets when the HOST picked
+	# a different world — otherwise everyone keeps the map they know
+	# (and nobody re-streams a thing between battles).
+	if not selected_map.is_empty() and selected_map != store.current_map_key \
+			and not (selected_map == store.theme and store.current_map_key.is_empty()):
+		_do_world_reset(selected_map)
 	_assign_stray_humans()
 	_monsters.clear()
 	for id: String in _bots.keys():
@@ -1561,6 +1569,7 @@ func _server_tick_match(delta: float) -> void:
 				cl_storm.rpc(storm_radius, storm_center)
 				_storm_damage()
 				_storm_bite()
+			_tick_regen()
 			_tick_revives()
 			_check_match_win()
 			if _match_timer <= 0.0:
@@ -1637,7 +1646,7 @@ func _server_match_drop() -> void:
 		if ly > 2 and ly < WorldGen.CHUNK_H - 6 \
 				and store.get_block(Vector3i(lx, ly, lz)) != Blocks.WATER \
 				and (store.theme != "sky" or ly > WorldGen.SEA_LEVEL + 6):
-			var lpool := [1, 1, 1, 2, 3, 5, 9, 9, 11, 12, 12, 15, 15]
+			var lpool := [1, 1, 1, 2, 3, 9, 9, 11, 12, 12, 15, 15]
 			_crates[_next_crate_id] = {"weapon": lpool[randi() % lpool.size()],
 				"pos": Vector3(lx + 0.5, ly + 1.0, lz + 0.5)}
 			_next_crate_id += 1
@@ -1725,6 +1734,25 @@ func _match_eliminate(id: String, attacker := "") -> void:
 	var attacker_name := str(Game.roster.get(attacker, {}).get("name", ""))
 	cl_feed.rpc(attacker_name, victim_name)
 	_check_match_win()
+
+## Out-of-combat healing: untouched for 8s, a heart every 3s.
+var _last_regen_ms: Dictionary = {}
+
+func _tick_regen() -> void:
+	var now := Time.get_ticks_msec()
+	for id: String in _match_alive.keys():
+		if _downed_ids.has(id):
+			continue
+		if now - int(_last_hit_ms.get(id, 0)) < 8000:
+			continue
+		var state: Dictionary = _player_state.get(id, {})
+		if state.is_empty() or int(state.get("hp", MATCH_HP)) >= MATCH_HP:
+			continue
+		if now - int(_last_regen_ms.get(id, 0)) < 3000:
+			continue
+		_last_regen_ms[id] = now
+		state.hp = int(state.get("hp", MATCH_HP)) + 1
+		cl_hearts.rpc(id, state.hp)
 
 func _tick_revives() -> void:
 	var now := Time.get_ticks_msec()
@@ -1905,7 +1933,9 @@ func cl_eliminated(id: String) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id:
 			if child.is_local:
-				child.teleport(Vector3(spawn_pos) + Vector3(0.5, 2.0, 0.5))
+				# Spectate from the sky while the team fights on.
+				child.teleport(storm_center + Vector3(0.5, 70.0, 0.5))
+				child.fly_mode = true
 				Sfx.play("drop", -6.0)
 			else:
 				# The fallen are invisible to everyone still playing.
@@ -2096,7 +2126,7 @@ func _server_tick_crates() -> void:
 				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER \
 				and (store.theme != "sky" or y > WorldGen.SEA_LEVEL + 6):
 			# Rarer weapons show up less often.
-			var pool := [1, 1, 1, 2, 3, 5, 9, 9, 11, 12, 12, 15, 15]
+			var pool := [1, 1, 1, 2, 3, 9, 9, 11, 12, 12, 15, 15]
 			_crates[_next_crate_id] = {"weapon": pool[randi() % pool.size()],
 				"pos": Vector3(wx + 0.5, y + 1.0, wz + 0.5)}
 			_next_crate_id += 1

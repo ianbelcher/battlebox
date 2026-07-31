@@ -184,6 +184,10 @@ func _process(delta: float) -> void:
 					var head_dir := node.basis * Vector3(0, 0, -1)
 					node.position = child.position + Vector3(0, -1.6, 0) - head_dir * 1.9
 					entry.target = node.position
+					# The rider can't see past a dragon they're sitting on:
+					# locally it disappears and they steer the head-
+					# viewmodel instead. Everyone else still sees it.
+					node.visible = not child.is_local
 					(node.get_child(0) as Node3D).position.y = \
 						lerpf((node.get_child(0) as Node3D).position.y, 0.0, 0.2)
 					break

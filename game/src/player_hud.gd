@@ -449,8 +449,8 @@ func _ready() -> void:
 		world.match_score_changed.connect(_refresh_team_panel)
 		world.knockout.connect(func(attacker: String, victim: String) -> void:
 			var line := Label.new()
-			line.text = ("%s  ⟶  %s ✕" % [attacker, victim]) if not attacker.is_empty() \
-				else "☁  %s ✕" % victim
+			line.text = ("%s  💥  %s" % [attacker, victim]) if not attacker.is_empty() \
+				else "☁💥  %s" % victim
 			line.add_theme_font_size_override("font_size", _us(15))
 			line.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
 			line.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
@@ -945,8 +945,13 @@ func _update_radar() -> void:
 			var blip_color: Color = WorldNode.TEAM_COLORS[team] if team >= 0 \
 				else Color("ff4426")
 			if team == my_team and my_team >= 0:
-				blip_color = blip_color.lightened(0.35)
-			_blip(image, center, yaw, child.position, blip_color)
+				# Teammates draw as a fat bright cross so they pop.
+				blip_color = blip_color.lightened(0.4)
+				for off in [Vector3(0, 0, 0), Vector3(1.6, 0, 0), Vector3(-1.6, 0, 0),
+						Vector3(0, 0, 1.6), Vector3(0, 0, -1.6)]:
+					_blip(image, center, yaw, child.position + off, blip_color)
+			else:
+				_blip(image, center, yaw, child.position, blip_color)
 	_blip(image, center, yaw, player.position, Color.WHITE)
 	_radar.texture = ImageTexture.create_from_image(image)
 	_update_clock()
@@ -1542,7 +1547,7 @@ func _process(_delta: float) -> void:
 		# this player's cell instead of hugging the top-left corner.
 		_menu.pivot_offset = _menu.size / 2.0
 	if _chip != null:
-		_chip.visible = not _menu.visible
+		_chip.visible = not _menu.visible and _treasure_label.text != ""
 	if _water_tint != null and world != null and world.chunks != null:
 		var eye := player.position + Vector3(0, Player.EYE_HEIGHT, 0)
 		var under: bool = Blocks.is_liquid(world.chunks.get_block(

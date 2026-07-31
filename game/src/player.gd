@@ -78,20 +78,18 @@ var _team_light: OmniLight3D = null
 
 ## A soft glow in your team's color so squads read at a glance.
 func set_team_glow(team: int) -> void:
-	if team < 0:
-		if _team_light != null:
-			_team_light.queue_free()
-			_team_light = null
-		return
-	if _team_light == null:
-		_team_light = OmniLight3D.new()
-		_team_light.omni_range = 5.0
-		_team_light.light_energy = 1.1
-		_team_light.shadow_enabled = false
-		_team_light.position = Vector3(0, 1.6, 0)
-		add_child(_team_light)
-	_team_light.light_color = WorldNode.TEAM_COLORS[team]
+	# Retired as a light source — a bright lamp per player washed the
+	# whole drop zone white. Team identity lives in the overhead hearts
+	# and the radar now; the local player's soft glow gets tinted.
+	if _team_light != null:
+		_team_light.queue_free()
+		_team_light = null
+	if is_local and _glow != null and team >= 0:
+		_glow.light_color = WorldNode.TEAM_COLORS[team].lerp(Color(1, 0.95, 0.85), 0.5)
 var downed := false
+var dropping := false
+var _ride_prev_jump := false
+var _ride_jump_ms := 0
 ## Riding a dragon (critter id) — grapple one to mount, jump to dismount.
 var riding := -1
 
@@ -108,6 +106,7 @@ var _warp_cooldown := 0.0
 
 var _avatar: Node3D
 var _tag: Label3D
+var _glow: OmniLight3D
 var _highlight: MeshInstance3D
 var _send_accum := 0.0
 var _edit_cooldown := 0.0
@@ -153,17 +152,17 @@ func refresh_overhead(hp: int, team_color: Color, downed_now: bool) -> void:
 	var top_row := "".rpad(mini(hp, 4), "♥")
 	var bottom_row := "".rpad(maxi(hp - 4, 0), "♥")
 	_tag.text = top_row if bottom_row.is_empty() else top_row + "\n" + bottom_row
-	_tag.modulate = Color("ff4438")
-	_tag.outline_modulate = Color(team_color.r, team_color.g, team_color.b, 0.95)
+	_tag.modulate = team_color
+	_tag.outline_modulate = Color(0.05, 0.05, 0.1, 0.95)
 	if is_local:
 		# A faint personal glow so caves and midnight are never a black void.
-		var glow := OmniLight3D.new()
-		glow.light_energy = 0.55
-		glow.omni_range = 9.0
-		glow.light_color = Color(1.0, 0.95, 0.85)
-		glow.shadow_enabled = false
-		glow.position = Vector3(0, 1.4, 0)
-		add_child(glow)
+		_glow = OmniLight3D.new()
+		_glow.light_energy = 0.35
+		_glow.omni_range = 6.0
+		_glow.light_color = Color(1.0, 0.95, 0.85)
+		_glow.shadow_enabled = false
+		_glow.position = Vector3(0, 1.4, 0)
+		add_child(_glow)
 		_highlight = MeshInstance3D.new()
 		var box := BoxMesh.new()
 		box.size = Vector3(1.04, 1.04, 1.04)
@@ -283,7 +282,7 @@ func apply_remote_held(code: int) -> void:
 
 func _refresh_hand() -> void:
 	var item := held()
-	var sig := str(item)
+	var sig := str(item) + ("+dragon" if riding >= 0 else "")
 	if sig == _hand_sig:
 		return
 	_hand_sig = sig
@@ -291,7 +290,17 @@ func _refresh_hand() -> void:
 		_hand_item.queue_free()
 		_hand_item = null
 	var arm: Node3D = _avatar.get_node_or_null("ArmR")
-	if arm == null or item.kind == "empty":
+	if arm == null:
+		return
+	if riding >= 0:
+		# Riding: your "held item" is the dragon's head out in front.
+		_hand_item = ItemFactory.build("dragon_head", 0)
+		_hand_item.position = Vector3(-0.3, -0.5, -0.9)
+		arm.add_child(_hand_item)
+		for vm_node in _hand_item.find_children("*", "VisualInstance3D", true, false):
+			(vm_node as VisualInstance3D).layers = render_layer_bit()
+		return
+	if item.kind == "empty":
 		return
 	_hand_item = ItemFactory.build(str(item.kind), int(item.id))
 	_hand_item.position = Vector3(0, -0.42, -0.05)
@@ -456,13 +465,13 @@ func _local_move(delta: float) -> void:
 				position = ride_next
 			anim = Anim.FLY
 			var ride_jump := input.is_jump_pressed()
-			if ride_jump and not _prev_jump:
+			if ride_jump and not _ride_prev_jump:
 				var now_ride := Time.get_ticks_msec()
-				if now_ride - _last_jump_ms < 400:
+				if now_ride - _ride_jump_ms < 450:
 					_set_riding(-1)
 					velocity.y = 5.0
-				_last_jump_ms = now_ride
-			_prev_jump = ride_jump
+				_ride_jump_ms = now_ride
+			_ride_prev_jump = ride_jump
 			return
 	elif on_floor and not downed and world.critter_view != null:
 		# Walk up to a dragon to climb on.
@@ -492,12 +501,19 @@ func _local_move(delta: float) -> void:
 	if dir.length_squared() > 0.01:
 		heading = dir.normalized()
 
-	if fly_mode and (world.survival_active or world.match_phase != "IDLE"):
-		fly_mode = false  # no flying away from raids or matches
-	if world != null and world.match_phase == "DROP" and not on_floor:
-		# Everyone drifts down together at the SAME speed — no diving
-		# ahead, no floating behind.
-		velocity.y = -8.0
+	var is_out: bool = world.ghost_ids.has(player_id)
+	if fly_mode and (world.survival_active or world.match_phase != "IDLE") \
+			and not is_out:
+		fly_mode = false  # no flying away from raids or matches (ghosts may)
+	if world != null and world.match_phase == "DROP":
+		dropping = true
+	if dropping:
+		# Everyone falls together at the SAME speed until they land —
+		# the phase flipping to BATTLE mid-air doesn't change your fall.
+		if on_floor or in_water:
+			dropping = false
+		else:
+			velocity.y = -8.0
 	if fly_mode:
 		var vert := 0.0
 		if jump_now:

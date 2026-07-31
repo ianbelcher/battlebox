@@ -78,6 +78,16 @@ static func build(kind: String, id: int) -> Node3D:
 				if top != color:
 					root.add_child(_box(Vector3(0.31, 0.02, 0.31), top, Vector3(0, 0.26, 0)))
 		return root
+	if kind == "dragon_head":
+		# The neck-and-head you see while riding: gray-purple, crest, eyes.
+		var hide := Color("8d7ca8")
+		root.add_child(_box(Vector3(0.34, 0.3, 0.7), hide, Vector3(0, 0.05, -0.4)))
+		root.add_child(_box(Vector3(0.42, 0.34, 0.5), hide.lightened(0.08), Vector3(0, 0.12, -0.95)))
+		root.add_child(_box(Vector3(0.3, 0.14, 0.44), hide.darkened(0.12), Vector3(0, -0.06, -1.1)))
+		root.add_child(_cyl(0.0, 0.1, 0.4, hide.darkened(0.15), Vector3(0, 0.36, -0.72), Vector3(-135, 0, 0)))
+		for side in [-1.0, 1.0]:
+			root.add_child(_box(Vector3(0.07, 0.07, 0.07), Color("ffd166"), Vector3(side * 0.16, 0.2, -1.12), true))
+		return root
 	if kind == "structure":
 		root.add_child(_box(Vector3(0.34, 0.2, 0.3), Structures.spec(id).color, Vector3(0, 0.06, 0)))
 		root.add_child(_box(Vector3(0.4, 0.1, 0.36), Structures.spec(id).color.darkened(0.3), Vector3(0, 0.2, 0)))
