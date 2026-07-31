@@ -842,7 +842,9 @@ func _find_fp_targets() -> Array:
 					return [cell, last_open]
 				return [NO_TARGET, last_open]
 			if Blocks.is_cross(block) and Blocks.is_breakable(block):
-				return [cell, last_open]
+				# A plant cell digs the plant AND doubles as the place spot
+				# — you build straight through foliage, Minecraft style.
+				return [cell, cell if not _cell_overlaps_self(cell) else last_open]
 			if not _cell_overlaps_self(cell) and _has_solid_neighbor(cell):
 				last_open = cell
 		t += 0.12
@@ -885,7 +887,7 @@ func _find_place_target() -> Vector3i:
 	var candidates := [_front_cell(0), _front_cell(1), _front_cell(-1)]
 	for cell: Vector3i in candidates:
 		var block := chunks.get_block(cell)
-		if block == Blocks.AIR or block == Blocks.TALL_GRASS or Blocks.is_liquid(block):
+		if block == Blocks.AIR or Blocks.is_cross(block) or Blocks.is_liquid(block):
 			# Never place a block inside yourself.
 			var center := Vector3(cell) + Vector3(0.5, 0.5, 0.5)
 			var delta := center - (position + Vector3(0, HEIGHT * 0.5, 0))

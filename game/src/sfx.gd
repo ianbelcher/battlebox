@@ -1,5 +1,7 @@
 extends Node
-## Sound effects synthesized at startup so the project needs no audio assets.
+## Sound effects: Kenney CC0 samples (assets/sounds) for the physical
+## stuff — digging, placing, landing, punches, UI — with synthesized
+## bell/marimba tones filling in everything without a good sample.
 ## Soft bell/marimba tones (sines with gentle harmonics and exponential decay)
 ## plus looping nature ambients that follow the world clock.
 
@@ -53,6 +55,30 @@ func _ready() -> void:
 		"warp": _notes([[880, 0.06], [660, 0.06], [440, 0.07], [880, 0.0], [1320, 0.12]], 0.5, "soft"),
 		"cheer": _cheer(),
 	}
+	# Kenney sample overrides: arrays are per-play random variants.
+	const KENNEY := {
+		"tick": ["click_001", "click_002"],
+		"pop": ["pluck_001", "pluck_002"],
+		"collect": ["confirmation_002"],
+		"join": ["confirmation_001"],
+		"drop": ["drop_001", "drop_002"],
+		"dig": ["impactMining_000", "impactMining_001", "impactMining_002",
+			"impactMining_003", "impactMining_004"],
+		"place": ["impactWood_light_000", "impactWood_light_001",
+			"impactWood_light_002", "impactWood_light_003"],
+		"land": ["impactSoft_heavy_000", "impactSoft_heavy_001",
+			"impactSoft_heavy_002"],
+		"bonk": ["impactPunch_medium_000", "impactPunch_medium_001",
+			"impactPunch_medium_002"],
+	}
+	for clip: String in KENNEY:
+		var variants: Array = []
+		for file: String in KENNEY[clip]:
+			var stream: AudioStream = load("res://assets/sounds/%s.ogg" % file)
+			if stream != null:
+				variants.append(stream)
+		if not variants.is_empty():
+			_streams[clip] = variants
 	_ambient_player = AudioStreamPlayer.new()
 	_ambient_player.volume_db = -16.0
 	add_child(_ambient_player)
@@ -151,7 +177,10 @@ func play(clip: String, volume_db := 0.0, pitch := 0.0) -> void:
 		return
 	var player := _players[_next]
 	_next = (_next + 1) % _players.size()
-	player.stream = _streams[clip]
+	var stream: Variant = _streams[clip]
+	if stream is Array:
+		stream = stream[randi() % (stream as Array).size()]
+	player.stream = stream
 	player.volume_db = volume_db
 	if pitch > 0.0:
 		player.pitch_scale = pitch

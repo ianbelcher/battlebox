@@ -112,6 +112,7 @@ func pet(id: int) -> void:
 	if not _nodes.has(id):
 		return
 	var node: Node3D = _nodes[id].node
+	_nodes[id].dance_until = Time.get_ticks_msec() / 1000.0 + 2.6
 	# Happy hop...
 	var tween := create_tween()
 	tween.tween_property(node, "position:y", node.position.y + 0.5, 0.15) \
@@ -201,6 +202,24 @@ func _process(delta: float) -> void:
 		var visual: Node3D = node.get_child(0) if node.get_child_count() > 0 else null
 		if visual == null:
 			continue
+		if node.has_meta("ap"):
+			# Kenney pets animate themselves: walk when moving, idle when
+			# not, dance for a bit after a pat.
+			var ap := node.get_meta("ap") as AnimationPlayer
+			if is_instance_valid(ap):
+				var want := "walk" if Vector2(to_target.x, to_target.z).length() > 0.2 \
+					else "idle"
+				if t < float(entry.get("dance_until", 0.0)):
+					want = "dance"
+				if ap.current_animation != want:
+					ap.play(want, 0.25)
+			if kind == BUTTERFLY:
+				visual.position.y = 0.8 + sin(t * 2.0 + phase) * 0.25
+			elif kind == BIRD:
+				visual.position.y = 4.0 + sin(t * 1.4 + phase) * 0.8
+			else:
+				visual.position.y = 0.0
+			continue
 		match kind:
 			BUTTERFLY:
 				visual.position.y = 0.8 + sin(t * 2.0 + phase) * 0.25
@@ -256,10 +275,31 @@ func _sphere(radius: float, color: Color, squash := 1.0, emissive := false) -> M
 	instance.material_override = _mat(color, emissive)
 	return instance
 
+## Kenney Cube Pets (CC0) stand in for most critters — fireflies keep
+## their glow-mote look and the dragon stays our own beast.
+const PETS := {SHEEP: "animal-cow", BUNNY: "animal-bunny",
+	BUTTERFLY: "animal-bee", DUCK: "animal-beaver", CHICKEN: "animal-chick",
+	CRAB: "animal-crab", FROG: "animal-caterpillar", DEER: "animal-deer",
+	PENGUIN: "animal-penguin", BIRD: "animal-parrot"}
+
 func _build(kind: int) -> Node3D:
 	var root := Node3D.new()
 	var visual := Node3D.new()
 	root.add_child(visual)
+	if PETS.has(kind):
+		var scene: PackedScene = load("res://assets/models/pets/%s.glb" % PETS[kind])
+		if scene != null:
+			var pet_inst: Node3D = scene.instantiate()
+			pet_inst.scale = Vector3.ONE * 0.5
+			pet_inst.rotation_degrees = Vector3(0, 180, 0)
+			visual.add_child(pet_inst)
+			var ap := pet_inst.find_child("AnimationPlayer", true, false) as AnimationPlayer
+			if ap != null:
+				for anim_name in ap.get_animation_list():
+					ap.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
+				ap.play("idle")
+				root.set_meta("ap", ap)
+			return root
 	match kind:
 		SHEEP:
 			var body := _sphere(0.42, Color("f2efe6"), 0.85)

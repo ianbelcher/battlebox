@@ -448,9 +448,9 @@ func sv_edit(slot: int, pos: Vector3i, block: int) -> void:
 	else:
 		if not (block in Blocks.HOTBAR):
 			return
-		if current != Blocks.AIR and current != Blocks.TALL_GRASS \
+		if current != Blocks.AIR and not Blocks.is_cross(current) \
 				and not Blocks.is_liquid(current):
-			return
+			return  # cross plants are soft: build straight through them
 		var supported := false
 		for off in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0),
 				Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
@@ -469,6 +469,12 @@ func sv_edit(slot: int, pos: Vector3i, block: int) -> void:
 	store.set_block(pos, block)
 	cl_edit.rpc(pos, block, id)
 	if block == Blocks.AIR:
+		# Foliage has no roots of its own: dig the block it sat on and the
+		# plant above pops with it.
+		var above := pos + Vector3i(0, 1, 0)
+		if Blocks.is_cross(store.get_block(above)):
+			store.set_block(above, Blocks.AIR)
+			cl_edit.rpc(above, Blocks.AIR, id)
 		_disturb_water([pos])
 
 ## Stamp a prefab structure: only air, liquids and plants are overwritten,

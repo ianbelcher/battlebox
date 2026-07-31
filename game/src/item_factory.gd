@@ -92,6 +92,20 @@ static func build(kind: String, id: int) -> Node3D:
 		root.add_child(_box(Vector3(0.34, 0.2, 0.3), Structures.spec(id).color, Vector3(0, 0.06, 0)))
 		root.add_child(_box(Vector3(0.4, 0.1, 0.36), Structures.spec(id).color.darkened(0.3), Vector3(0, 0.2, 0)))
 		return root
+	# Kenney Blaster Kit (CC0): real models for the shooters. Forward is
+	# -Z to match the muzzle convention everywhere else in the game.
+	const KENNEY_WEAPONS := {0: "blaster-g", 1: "blaster-m", 2: "blaster-i",
+		3: "blaster-b", 4: "blaster-c", 5: "blaster-o", 8: "grenade-a",
+		9: "blaster-h", 14: "blaster-k", 15: "blaster-q"}
+	if kind == "weapon" and KENNEY_WEAPONS.has(id):
+		var scene: PackedScene = load("res://assets/models/%s.glb" % KENNEY_WEAPONS[id])
+		if scene != null:
+			var inst: Node3D = scene.instantiate()
+			inst.rotation_degrees = Vector3(0, 180, 0)
+			inst.scale = Vector3.ONE * 0.8
+			inst.position = Vector3(0, 0.02, 0)
+			root.add_child(inst)
+			return root
 	match id:
 		0:  # Blaster: compact pistol with shroud + bead sight
 			root.add_child(_box(Vector3(0.09, 0.12, 0.3), Color("6c6f78"), Vector3(0, 0.08, -0.1)))
