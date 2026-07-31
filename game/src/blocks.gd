@@ -282,7 +282,7 @@ static func _static_init() -> void:
 	EXTRA[LADDER] = {"name": "Ladder", "color": Color("9a7a4f"), "cross": true}
 	EXTRA[BAMBOO] = {"name": "Bamboo", "color": Color("6b9a3d"), "cross": true, "sway": 0.3}
 	EXTRA[SNOW_LAYER] = {"name": "Snow Layer", "color": Color("eef3f6"),
-		"solid": true, "opaque": false, "shape": "carpet", "hard": 0}
+		"solid": false, "opaque": false, "shape": "carpet", "hard": 0}
 	var glass_tints := [["Red", Color(0.85, 0.2, 0.2, 0.5)],
 		["Orange", Color(0.9, 0.55, 0.15, 0.5)], ["Yellow", Color(0.92, 0.85, 0.25, 0.5)],
 		["Green", Color(0.3, 0.75, 0.3, 0.5)], ["Blue", Color(0.25, 0.45, 0.9, 0.5)],
@@ -304,7 +304,7 @@ static func _static_init() -> void:
 		["Pink", Color("d98cb8")], ["White", Color("e8e8ea")]]
 	for ci in carpet_tints.size():
 		EXTRA[CARPET_RED + ci] = {"name": str(carpet_tints[ci][0]) + " Carpet",
-			"color": carpet_tints[ci][1], "solid": true, "opaque": false,
+			"color": carpet_tints[ci][1], "solid": false, "opaque": false,
 			"shape": "carpet", "hard": 0}
 	EXTRA[CRAFTING_TABLE] = {"name": "Crafting Table", "color": Color("9a6b3f"),
 		"top": Color("7a5230"), "solid": true, "opaque": true, "hard": 1}

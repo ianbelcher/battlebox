@@ -84,10 +84,10 @@ func set_team_glow(team: int) -> void:
 	if _team_light != null:
 		_team_light.queue_free()
 		_team_light = null
-	if is_local and _glow != null and team >= 0:
-		_glow.light_color = WorldNode.TEAM_COLORS[team].lerp(Color(1, 0.95, 0.85), 0.5)
+	pass
 var downed := false
 var dropping := false
+var _was_in_water := false
 var _ride_prev_jump := false
 var _ride_jump_ms := 0
 ## Riding a dragon (critter id) — grapple one to mount, jump to dismount.
@@ -135,13 +135,19 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	_tag.modulate = Color.WHITE
 	_tag.outline_modulate = Color(0.05, 0.05, 0.1, 0.9)
 	_tag.outline_size = 14
-	_tag.position = Vector3(0, 1.5, 0)
+	_tag.position = Vector3(0, 2.1, 0)
 	add_child(_tag)
 
 ## Overhead display: hearts in two rows of four, trimmed in team color —
 ## you read health and side at a glance instead of a name.
-func refresh_overhead(hp: int, team_color: Color, downed_now: bool) -> void:
+func refresh_overhead(hp: int, team_color: Color, downed_now: bool,
+		friendly := false) -> void:
 	if _tag == null:
+		return
+	if is_local or (friendly and not downed_now):
+		# Your own tag is noise to you, and teammates don't need targets
+		# over their heads — enemies do.
+		_tag.text = ""
 		return
 	if downed_now:
 		_tag.text = "⛑ HELP!"
@@ -152,17 +158,10 @@ func refresh_overhead(hp: int, team_color: Color, downed_now: bool) -> void:
 	var top_row := "".rpad(mini(hp, 4), "♥")
 	var bottom_row := "".rpad(maxi(hp - 4, 0), "♥")
 	_tag.text = top_row if bottom_row.is_empty() else top_row + "\n" + bottom_row
-	_tag.modulate = team_color
+	_tag.modulate = Color(team_color.darkened(0.12), 0.9)
 	_tag.outline_modulate = Color(0.05, 0.05, 0.1, 0.95)
 	if is_local:
-		# A faint personal glow so caves and midnight are never a black void.
-		_glow = OmniLight3D.new()
-		_glow.light_energy = 0.35
-		_glow.omni_range = 6.0
-		_glow.light_color = Color(1.0, 0.95, 0.85)
-		_glow.shadow_enabled = false
-		_glow.position = Vector3(0, 1.4, 0)
-		add_child(_glow)
+		pass  # no personal light: player lamps kept blooming the night
 		_highlight = MeshInstance3D.new()
 		var box := BoxMesh.new()
 		box.size = Vector3(1.04, 1.04, 1.04)
@@ -479,6 +478,17 @@ func _local_move(delta: float) -> void:
 		if near_dragon >= 0:
 			_set_riding(near_dragon)
 	carry_time = maxf(0.0, carry_time - delta)
+	# Leaving the water is a hop, not a breaching whale.
+	if _was_in_water and not in_water:
+		velocity.y = minf(velocity.y, 5.0)
+	_was_in_water = in_water
+	# Ladders: touching one lets you climb.
+	var body_block := _chunks().get_block(Vector3i(floori(position.x),
+		floori(position.y + 0.9), floori(position.z)))
+	if body_block == Blocks.LADDER:
+		var climb_input := input.get_move_vector().length() > 0.2 or input.is_jump_pressed()
+		velocity.y = 3.4 if climb_input else -0.6
+		on_floor = false
 	var speed := SWIM_SPEED if in_water else WALK_SPEED
 	if input.is_sprint_pressed() and on_floor and not downed:
 		speed *= 1.55
@@ -507,13 +517,6 @@ func _local_move(delta: float) -> void:
 		fly_mode = false  # no flying away from raids or matches (ghosts may)
 	if world != null and world.match_phase == "DROP":
 		dropping = true
-	if dropping:
-		# Everyone falls together at the SAME speed until they land —
-		# the phase flipping to BATTLE mid-air doesn't change your fall.
-		if on_floor or in_water:
-			dropping = false
-		else:
-			velocity.y = -8.0
 	if fly_mode:
 		var vert := 0.0
 		if jump_now:
@@ -556,6 +559,13 @@ func _local_move(delta: float) -> void:
 	# Axis-separated sweep against the voxel grid.
 	var next := position
 	var blocked_h := false
+	if dropping:
+		# Everyone falls at the SAME -8 until touching down — enforced
+		# after every glide/wings branch so nothing overrides it.
+		if on_floor or in_water:
+			dropping = false
+		else:
+			velocity.y = -8.0
 	for axis: Vector3 in [Vector3.RIGHT, Vector3.BACK]:
 		var step: float = velocity.dot(axis) * delta
 		if absf(step) < 0.0001:

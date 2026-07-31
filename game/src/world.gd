@@ -116,7 +116,7 @@ const TEAM_NAMES := ["Red", "Blue", "Green", "Yellow", "Purple", "Orange",
 	"Gold", "Magenta", "Olive", "Sky", "Coral", "Violet", "Mint", "Slate",
 	"Peach", "Onyx"]
 const TEAM_COLORS := [Color("ff5a5a"), Color("4a9df8"), Color("51c979"),
-	Color("ffd166"), Color("b06df8"), Color("ff9a3d"), Color("46d8d8"),
+	Color("ffd166"), Color("9b45e0"), Color("ff9a3d"), Color("46d8d8"),
 	Color("ff7ab8"), Color("a8e05f"), Color("3550b8"), Color("a5713f"),
 	Color("f0f0f0"), Color("b03040"), Color("2f8f8f"), Color("d8a818"),
 	Color("e040e0"), Color("909020"), Color("7ec8ff"), Color("ff8a70"),
@@ -649,8 +649,15 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 			if not pairs.is_empty():
 				cl_edits.rpc(pairs)
 			return
-		9:  # Napalm Rocket: no crater — it just sets the impact ablaze.
+		9:  # Napalm Rocket: no crater — it sets the impact ablaze and the
+			# blast itself hurts (2 hearts close in).
 			cl_boom_fx.rpc(cell)
+			if match_phase == "BATTLE":
+				for pid: String in _match_alive.keys():
+					if pid != id and _teams_differ(id, pid) \
+							and _player_state.has(pid) \
+							and Vector3(cell).distance_to(_player_state[pid].pos) < 5.0:
+						_match_hurt(pid, 2, Vector3(cell), Game.player_id(multiplayer.get_remote_sender_id(), slot))
 			var splashed: Array = []
 			for dz in range(-2, 3):
 				for dx in range(-2, 3):
@@ -715,6 +722,7 @@ func sv_orb_hit(slot: int, target_id: String, hit_pos: Vector3) -> void:
 	if match_phase == "BATTLE" and _teams_differ(shooter, target_id):
 		var shooter_pos: Vector3 = _player_state.get(shooter, {}).get("pos", hit_pos)
 		_match_hurt(target_id, 1, shooter_pos, shooter)
+		cl_hit_ok.rpc_id(multiplayer.get_remote_sender_id())
 		return
 	cl_bonk.rpc(target_id, hit_pos)
 
@@ -1304,10 +1312,10 @@ func _bot_pick_goal(id: String, bot: Dictionary) -> Vector3:
 func _bot_step_ok(pos: Vector3, dir: Vector2) -> bool:
 	var ahead := Vector2(pos.x, pos.z) + dir * 1.6
 	var gy := store.surface_y(int(ahead.x), int(ahead.y))
-	if float(gy) - pos.y > 1.6:
-		return false
-	var ground := store.get_block(Vector3i(int(ahead.x), gy, int(ahead.y)))
-	return ground != Blocks.WATER
+	return float(gy) - pos.y <= 1.6 or _water_at(int(ahead.x), int(ahead.y))
+
+func _water_at(wx: int, wz: int) -> bool:
+	return store.get_block(Vector3i(wx, WorldGen.SEA_LEVEL, wz)) == Blocks.WATER
 
 func _server_tick_bots(delta: float) -> void:
 	for id: String in _bots.keys():
@@ -1354,11 +1362,15 @@ func _server_tick_bots(delta: float) -> void:
 			if bot.think <= 0.05:
 				bot.moved = 0.0
 		var gy := store.surface_y(int(pos.x), int(pos.z))
-		if pos.y > float(gy) + 4.0:
+		var floor_y := float(gy) + 1.0
+		if _water_at(int(pos.x), int(pos.z)):
+			# Bots swim: ride the surface instead of sinking to the seabed.
+			floor_y = maxf(floor_y, float(WorldGen.SEA_LEVEL) + 0.4)
+		if pos.y > floor_y + 3.0:
 			# Still airborne (the drop): glide down at human pace.
-			pos.y = maxf(pos.y - 8.0 * delta, float(gy) + 1.0)
+			pos.y = maxf(pos.y - 8.0 * delta, floor_y)
 		else:
-			pos.y = lerpf(pos.y, float(gy) + 1.0, minf(1.0, delta * 8.0))
+			pos.y = lerpf(pos.y, floor_y, minf(1.0, delta * 8.0))
 		bot.pos = pos
 		var state: Dictionary = _player_state.get(id, {})
 		if not state.is_empty():
@@ -1570,10 +1582,26 @@ func _server_tick_match(delta: float) -> void:
 				_storm_damage()
 				_storm_bite()
 			_tick_regen()
+			_tick_fire()
+			if int(_match_timer) % 2 == 0 and _match_timer - floorf(_match_timer) < 0.02:
+				_tick_crate_gravity()
 			_tick_revives()
 			_check_match_win()
 			if _match_timer <= 0.0:
-				_server_match_end(-1)
+				# Time's up: the team with the most players standing wins.
+				var per_team: Dictionary = {}
+				for alive_id: String in _match_alive.keys():
+					if _downed_ids.has(alive_id):
+						continue
+					var at := int(Game.roster.get(alive_id, {}).get("team", -1))
+					per_team[at] = int(per_team.get(at, 0)) + 1
+				var best_team := -1
+				var best_n := 0
+				for pt: int in per_team.keys():
+					if per_team[pt] > best_n:
+						best_n = per_team[pt]
+						best_team = pt
+				_server_match_end(best_team)
 		"END":
 			if _match_timer <= 0.0:
 				var humans := false
@@ -1737,6 +1765,38 @@ func _match_eliminate(id: String, attacker := "") -> void:
 
 ## Out-of-combat healing: untouched for 8s, a heart every 3s.
 var _last_regen_ms: Dictionary = {}
+
+@rpc("authority", "reliable")
+func cl_hit_ok() -> void:
+	Sfx.play("bonk", -2.0, 1.35)
+
+## Standing in fire costs a heart per tick.
+var _burn_ms: Dictionary = {}
+
+## Crates whose支撑 got blown away settle back to the ground.
+func _tick_crate_gravity() -> void:
+	var moved := false
+	for crate_id: int in _crates.keys():
+		var cpos: Vector3 = _crates[crate_id].pos
+		var ground := store.surface_y(int(cpos.x), int(cpos.z))
+		var rest := float(ground) + 1.0
+		if cpos.y > rest + 0.5:
+			_crates[crate_id].pos.y = maxf(cpos.y - 6.0, rest)
+			moved = true
+	if moved:
+		_broadcast_crates()
+
+func _tick_fire() -> void:
+	var now := Time.get_ticks_msec()
+	for id: String in _match_alive.keys():
+		var state: Dictionary = _player_state.get(id, {})
+		if state.is_empty() or now < int(_burn_ms.get(id, 0)):
+			continue
+		var foot: Vector3 = state.pos
+		if store.get_block(Vector3i(int(foot.x), int(foot.y), int(foot.z))) == Blocks.FIRE \
+				or store.get_block(Vector3i(int(foot.x), int(foot.y) + 1, int(foot.z))) == Blocks.FIRE:
+			_burn_ms[id] = now + 1400
+			_match_hurt(id, 1, foot)
 
 func _tick_regen() -> void:
 	var now := Time.get_ticks_msec()
@@ -2359,7 +2419,7 @@ func _client_setup() -> void:
 	add_child(_storm_wall)
 	storm_changed.connect(func() -> void:
 		_storm_wall.visible = match_phase == "BATTLE" and storm_radius > 0.0
-		_storm_wall.scale = Vector3(storm_radius, 1.0, storm_radius)
+		_storm_wall.scale = Vector3(storm_radius, 3.2, storm_radius)
 		_storm_wall.position = Vector3(storm_center.x,
 			float(WorldGen.SEA_LEVEL) + 8.0, storm_center.z))
 	match_changed.connect(func() -> void:
@@ -2629,13 +2689,17 @@ func cl_hearts(id: String, hp: int) -> void:
 func _refresh_overheads() -> void:
 	if players == null:
 		return
+	var local_teams: Dictionary = {}
+	for lid in Game.local_player_ids():
+		local_teams[int(Game.roster.get(lid, {}).get("team", -1))] = true
 	for child in players.get_children():
 		if child is Player:
 			var team := int(Game.roster.get(child.player_id, {}).get("team", -1))
 			var team_color: Color = TEAM_COLORS[team] if team >= 0 and \
 				team < TEAM_COLORS.size() else Color(1, 1, 1)
 			child.refresh_overhead(int(hearts.get(child.player_id, 8)),
-				team_color, client_downed.has(child.player_id))
+				team_color, client_downed.has(child.player_id),
+				team >= 0 and local_teams.has(team))
 
 signal local_hurt(id: String, from_pos: Vector3)
 

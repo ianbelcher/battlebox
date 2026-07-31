@@ -104,25 +104,24 @@ func _ready() -> void:
 	_treasure_label.add_theme_color_override("font_color", Color("ffd166"))
 	row.add_child(_treasure_label)
 	_hearts_label = Label.new()
-	_hearts_label.add_theme_font_size_override("font_size", _us(19))
+	_hearts_label.add_theme_font_size_override("font_size", _us(17))
 	_hearts_label.add_theme_color_override("font_color", Color("ff4438"))
 	_hearts_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	_hearts_label.add_theme_constant_override("outline_size", 6)
-	_hearts_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_hearts_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_hearts_label.offset_top = -_us(116)
-	_hearts_label.offset_bottom = -_us(94)
+	_hearts_label.add_theme_constant_override("outline_size", 5)
 	_hearts_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(_hearts_label)
 	_name_label.visible = false
 
 	# Bottom: hotbar.
 	var bar_holder := CenterContainer.new()
 	bar_holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	bar_holder.offset_top = -150
+	bar_holder.offset_top = -175
 	bar_holder.offset_bottom = -8
 	bar_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bar_holder)
+	var bar_stack := VBoxContainer.new()
+	bar_stack.add_theme_constant_override("separation", 2)
+	bar_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_holder.add_child(bar_stack)
 	var bar_panel := PanelContainer.new()
 	bar_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var bar_style := StyleBoxFlat.new()
@@ -130,7 +129,9 @@ func _ready() -> void:
 	bar_style.set_corner_radius_all(10)
 	bar_style.set_content_margin_all(6)
 	bar_panel.add_theme_stylebox_override("panel", bar_style)
-	bar_holder.add_child(bar_panel)
+	# Hearts live in the same stack as the hotbar: aligned by construction.
+	bar_stack.add_child(_hearts_label)
+	bar_stack.add_child(bar_panel)
 	_hotbar = HBoxContainer.new()
 	_hotbar.add_theme_constant_override("separation", 2)
 	bar_panel.add_child(_hotbar)
@@ -342,6 +343,22 @@ func _ready() -> void:
 	_feed_box.add_theme_constant_override("separation", _us(2))
 	_feed_box.position = Vector2(_us(10), _us(60))
 	add_child(_feed_box)
+	_vignette = TextureRect.new()
+	var vg := Gradient.new()
+	vg.colors = PackedColorArray([Color(0.7, 0.05, 0.02, 0.0), Color(0.7, 0.05, 0.02, 0.85)])
+	vg.offsets = PackedFloat32Array([0.55, 1.0])
+	var vg_tex := GradientTexture2D.new()
+	vg_tex.gradient = vg
+	vg_tex.fill = GradientTexture2D.FILL_RADIAL
+	vg_tex.fill_from = Vector2(0.5, 0.5)
+	vg_tex.fill_to = Vector2(0.5, 0.0)
+	_vignette.texture = vg_tex
+	_vignette.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_vignette.stretch_mode = TextureRect.STRETCH_SCALE
+	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_vignette.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_vignette.modulate.a = 0.0
+	add_child(_vignette)
 	_damage_flash = ColorRect.new()
 	_damage_flash.color = Color(0.9, 0.1, 0.05, 0.0)
 	_damage_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -447,6 +464,10 @@ func _ready() -> void:
 		world.match_changed.connect(_on_match_changed)
 		world.battle_config_changed.connect(_refresh_battle_highlights)
 		world.match_score_changed.connect(_refresh_team_panel)
+		world.match_changed.connect(func() -> void:
+			if world.match_phase == "DROP" and _feed_box != null:
+				for old_line in _feed_box.get_children():
+					old_line.queue_free())
 		world.knockout.connect(func(attacker: String, victim: String) -> void:
 			var line := Label.new()
 			line.text = ("%s  💥  %s" % [attacker, victim]) if not attacker.is_empty() \
@@ -456,12 +477,8 @@ func _ready() -> void:
 			line.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
 			line.add_theme_constant_override("outline_size", 4)
 			_feed_box.add_child(line)
-			if _feed_box.get_child_count() > 5:
-				_feed_box.get_child(0).queue_free()
-			var fade := create_tween()
-			fade.tween_interval(6.0)
-			fade.tween_property(line, "modulate:a", 0.0, 1.5)
-			fade.tween_callback(line.queue_free))
+			if _feed_box.get_child_count() > 10:
+				_feed_box.get_child(0).queue_free())
 	Game.roster_changed.connect(_refresh_identity)
 	_refresh_identity()
 
@@ -985,6 +1002,7 @@ var _team_panel: VBoxContainer
 var _feed_box: VBoxContainer
 var _ride_hint: Label
 var _damage_flash: ColorRect
+var _vignette: TextureRect
 var _damage_arrow: Label
 var _damage_t := 0.0
 var _damage_from := Vector3.ZERO
@@ -1160,13 +1178,16 @@ func _refresh_team_panel() -> void:
 	var names: Array = world.client_team_names
 	for t in names.size():
 		var alive := 0
+		var total := 0
 		for rid: String in Game.roster.keys():
-			if int(Game.roster[rid].get("team", -1)) == t and world.alive_ids.has(rid):
-				alive += 1
-		if alive == 0:
+			if int(Game.roster[rid].get("team", -1)) == t:
+				total += 1
+				if world.alive_ids.has(rid):
+					alive += 1
+		if total == 0:
 			continue
 		var row_label := Label.new()
-		row_label.text = "%s  %d" % [str(names[t]), alive]
+		row_label.text = "%s  %d/%d" % [str(names[t]), alive, total]
 		row_label.add_theme_font_size_override("font_size", _us(14))
 		row_label.add_theme_color_override("font_color", WorldNode.TEAM_COLORS[t])
 		row_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
@@ -1496,13 +1517,21 @@ func _process(_delta: float) -> void:
 				team_name = str(world.client_team_names[team])
 			_score_label.text = "🚩 %s  %d/%d alive   ·   %d players left" % [
 				team_name, mates_alive, mates_total, world.alive_ids.size()]
+	if _vignette != null and world != null:
+		# The hurt vignette: strongest when hearts are low, eases back as
+		# regen tops you up.
+		var vg_hp := int(world.hearts.get(Game.player_id(
+			multiplayer.get_unique_id(), slot), 8))
+		var vg_target := clampf((5.0 - vg_hp) / 5.0, 0.0, 0.75) \
+			if world.match_phase == "BATTLE" else 0.0
+		_vignette.modulate.a = lerpf(_vignette.modulate.a, vg_target, 0.06)
 	if _damage_flash != null:
 		_damage_t = maxf(0.0, _damage_t - _delta)
 		_damage_flash.color.a = minf(_damage_t, 0.45) * 0.8
 		_damage_arrow.visible = _damage_t > 0.0
 		if _damage_arrow.visible:
 			var to_threat := _damage_from - player.position
-			var threat_angle := atan2(to_threat.x, -to_threat.z) - player.camera_yaw
+			var threat_angle := atan2(to_threat.x, -to_threat.z) + player.camera_yaw
 			_damage_arrow.rotation = threat_angle
 			_damage_arrow.pivot_offset = _damage_arrow.size / 2.0
 			_damage_arrow.position = size / 2.0 - _damage_arrow.size / 2.0 \
