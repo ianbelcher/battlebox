@@ -1653,7 +1653,7 @@ func _process(_delta: float) -> void:
 			_center_note.text = "🏆  Battle in progress — you drop into the next one!"
 		elif world.match_phase == "DROP":
 			_center_note.visible = true
-			_center_note.text = "🪂  Dropping in — steer with the stick, land near loot!"
+			_center_note.text = "🪂  Steer with the stick!"
 		else:
 			_center_note.visible = false
 	if _storm_label != null and world != null:
