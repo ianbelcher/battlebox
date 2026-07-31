@@ -592,7 +592,11 @@ func _poll_page_nav(input: InputSlot, delta: float) -> void:
 				slider.value += slider.step * signf(dir.x)
 				Sfx.play("tick", -14.0)
 			else:
-				_nav_move(controls, dir)
+				# Snap to the dominant axis: up means screen-up, never
+				# a diagonal hop to whatever sat up-and-right.
+				var snapped := Vector2(signf(dir.x), 0.0) \
+					if absf(dir.x) > absf(dir.y) else Vector2(0.0, signf(dir.y))
+				_nav_move(controls, snapped)
 	else:
 		_nav_repeat = 0.0
 	var select := input.is_primary_pressed()

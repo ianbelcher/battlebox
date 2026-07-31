@@ -128,12 +128,20 @@ func poll(input: InputSlot, delta: float) -> void:
 	_nav_cooldown = maxf(0.0, _nav_cooldown - delta)
 	var nav := input.get_ui_vector()
 	if _nav_cooldown <= 0.0 and nav.length() > 0.5:
+		# Dominant-axis only: a stick rolled toward "up" often tips
+		# sideways for a frame — an ambiguous diagonal moves nothing
+		# rather than dart left/right first.
 		var step := Vector2i(0, 0)
-		if absf(nav.x) > absf(nav.y):
+		if absf(nav.x) > absf(nav.y) * 1.35:
 			step.x = 1 if nav.x > 0 else -1
-		else:
+		elif absf(nav.y) > absf(nav.x) * 1.35:
 			step.y = 1 if nav.y > 0 else -1
+		if step == Vector2i(0, 0):
+			return
 		var next := focus_index + step.x + step.y * COLUMNS
+		if step.y == 1 and next >= entries.size() \
+				and focus_index / COLUMNS < (entries.size() - 1) / COLUMNS:
+			next = entries.size() - 1  # down into a shorter last row
 		if next >= 0 and next < entries.size():
 			focus_index = next
 			_nav_cooldown = 0.16
