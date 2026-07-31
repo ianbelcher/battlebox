@@ -272,7 +272,6 @@ func remote_update(pos: Vector3, yaw: float, p_anim: int) -> void:
 		_spawned = true
 
 var _hand_item: Node3D = null
-var _fp_arm: Node3D = null
 var _hand_sig := ""
 
 ## Show what's in hand on the right arm — yours and everyone else's.
@@ -297,16 +296,11 @@ func apply_remote_held(code: int) -> void:
 
 func _refresh_hand() -> void:
 	var item := held()
-	var sig := str(item) + ("+dragon" if riding >= 0 else "") \
-		+ ("+fp" if is_local and fp_mode else "")
+	var sig := str(item) + ("+dragon" if riding >= 0 else "")
 	if sig == _hand_sig:
 		return
 	_hand_sig = sig
-	if _fp_arm != null:
-		_fp_arm.queue_free()
-		_fp_arm = null
-		_hand_item = null
-	elif _hand_item != null:
+	if _hand_item != null:
 		_hand_item.queue_free()
 		_hand_item = null
 	var arm: Node3D = _avatar.get_node_or_null("ArmR")
@@ -323,18 +317,6 @@ func _refresh_hand() -> void:
 			(vm_node as VisualInstance3D).layers = 1 << (10 + slot)
 		return
 	if item.kind == "empty":
-		return
-	if is_local and fp_mode:
-		# First person: your avatar (arm included) doesn't render for you,
-		# so the held item rides a camera-space arm on your cockpit layer.
-		_fp_arm = Node3D.new()
-		_fp_arm.position = Vector3(0.42, 1.32, -0.45)
-		add_child(_fp_arm)
-		_hand_item = ItemFactory.build(str(item.kind), int(item.id))
-		_hand_item.position = Vector3(0, -0.34, -0.12)
-		_fp_arm.add_child(_hand_item)
-		for fp_node in _hand_item.find_children("*", "VisualInstance3D", true, false):
-			(fp_node as VisualInstance3D).layers = 1 << (10 + slot)
 		return
 	_hand_item = ItemFactory.build(str(item.kind), int(item.id))
 	_hand_item.position = Vector3(0, -0.42, -0.05)
@@ -377,18 +359,6 @@ func _physics_process(delta: float) -> void:
 		rotation.y = lerp_angle(rotation.y, _remote_yaw, minf(1.0, delta * 10.0))
 	swing_time = maxf(0.0, swing_time - delta)
 	_refresh_hand()
-	if _fp_arm != null:
-		# Same arc as the third-person arm: rest up (sword) or level
-		# (shooters), wind overhead, chop down.
-		var fp_rest := 1.15 if (held().kind == "weapon" and int(held().id) == 13) else 0.1
-		var fp_ang := fp_rest
-		if swing_time > 0.0:
-			var ft := 1.0 - swing_time / 0.25
-			if ft < 0.3:
-				fp_ang = lerpf(fp_rest, 1.9, ft / 0.3)
-			else:
-				fp_ang = lerpf(1.9, -0.9, minf((ft - 0.3) / 0.7 * 1.2, 1.0))
-		_fp_arm.rotation.x = fp_ang
 	_footsteps(delta)
 	_animate(delta)
 

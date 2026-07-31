@@ -17,7 +17,6 @@ const HAT_CHIP_COLORS: Array[Color] = [
 var _name_label: Label
 var _name_edit: LineEdit
 var _treasure_label: Label
-var _hearts_row: HBoxContainer
 var _storm_label: Label
 var _storm_was_on := false
 var _storm_pop := 0.0
@@ -134,15 +133,16 @@ func _ready() -> void:
 	bar_style.set_content_margin_all(6)
 	bar_panel.add_theme_stylebox_override("panel", bar_style)
 	bar_stack.add_child(bar_panel)
-	# Hearts share the hotbar's panel and column grid: heart i sits exactly
-	# above slot i, and you lose them right-to-left (last heart over slot 1).
-	var bar_inner := VBoxContainer.new()
-	bar_inner.add_theme_constant_override("separation", 0)
-	bar_panel.add_child(bar_inner)
-	_hearts_row = HBoxContainer.new()
-	_hearts_row.add_theme_constant_override("separation", 2)
-	bar_inner.add_child(_hearts_row)
+	# Eight big Minecraft-style slots; 1-8 keys (or bumpers/D-pad) select.
+	# Each column is heart-over-slot in ONE VBox, so heart i sits exactly
+	# above slot i at any screen size — alignment by construction.
+	_hotbar = HBoxContainer.new()
+	_hotbar.add_theme_constant_override("separation", 2)
+	bar_panel.add_child(_hotbar)
 	for i in 8:
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 4)
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var heart := Label.new()
 		heart.text = "♥"
 		heart.add_theme_font_size_override("font_size", _us(17))
@@ -150,15 +150,9 @@ func _ready() -> void:
 		heart.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 		heart.add_theme_constant_override("outline_size", 5)
 		heart.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		heart.custom_minimum_size = Vector2(52, 0)
 		heart.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_hearts_row.add_child(heart)
+		col.add_child(heart)
 		_heart_cells.append(heart)
-	_hotbar = HBoxContainer.new()
-	_hotbar.add_theme_constant_override("separation", 2)
-	bar_inner.add_child(_hotbar)
-	# Eight big Minecraft-style slots; 1-8 keys (or bumpers/D-pad) select.
-	for i in 8:
 		var frame := Panel.new()
 		frame.custom_minimum_size = Vector2(52, 52)
 		var icon := BlockIcon.new(0)
@@ -173,7 +167,8 @@ func _ready() -> void:
 		num.add_theme_font_size_override("font_size", _us(12))
 		num.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
 		frame.add_child(num)
-		_hotbar.add_child(frame)
+		col.add_child(frame)
+		_hotbar.add_child(col)
 		_chips.append(frame)
 	_selected_label = Label.new()
 	_selected_label.add_theme_font_size_override("font_size", _us(15))
@@ -1501,12 +1496,10 @@ func _refresh_identity() -> void:
 	var hearts_on: bool = world != null and (world.survival_active \
 		or world.client_mode == "battle" \
 		or world.match_phase in ["DROP", "BATTLE"])
-	if _hearts_row != null:
-		_hearts_row.visible = hearts_on
-		if hearts_on:
-			var hp: int = world.hearts.get(id, 8)
-			for i in _heart_cells.size():
-				(_heart_cells[i] as Label).modulate.a = 1.0 if i < hp else 0.18
+	var hp: int = int(world.hearts.get(id, 8)) if world != null else 8
+	for i in _heart_cells.size():
+		(_heart_cells[i] as Label).modulate.a = 0.0 if not hearts_on \
+			else (1.0 if i < hp else 0.18)
 
 func _edit_name() -> void:
 	var entry := _entry()
@@ -1739,10 +1732,8 @@ func _process(_delta: float) -> void:
 		var map_px := clampf(size.y * 0.24, 110.0, 380.0)
 		# Hotbar chips scale with the cell so small screens aren't swamped.
 		var chip_px := clampf(size.y * 0.05, 34.0, 72.0)
-		for hb_frame in _hotbar.get_children():
+		for hb_frame in _chips:
 			(hb_frame as Control).custom_minimum_size = Vector2(chip_px, chip_px)
-		for cell in _heart_cells:
-			(cell as Control).custom_minimum_size = Vector2(chip_px, 0)
 		_radar.position = Vector2(size.x - map_px - 10, 10)
 		_radar.size = Vector2(map_px, map_px)
 		_clock.position = Vector2(size.x - map_px - 10, 12 + map_px)

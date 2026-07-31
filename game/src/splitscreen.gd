@@ -253,7 +253,11 @@ func _process(delta: float) -> void:
 			cam.projection = Camera3D.PROJECTION_PERSPECTIVE
 			cam.fov = lerpf(cam.fov, FP_FOVS[cell.fp_zoom], 0.25)
 			cam.near = 0.05
-			cam.cull_mask = ((1 << 20) - 1) & ~player.render_layer_bit()
+			var fp_vm := 0
+			for vm_i in 4:
+				fp_vm |= 1 << (10 + vm_i)
+			cam.cull_mask = (((1 << 20) - 1) & ~player.render_layer_bit() \
+				& ~fp_vm) | (1 << (10 + player.slot))
 			var eye: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT, 0)
 			cam.look_at_from_position(eye, eye + player.look_dir(), Vector3.UP)
 			_update_viewmodel(cell, player)
@@ -273,9 +277,19 @@ func _process(delta: float) -> void:
 				# Sword rests held UP at guard and sweeps across when swung;
 				# other weapons just kick back.
 				if str(player.held().kind) == "weapon" and int(player.held().id) == 13:
-					var arc := sin(clampf(1.0 - player.swing_time / 0.25, 0.0, 1.0) * PI) \
-						if player.swing_time > 0.0 else 0.0
-					vm.rotation_degrees = Vector3(35.0 - 130.0 * arc, 6.0 - 40.0 * arc, -25.0 * arc)
+					# Guard rest with the blade up; a swing winds it higher
+					# overhead, then chops it DOWN across the view.
+					if player.swing_time <= 0.0:
+						vm.rotation_degrees = Vector3(35.0, 6.0, 0.0)
+					else:
+						var swt := clampf(1.0 - player.swing_time / 0.25, 0.0, 1.0)
+						if swt < 0.3:
+							vm.rotation_degrees = Vector3(
+								lerpf(35.0, 80.0, swt / 0.3), 6.0, 0.0)
+						else:
+							var sww := minf((swt - 0.3) / 0.7 * 1.2, 1.0)
+							vm.rotation_degrees = Vector3(lerpf(80.0, -100.0, sww),
+								lerpf(6.0, -30.0, sww), lerpf(0.0, -20.0, sww))
 				else:
 					vm.rotation_degrees = Vector3(-75.0 * (player.swing_time / 0.25), 6, 0)
 			continue

@@ -1423,8 +1423,9 @@ func _server_tick_bots(delta: float) -> void:
 			# Bots swim: ride the surface instead of sinking to the seabed.
 			floor_y = maxf(floor_y, float(WorldGen.SEA_LEVEL) + 0.4)
 		if pos.y > floor_y + 3.0:
-			# Still airborne (the drop): glide down at human pace.
-			pos.y = maxf(pos.y - 8.0 * delta, floor_y)
+			# Still airborne (the drop): glide down at human pace (-3,
+			# matching Player's drop glide exactly).
+			pos.y = maxf(pos.y - 3.0 * delta, floor_y)
 		else:
 			pos.y = lerpf(pos.y, floor_y, minf(1.0, delta * 8.0))
 		bot.pos = pos
