@@ -1131,7 +1131,7 @@ func _do_world_reset(map_name := "") -> void:
 # ------------------------------------------------------------------
 # Battle royale match
 # ------------------------------------------------------------------
-const LOBBY_SECONDS := 20.0
+const LOBBY_SECONDS := 10.0
 const STORM_START := 360.0
 
 ## Battle square side in blocks (the storm starts at its edge).
@@ -1154,6 +1154,12 @@ func sv_add_bot() -> void:
 		return
 	_spawn_bot()
 	_save_battle_setup()
+
+func _dragon_exists() -> bool:
+	for critter: Dictionary in _critters.values():
+		if int(critter.kind) == CritterView.DRAGON:
+			return true
+	return false
 
 func _spawn_bot() -> void:
 	if Game.roster.size() >= 24:
@@ -1493,8 +1499,10 @@ func sv_set_loop(on: bool) -> void:
 	match_loop = on
 
 func _storm_start() -> float:
-	return battle_size * 0.72
-const STORM_END := 16.0
+	# Big enough that the wall starts beyond every corner of the arena
+	# from wherever this battle's center landed.
+	return battle_size * 0.75 + Vector2(storm_center.x, storm_center.z).length()
+const STORM_END := 20.0
 var storm_minutes := 5.0
 var loot_only := false
 
@@ -1677,6 +1685,7 @@ func _server_match_drop() -> void:
 	_match_alive.clear()
 	_downed_ids.clear()
 	_revive_progress.clear()
+	_team_drop_angle.clear()
 	var counts: Array[int] = []
 	counts.resize(team_count)
 	for id: String in Game.roster.keys():
@@ -1704,8 +1713,11 @@ func _server_match_drop() -> void:
 		var state: Dictionary = _player_state[id]
 		state.hp = MATCH_HP
 		cl_hearts.rpc(id, MATCH_HP)
-		var angle := float(i) * TAU / maxf(Game.roster.size(), 1.0) + randf() * 0.3
-		var dist := randf_range(_storm_start() * 0.25, _storm_start() * 0.42)
+		var team_i := int(entry.get("team", 0))
+		if not _team_drop_angle.has(team_i):
+			_team_drop_angle[team_i] = randf() * TAU
+		var angle := float(_team_drop_angle[team_i]) + randf_range(-0.25, 0.25)
+		var dist := battle_size * randf_range(0.16, 0.3)
 		var drop := Vector3(cos(angle) * dist, WorldGen.CHUNK_H - 4, sin(angle) * dist)
 		cl_drop.rpc(id, drop, loot_only)
 		if _bots.has(id):
@@ -1730,9 +1742,23 @@ func _server_match_drop() -> void:
 		if ly2 > 2 and ly2 < WorldGen.CHUNK_H - 6 \
 				and store.get_block(Vector3i(lx2, ly2, lz2)) != Blocks.WATER \
 				and (store.theme != "sky" or ly2 > WorldGen.SEA_LEVEL + 6):
+			var crate_here := Vector3(lx2 + 0.5, ly2 + 1.0, lz2 + 0.5)
+			var near_weapon := -1
+			var too_close := false
+			for other: Dictionary in _crates.values():
+				var od: float = crate_here.distance_to(other.pos)
+				if od < 6.0:
+					too_close = true
+					break
+				if od < 20.0:
+					near_weapon = int(other.weapon)
+			if too_close:
+				continue
 			var pool2 := [1, 1, 1, 2, 3, 9, 9, 11, 12, 12, 15, 15]
-			_crates[_next_crate_id] = {"weapon": pool2[randi() % pool2.size()],
-				"pos": Vector3(lx2 + 0.5, ly2 + 1.0, lz2 + 0.5)}
+			var pick: int = pool2[randi() % pool2.size()]
+			if pick == near_weapon:
+				pick = pool2[randi() % pool2.size()]
+			_crates[_next_crate_id] = {"weapon": pick, "pos": crate_here}
 			_next_crate_id += 1
 			placed += 1
 	print("Battle loot: %d/%d crates placed (%d attempts)" % [placed, crate_count, attempts])
@@ -1818,11 +1844,13 @@ func _match_eliminate(id: String, attacker := "") -> void:
 	cl_eliminated.rpc(id)
 	var victim_name := str(Game.roster.get(id, {}).get("name", "?"))
 	var attacker_name := str(Game.roster.get(attacker, {}).get("name", ""))
-	cl_feed.rpc(attacker_name, victim_name)
+	cl_feed.rpc(attacker_name, int(Game.roster.get(attacker, {}).get("team", -1)),
+		victim_name, int(Game.roster.get(id, {}).get("team", -1)))
 	_check_match_win()
 
 ## Out-of-combat healing: untouched for 8s, a heart every 3s.
 var _last_regen_ms: Dictionary = {}
+var _team_drop_angle: Dictionary = {}
 
 @rpc("authority", "reliable")
 func cl_hit_ok() -> void:
@@ -1961,7 +1989,7 @@ func _teams_differ(a: String, b: String) -> bool:
 	return int(Game.roster[a].get("team", -1)) != int(Game.roster[b].get("team", -2))
 
 signal match_score_changed
-signal knockout(attacker: String, victim: String)
+signal knockout(attacker: String, attacker_team: int, victim: String, victim_team: int)
 var ghost_ids: Dictionary = {}
 var client_downed: Dictionary = {}
 var alive_ids: Dictionary = {}
@@ -2038,8 +2066,9 @@ func cl_revive_noise(pos: Vector3) -> void:
 		Sfx.play("warp", -2.0 - dist * 0.4, 0.6)
 
 @rpc("authority", "reliable")
-func cl_feed(attacker_name: String, victim_name: String) -> void:
-	knockout.emit(attacker_name, victim_name)
+func cl_feed(attacker_name: String, attacker_team: int,
+		victim_name: String, victim_team: int) -> void:
+	knockout.emit(attacker_name, attacker_team, victim_name, victim_team)
 
 @rpc("authority", "reliable")
 func cl_eliminated(id: String) -> void:
@@ -2351,7 +2380,7 @@ func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 		return
 	var ground := store.get_block(Vector3i(wx, y, wz))
 	var kind := -1
-	if WorldGen.hash01(wx, wz, 501) < 0.02:
+	if WorldGen.hash01(wx, wz, 501) < 0.02 and not _dragon_exists():
 		kind = CritterView.DRAGON
 	elif WorldGen.hash01(wx, wz, 500) < 0.15:
 		kind = CritterView.BIRD

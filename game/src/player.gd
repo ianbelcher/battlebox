@@ -162,7 +162,15 @@ func refresh_overhead(hp: int, team_color: Color, downed_now: bool,
 	_tag.modulate = Color(team_color.darkened(0.12), 0.9)
 	_tag.outline_modulate = Color(0.05, 0.05, 0.1, 0.95)
 	if is_local:
-		pass  # no personal light: player lamps kept blooming the night
+		# A modest warm lantern so night isn't a void — dim enough that it
+		# never blooms or floodlights a drop cluster.
+		_glow = OmniLight3D.new()
+		_glow.light_energy = 0.3
+		_glow.omni_range = 7.0
+		_glow.light_color = Color(1.0, 0.9, 0.7)
+		_glow.shadow_enabled = false
+		_glow.position = Vector3(0, 1.6, 0)
+		add_child(_glow)
 		_highlight = MeshInstance3D.new()
 		var box := BoxMesh.new()
 		box.size = Vector3(1.04, 1.04, 1.04)
@@ -299,12 +307,14 @@ func _refresh_hand() -> void:
 	if arm == null:
 		return
 	if riding >= 0:
-		# Riding: your "held item" is the dragon's head out in front.
+		# Riding: the dragon's head rides out in front on YOUR cockpit
+		# layer — visible to you in first or third person even though
+		# your avatar (and the dragon itself) are hidden from you.
 		_hand_item = ItemFactory.build("dragon_head", 0)
-		_hand_item.position = Vector3(-0.3, -0.5, -0.9)
-		arm.add_child(_hand_item)
+		_hand_item.position = Vector3(0, 0.6, -1.4)
+		add_child(_hand_item)
 		for vm_node in _hand_item.find_children("*", "VisualInstance3D", true, false):
-			(vm_node as VisualInstance3D).layers = render_layer_bit()
+			(vm_node as VisualInstance3D).layers = 1 << (10 + slot)
 		return
 	if item.kind == "empty":
 		return
@@ -486,7 +496,9 @@ func _local_move(delta: float) -> void:
 			_set_riding(near_dragon)
 	carry_time = maxf(0.0, carry_time - delta)
 	# Leaving the water is a hop, not a breaching whale.
-	if _was_in_water and not in_water:
+	if _was_in_water and not in_water and carry_time <= 0.0:
+		# Modest hop out of the water — but grapple zips (carry) keep
+		# their full arc.
 		velocity.y = minf(velocity.y, 3.2)
 	_was_in_water = in_water
 	# Ladders: touching one lets you climb.
@@ -572,7 +584,7 @@ func _local_move(delta: float) -> void:
 		if on_floor or in_water:
 			dropping = false
 		else:
-			velocity.y = -8.0
+			velocity.y = -6.0
 	for axis: Vector3 in [Vector3.RIGHT, Vector3.BACK]:
 		var step: float = velocity.dot(axis) * delta
 		if absf(step) < 0.0001:

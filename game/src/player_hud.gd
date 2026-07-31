@@ -480,14 +480,25 @@ func _ready() -> void:
 			if world.match_phase == "DROP" and _feed_box != null:
 				for old_line in _feed_box.get_children():
 					old_line.queue_free())
-		world.knockout.connect(func(attacker: String, victim: String) -> void:
-			var line := Label.new()
-			line.text = ("%s  💥  %s" % [attacker, victim]) if not attacker.is_empty() \
-				else "☁💥  %s" % victim
-			line.add_theme_font_size_override("font_size", _us(15))
-			line.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
-			line.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
-			line.add_theme_constant_override("outline_size", 4)
+		world.knockout.connect(func(attacker: String, attacker_team: int,
+				victim: String, victim_team: int) -> void:
+			var line := RichTextLabel.new()
+			line.bbcode_enabled = true
+			line.fit_content = true
+			line.scroll_active = false
+			line.autowrap_mode = TextServer.AUTOWRAP_OFF
+			line.add_theme_font_size_override("normal_font_size", _us(15))
+			var atk_color := "#ffffff"
+			if attacker_team >= 0 and attacker_team < WorldNode.TEAM_COLORS.size():
+				atk_color = "#" + WorldNode.TEAM_COLORS[attacker_team].to_html(false)
+			var vic_color := "#ffffff"
+			if victim_team >= 0 and victim_team < WorldNode.TEAM_COLORS.size():
+				vic_color = "#" + WorldNode.TEAM_COLORS[victim_team].to_html(false)
+			if attacker.is_empty():
+				line.text = "☁💥  [color=%s]%s[/color]" % [vic_color, victim]
+			else:
+				line.text = "[color=%s]%s[/color]  💥  [color=%s]%s[/color]" % [
+					atk_color, attacker, vic_color, victim]
 			_feed_box.add_child(line)
 			if _feed_box.get_child_count() > 10:
 				_feed_box.get_child(0).queue_free())
@@ -1237,7 +1248,8 @@ func _refresh_team_panel() -> void:
 		var row_label := Label.new()
 		row_label.text = "%s  %d/%d" % [str(names[t]), alive, total]
 		row_label.add_theme_font_size_override("font_size", _us(14))
-		row_label.add_theme_color_override("font_color", WorldNode.TEAM_COLORS[t])
+		row_label.add_theme_color_override("font_color",
+			WorldNode.TEAM_COLORS[t] if alive > 0 else Color(0.5, 0.5, 0.55, 0.7))
 		row_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
 		row_label.add_theme_constant_override("outline_size", 4)
 		row_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -1379,7 +1391,17 @@ func _on_picked(entry: Dictionary) -> void:
 	var player := _player()
 	if player == null:
 		return
-	player.slots[player.selected_slot] = {"kind": entry.kind, "id": entry.id}
+	var target_slot := player.selected_slot
+	# Never silently overwrite a collected WEAPON with a block when an
+	# empty or block slot exists elsewhere — losing your Big Shooter to
+	# a dirt block hurt too much.
+	if entry.kind != "weapon" and player.slots[target_slot].kind == "weapon":
+		for i in 8:
+			if player.slots[i].kind != "weapon":
+				target_slot = i
+				break
+	player.slots[target_slot] = {"kind": entry.kind, "id": entry.id}
+	player.selected_slot = target_slot
 	_slots_dirty = true
 
 func _entry() -> Dictionary:
@@ -1551,6 +1573,12 @@ func _process(_delta: float) -> void:
 		if world.match_phase == "LOBBY" and not _menu.visible:
 			_center_note.visible = true
 			_center_note.text = "🏆  Next battle in %d" % secs
+		elif world.match_phase == "BATTLE" and not world.alive_ids.has(
+				Game.player_id(multiplayer.get_unique_id(), slot)) \
+				and not world.ghost_ids.has(
+				Game.player_id(multiplayer.get_unique_id(), slot)):
+			_center_note.visible = true
+			_center_note.text = "🏆  Battle in progress — you drop into the next one!"
 		elif world.match_phase == "DROP":
 			_center_note.visible = true
 			_center_note.text = "🪂  Dropping in — steer with the stick, land near loot!"
@@ -1657,7 +1685,7 @@ func _process(_delta: float) -> void:
 		var outside: float = flat.length() - world.storm_radius
 		if outside > 0.0:
 			var to_center := -flat
-			var angle := atan2(to_center.x, -to_center.y) - player.camera_yaw
+			var angle := atan2(to_center.x, -to_center.y) + player.camera_yaw
 			var arrows := ["⬆", "⬈", "➡", "⬊", "⬇", "⬋", "⬅", "⬉"]
 			var arrow: String = arrows[posmod(int(round(angle / (PI / 4.0))), 8)]
 			_storm_arrow.text = "%s  STORM! run %dm  %s" % [arrow, int(outside), arrow]

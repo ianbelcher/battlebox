@@ -2,14 +2,6 @@
 
 A live list of OPEN work only (git history is the record of done).
 
-
-
-
-
-
-
-
-
 - [ ] Remaining vanilla stand-ins, accepted as-is unless Ian's builds
       say otherwise: per-species door colors (doors are thin panels;
       generic wood/iron), glazed terracotta (imports as wool colors),
@@ -21,3 +13,6 @@ A live list of OPEN work only (git history is the record of done).
       mottled leaf texture; recognizable flowers; log with bark + ring;
       etc). Exceptions: Special (ours), Kits (fine), Tools (fine as
       icons — but the 3D held tool models "kind of suck", improve them)
+- [ ] Tools view: show weapons collected from crates so a swapped-out
+      weapon can be re-equipped (weapon-slot overwrite protection is in;
+      the collected-weapons picker is not)
