@@ -151,14 +151,12 @@ func is_picker_pressed() -> bool:
 			return false  # pads open the menu with X/Start
 	return false
 
-## Directional input for navigating the picker grid.
+## Directional input for navigating the picker grid. D-pad left/right is
+## reserved for the weapon hotbar (even with a menu open), so the grid
+## navigates with the stick plus D-pad up/down.
 func get_ui_vector() -> Vector2:
 	if kind == Kind.GAMEPAD:
 		var v := Vector2.ZERO
-		if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_LEFT):
-			v.x = -1.0
-		if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_RIGHT):
-			v.x = 1.0
 		if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_DOWN):
 			v.y = 1.0
 		if Input.is_joy_button_pressed(device, JOY_BUTTON_DPAD_UP):

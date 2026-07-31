@@ -313,6 +313,12 @@ func _on_peer_connected(peer: int) -> void:
 	print("Peer %d connected (%d peers total)" % [peer, multiplayer.get_peers().size()])
 	cl_roster.rpc_id(peer, roster)
 	cl_host.rpc_id(peer, host_peer)
+	# Late joiners need the CURRENT battle phase — cl_match broadcasts only
+	# fire on transitions, and a stale "IDLE" leaves them out of sync (the
+	# old "everything's frozen and I have no hearts" moment).
+	if world != null:
+		world.cl_match.rpc_id(peer, world.match_phase, world.match_seconds)
+		world.cl_storm.rpc_id(peer, world.storm_radius, world.storm_center)
 
 func _on_peer_disconnected(peer: int) -> void:
 	if not multiplayer.is_server():

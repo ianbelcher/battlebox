@@ -17,8 +17,15 @@ const HAT_CHIP_COLORS: Array[Color] = [
 var _name_label: Label
 var _name_edit: LineEdit
 var _treasure_label: Label
-var _hearts_label: Label
 var _hearts_row: HBoxContainer
+var _storm_label: Label
+var _storm_was_on := false
+var _storm_pop := 0.0
+var _death_note: Label
+var _death_flash: ColorRect
+var _death_t := 0.0
+var _was_down := false
+var _was_out := false
 var _heart_cells: Array = []
 var _selected_label: Label
 var _picker: BlockPicker
@@ -107,25 +114,18 @@ func _ready() -> void:
 	_treasure_label.add_theme_font_size_override("font_size", _us(22))
 	_treasure_label.add_theme_color_override("font_color", Color("ffd166"))
 	row.add_child(_treasure_label)
-	_hearts_label = Label.new()
-	_hearts_label.add_theme_font_size_override("font_size", _us(17))
-	_hearts_label.add_theme_color_override("font_color", Color("ff4438"))
-	_hearts_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	_hearts_label.add_theme_constant_override("outline_size", 5)
-	_hearts_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_name_label.visible = false
 
-	# Bottom: hotbar.
-	var bar_holder := CenterContainer.new()
-	bar_holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	bar_holder.offset_top = -185
-	bar_holder.offset_bottom = -12
-	bar_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bar_holder)
+	# Bottom: hotbar, pinned to the screen bottom and growing upward so it
+	# can never slide off-screen whatever lives above it.
 	var bar_stack := VBoxContainer.new()
 	bar_stack.add_theme_constant_override("separation", 2)
 	bar_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bar_holder.add_child(bar_stack)
+	bar_stack.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	bar_stack.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	bar_stack.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bar_stack.offset_bottom = -26
+	add_child(bar_stack)
 	var bar_panel := PanelContainer.new()
 	bar_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var bar_style := StyleBoxFlat.new()
@@ -133,12 +133,30 @@ func _ready() -> void:
 	bar_style.set_corner_radius_all(10)
 	bar_style.set_content_margin_all(6)
 	bar_panel.add_theme_stylebox_override("panel", bar_style)
-	# Hearts live in the same stack as the hotbar: aligned by construction.
-	bar_stack.add_child(_hearts_label)
 	bar_stack.add_child(bar_panel)
+	# Hearts share the hotbar's panel and column grid: heart i sits exactly
+	# above slot i, and you lose them right-to-left (last heart over slot 1).
+	var bar_inner := VBoxContainer.new()
+	bar_inner.add_theme_constant_override("separation", 0)
+	bar_panel.add_child(bar_inner)
+	_hearts_row = HBoxContainer.new()
+	_hearts_row.add_theme_constant_override("separation", 2)
+	bar_inner.add_child(_hearts_row)
+	for i in 8:
+		var heart := Label.new()
+		heart.text = "♥"
+		heart.add_theme_font_size_override("font_size", _us(17))
+		heart.add_theme_color_override("font_color", Color("ff4438"))
+		heart.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		heart.add_theme_constant_override("outline_size", 5)
+		heart.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		heart.custom_minimum_size = Vector2(52, 0)
+		heart.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hearts_row.add_child(heart)
+		_heart_cells.append(heart)
 	_hotbar = HBoxContainer.new()
 	_hotbar.add_theme_constant_override("separation", 2)
-	bar_panel.add_child(_hotbar)
+	bar_inner.add_child(_hotbar)
 	# Eight big Minecraft-style slots; 1-8 keys (or bumpers/D-pad) select.
 	for i in 8:
 		var frame := Panel.new()
@@ -332,6 +350,37 @@ func _ready() -> void:
 	_center_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_center_note.visible = false
 	add_child(_center_note)
+	# Storm status: always-on countdown at the top of the screen so kids
+	# know exactly when it starts and how long until it's fully closed.
+	_storm_label = Label.new()
+	_storm_label.add_theme_font_size_override("font_size", _us(20))
+	_storm_label.add_theme_color_override("font_color", Color("c9a2ff"))
+	_storm_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
+	_storm_label.add_theme_constant_override("outline_size", 5)
+	_storm_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_storm_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_storm_label.offset_top = _us(38)
+	_storm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_storm_label.visible = false
+	add_child(_storm_label)
+	# Dying deserves more than silently falling over: a red wash plus a
+	# big center card, cleared after a couple of seconds.
+	_death_flash = ColorRect.new()
+	_death_flash.color = Color(0.75, 0.05, 0.05, 0.0)
+	_death_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_death_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_death_flash)
+	_death_note = Label.new()
+	_death_note.add_theme_font_size_override("font_size", _us(44))
+	_death_note.add_theme_color_override("font_color", Color("ff5a4d"))
+	_death_note.add_theme_color_override("font_outline_color", Color(0.05, 0.02, 0.02, 0.95))
+	_death_note.add_theme_constant_override("outline_size", 8)
+	_death_note.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_death_note.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_death_note.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_death_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_death_note.visible = false
+	add_child(_death_note)
 	_score_label = Label.new()
 	_score_label.add_theme_font_size_override("font_size", _us(17))
 	_score_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
@@ -487,6 +536,7 @@ func _ready() -> void:
 			line.fit_content = true
 			line.scroll_active = false
 			line.autowrap_mode = TextServer.AUTOWRAP_OFF
+			line.custom_minimum_size = Vector2(_us(340), 0)
 			line.add_theme_font_size_override("normal_font_size", _us(15))
 			var atk_color := "#ffffff"
 			if attacker_team >= 0 and attacker_team < WorldNode.TEAM_COLORS.size():
@@ -500,7 +550,7 @@ func _ready() -> void:
 				line.text = "[color=%s]%s[/color]  💥  [color=%s]%s[/color]" % [
 					atk_color, attacker, vic_color, victim]
 			_feed_box.add_child(line)
-			if _feed_box.get_child_count() > 10:
+			if _feed_box.get_child_count() > 24:
 				_feed_box.get_child(0).queue_free())
 	Game.roster_changed.connect(_refresh_identity)
 	_refresh_identity()
@@ -1331,9 +1381,29 @@ func _build_video_tab() -> void:
 		tbtn.add_theme_font_size_override("font_size", _us(20))
 		tbtn.text = ("☑  " if Game.video[key] else "☐  ") + str(spec[1])
 		var label_text := str(spec[1])
+		# Every row is the same width; ON shows as a gold wash so width
+		# never reads as the "selected" signal.
+		var on_style := StyleBoxFlat.new()
+		on_style.bg_color = Color(1.0, 0.82, 0.4, 0.18)
+		on_style.set_corner_radius_all(9)
+		on_style.set_content_margin_all(_us(7))
+		on_style.content_margin_left = _us(14)
+		on_style.content_margin_right = _us(14)
+		var off_style := StyleBoxFlat.new()
+		off_style.bg_color = Color(1, 1, 1, 0.05)
+		off_style.set_corner_radius_all(9)
+		off_style.set_content_margin_all(_us(7))
+		off_style.content_margin_left = _us(14)
+		off_style.content_margin_right = _us(14)
+		var apply_style := func() -> void:
+			var sb: StyleBoxFlat = on_style if Game.video[key] else off_style
+			for st in ["normal", "hover", "pressed"]:
+				tbtn.add_theme_stylebox_override(st, sb)
+		apply_style.call()
 		tbtn.pressed.connect(func() -> void:
 			Game.video[key] = not bool(Game.video[key])
 			tbtn.text = ("☑  " if Game.video[key] else "☐  ") + label_text
+			apply_style.call()
 			Game.video_changed.emit()
 			Sfx.play("tick", -10.0))
 		tab.add_child(tbtn)
@@ -1429,6 +1499,7 @@ func _refresh_identity() -> void:
 	_treasure_label.text = ""
 	var id := Game.player_id(multiplayer.get_unique_id(), slot)
 	var hearts_on: bool = world != null and (world.survival_active \
+		or world.client_mode == "battle" \
 		or world.match_phase in ["DROP", "BATTLE"])
 	if _hearts_row != null:
 		_hearts_row.visible = hearts_on
@@ -1481,8 +1552,12 @@ func _process(_delta: float) -> void:
 			# grid, A picks (then hops to the next slot), 1-8 jump slots,
 			# and view/menu buttons close.
 			var pick := input.slot_pick()
-			if pick != _prev_slot_pick_menu and pick >= 0 and pick < 8:
-				player.selected_slot = pick
+			if pick != _prev_slot_pick_menu and pick >= 0:
+				if pick < 8:
+					player.selected_slot = pick
+				else:
+					player.selected_slot = posmod(
+						player.selected_slot + (1 if pick == 11 else -1), 8)
 				_slots_dirty = true
 				Sfx.play("tick", -10.0)
 			_prev_slot_pick_menu = pick
@@ -1573,6 +1648,10 @@ func _process(_delta: float) -> void:
 		if world.match_phase == "LOBBY" and not _menu.visible:
 			_center_note.visible = true
 			_center_note.text = "🏆  Next battle in %d" % secs
+		elif _storm_pop > 0.0 and world.match_phase == "BATTLE" \
+				and not _menu.visible:
+			_center_note.visible = true
+			_center_note.text = "⛈  THE STORM IS CLOSING IN — STAY IN THE CIRCLE!"
 		elif world.match_phase == "BATTLE" and not world.alive_ids.has(
 				Game.player_id(multiplayer.get_unique_id(), slot)) \
 				and not world.ghost_ids.has(
@@ -1584,6 +1663,36 @@ func _process(_delta: float) -> void:
 			_center_note.text = "🪂  Dropping in — steer with the stick, land near loot!"
 		else:
 			_center_note.visible = false
+	if _storm_label != null and world != null:
+		var storm_on: bool = world.match_phase == "BATTLE" and world.storm_radius > 0.0
+		if storm_on and not _storm_was_on and world.match_phase == "BATTLE":
+			_storm_pop = 4.0
+		_storm_was_on = storm_on
+		_storm_pop = maxf(0.0, _storm_pop - _delta)
+		var battle_total := float(world.client_minutes) * 60.0
+		if world.match_phase == "BATTLE" and battle_total > 0.0:
+			_storm_label.visible = true
+			if not storm_on:
+				var to_storm := maxi(int(ceil(world.match_seconds - battle_total * 0.5)), 0)
+				_storm_label.text = "⛈  Storm starts in %ds" % to_storm
+			else:
+				_storm_label.text = "⛈  STORM!  Fully closed in %ds" \
+					% int(ceil(world.match_seconds))
+		else:
+			_storm_label.visible = false
+	if _death_note != null and world != null:
+		var my_pid := Game.player_id(multiplayer.get_unique_id(), slot)
+		var down_now: bool = bool(world.client_downed.get(my_pid, false))
+		var out_now: bool = world.ghost_ids.has(my_pid)
+		if (down_now and not _was_down) or (out_now and not _was_out):
+			_death_t = 2.6
+			_death_note.text = "💀  KNOCKED OUT!" if out_now \
+				else "⛑  DOWNED — a teammate can revive you!"
+		_was_down = down_now
+		_was_out = out_now
+		_death_t = maxf(0.0, _death_t - _delta)
+		_death_note.visible = _death_t > 0.0
+		_death_flash.color.a = (minf(_death_t / 2.6, 1.0) * 0.4) if _death_t > 0.0 else 0.0
 	if _team_panel != null and world != null:
 		_team_panel.visible = world.match_phase == "BATTLE"
 	if _score_label != null and world != null:
@@ -1633,7 +1742,7 @@ func _process(_delta: float) -> void:
 		for hb_frame in _hotbar.get_children():
 			(hb_frame as Control).custom_minimum_size = Vector2(chip_px, chip_px)
 		for cell in _heart_cells:
-			(cell as Control).custom_minimum_size = Vector2(chip_px + 2, 0)
+			(cell as Control).custom_minimum_size = Vector2(chip_px, 0)
 		_radar.position = Vector2(size.x - map_px - 10, 10)
 		_radar.size = Vector2(map_px, map_px)
 		_clock.position = Vector2(size.x - map_px - 10, 12 + map_px)

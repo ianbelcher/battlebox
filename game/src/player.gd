@@ -138,6 +138,30 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	_tag.position = Vector3(0, 2.1, 0)
 	_tag.visible = not is_local  # your own tag is pure noise to you
 	add_child(_tag)
+	# Every character carries a modest warm lantern so night isn't a void —
+	# dim enough that it never blooms or floodlights a drop cluster.
+	_glow = OmniLight3D.new()
+	_glow.light_energy = 0.3
+	_glow.omni_range = 7.0
+	_glow.light_color = Color(1.0, 0.9, 0.7)
+	_glow.shadow_enabled = false
+	_glow.position = Vector3(0, 1.6, 0)
+	add_child(_glow)
+	if is_local:
+		_highlight = MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(1.04, 1.04, 1.04)
+		_highlight.mesh = box
+		var mat := StandardMaterial3D.new()
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = Color(1, 1, 1, 0.22)
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.no_depth_test = false
+		box.material = mat
+		_highlight.top_level = true
+		_highlight.visible = false
+		add_child(_highlight)
+	_apply_render_layer()
 
 ## Overhead display: hearts in two rows of four, trimmed in team color —
 ## you read health and side at a glance instead of a name.
@@ -161,30 +185,6 @@ func refresh_overhead(hp: int, team_color: Color, downed_now: bool,
 	_tag.text = top_row if bottom_row.is_empty() else top_row + "\n" + bottom_row
 	_tag.modulate = Color(team_color.darkened(0.12), 0.9)
 	_tag.outline_modulate = Color(0.05, 0.05, 0.1, 0.95)
-	if is_local:
-		# A modest warm lantern so night isn't a void — dim enough that it
-		# never blooms or floodlights a drop cluster.
-		_glow = OmniLight3D.new()
-		_glow.light_energy = 0.3
-		_glow.omni_range = 7.0
-		_glow.light_color = Color(1.0, 0.9, 0.7)
-		_glow.shadow_enabled = false
-		_glow.position = Vector3(0, 1.6, 0)
-		add_child(_glow)
-		_highlight = MeshInstance3D.new()
-		var box := BoxMesh.new()
-		box.size = Vector3(1.04, 1.04, 1.04)
-		_highlight.mesh = box
-		var mat := StandardMaterial3D.new()
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.albedo_color = Color(1, 1, 1, 0.22)
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.no_depth_test = false
-		box.material = mat
-		_highlight.top_level = true
-		_highlight.visible = false
-		add_child(_highlight)
-	_apply_render_layer()
 
 ## Ghost look while downed: the whole character fades to a shimmer.
 func set_ghost(ghost: bool) -> void:
@@ -272,6 +272,7 @@ func remote_update(pos: Vector3, yaw: float, p_anim: int) -> void:
 		_spawned = true
 
 var _hand_item: Node3D = null
+var _fp_arm: Node3D = null
 var _hand_sig := ""
 
 ## Show what's in hand on the right arm — yours and everyone else's.
@@ -296,11 +297,16 @@ func apply_remote_held(code: int) -> void:
 
 func _refresh_hand() -> void:
 	var item := held()
-	var sig := str(item) + ("+dragon" if riding >= 0 else "")
+	var sig := str(item) + ("+dragon" if riding >= 0 else "") \
+		+ ("+fp" if is_local and fp_mode else "")
 	if sig == _hand_sig:
 		return
 	_hand_sig = sig
-	if _hand_item != null:
+	if _fp_arm != null:
+		_fp_arm.queue_free()
+		_fp_arm = null
+		_hand_item = null
+	elif _hand_item != null:
 		_hand_item.queue_free()
 		_hand_item = null
 	var arm: Node3D = _avatar.get_node_or_null("ArmR")
@@ -317,6 +323,18 @@ func _refresh_hand() -> void:
 			(vm_node as VisualInstance3D).layers = 1 << (10 + slot)
 		return
 	if item.kind == "empty":
+		return
+	if is_local and fp_mode:
+		# First person: your avatar (arm included) doesn't render for you,
+		# so the held item rides a camera-space arm on your cockpit layer.
+		_fp_arm = Node3D.new()
+		_fp_arm.position = Vector3(0.42, 1.32, -0.45)
+		add_child(_fp_arm)
+		_hand_item = ItemFactory.build(str(item.kind), int(item.id))
+		_hand_item.position = Vector3(0, -0.34, -0.12)
+		_fp_arm.add_child(_hand_item)
+		for fp_node in _hand_item.find_children("*", "VisualInstance3D", true, false):
+			(fp_node as VisualInstance3D).layers = 1 << (10 + slot)
 		return
 	_hand_item = ItemFactory.build(str(item.kind), int(item.id))
 	_hand_item.position = Vector3(0, -0.42, -0.05)
@@ -359,6 +377,18 @@ func _physics_process(delta: float) -> void:
 		rotation.y = lerp_angle(rotation.y, _remote_yaw, minf(1.0, delta * 10.0))
 	swing_time = maxf(0.0, swing_time - delta)
 	_refresh_hand()
+	if _fp_arm != null:
+		# Same arc as the third-person arm: rest up (sword) or level
+		# (shooters), wind overhead, chop down.
+		var fp_rest := 1.15 if (held().kind == "weapon" and int(held().id) == 13) else 0.1
+		var fp_ang := fp_rest
+		if swing_time > 0.0:
+			var ft := 1.0 - swing_time / 0.25
+			if ft < 0.3:
+				fp_ang = lerpf(fp_rest, 1.9, ft / 0.3)
+			else:
+				fp_ang = lerpf(1.9, -0.9, minf((ft - 0.3) / 0.7 * 1.2, 1.0))
+		_fp_arm.rotation.x = fp_ang
 	_footsteps(delta)
 	_animate(delta)
 
@@ -579,12 +609,12 @@ func _local_move(delta: float) -> void:
 	var next := position
 	var blocked_h := false
 	if dropping:
-		# Everyone falls at the SAME -8 until touching down — enforced
-		# after every glide/wings branch so nothing overrides it.
+		# Everyone glides down at the SAME gentle -3 until touching down —
+		# enforced after every glide/wings branch so nothing overrides it.
 		if on_floor or in_water:
 			dropping = false
 		else:
-			velocity.y = -6.0
+			velocity.y = -3.0
 	for axis: Vector3 in [Vector3.RIGHT, Vector3.BACK]:
 		var step: float = velocity.dot(axis) * delta
 		if absf(step) < 0.0001:
@@ -837,7 +867,7 @@ func _find_fp_targets() -> Array:
 	var last_open := NO_TARGET
 	var last_cell := Vector3i(floori(eye.x), floori(eye.y), floori(eye.z))
 	var t := 0.3
-	while t < 4.4:
+	while t < 6.0:
 		var sample := eye + dir * t
 		var cell := Vector3i(floori(sample.x), floori(sample.y), floori(sample.z))
 		if cell != last_cell:
@@ -957,7 +987,16 @@ func _animate(delta: float) -> void:
 	_swing_limb("LegL", swing, delta)
 	_swing_limb("LegR", -swing, delta)
 	_swing_limb("ArmL", -swing, delta, arms_up)
-	_swing_limb("ArmR", swing, delta, arms_up)
+	if held().kind == "weapon" and int(held().id) == 13 and swing_time <= 0.0:
+		var sword_arm: Node3D = _avatar.get_node_or_null("ArmR")
+		if sword_arm != null:
+			# Ready stance: blade held up, not dangling at the hip.
+			sword_arm.rotation.x = lerp_angle(sword_arm.rotation.x, 1.2,
+				minf(1.0, delta * 8.0))
+			sword_arm.rotation.z = lerp_angle(sword_arm.rotation.z, 0.0,
+				minf(1.0, delta * 8.0))
+	else:
+		_swing_limb("ArmR", swing, delta, arms_up)
 	# Body lean: crouchers hunch forward, fliers pitch into their travel
 	# direction (nose down moving forward, nose up climbing).
 	var lean := 0.0
@@ -972,17 +1011,18 @@ func _animate(delta: float) -> void:
 	if swing_time > 0.0:
 		var arm: Node3D = _avatar.get_node_or_null("ArmR")
 		if arm != null:
-			# Point the blade DOWN, then slash upward across the body.
+			# The blade extends along the arm's -Z: rotation.x = +1.57
+			# points it straight UP, negative angles point it down-forward.
 			var t := 1.0 - swing_time / 0.25
 			if t < 0.3:
-				# Blade points DOWN first...
-				arm.rotation.x = lerpf(-0.4, 0.7, t / 0.3)
-				arm.rotation.z = lerpf(0.0, 0.35, t / 0.3)
+				# Raise the blade overhead...
+				arm.rotation.x = lerpf(1.2, 1.9, t / 0.3)
+				arm.rotation.z = lerpf(0.0, 0.25, t / 0.3)
 			else:
-				# ...then sweeps UP past the shoulder.
+				# ...then chop it DOWN through forward.
 				var sweep := minf((t - 0.3) / 0.7 * 1.2, 1.0)
-				arm.rotation.x = lerpf(0.7, -2.3, sweep)
-				arm.rotation.z = lerpf(0.35, -0.5, sweep)
+				arm.rotation.x = lerpf(1.9, -0.9, sweep)
+				arm.rotation.z = lerpf(0.25, -0.3, sweep)
 
 ## Limbs ease toward their pose so animation switches never pop. arms_up
 ## rotates the pivot so hands point skyward (jumping — kids love it).
