@@ -104,14 +104,14 @@ func _ready() -> void:
 	_treasure_label.add_theme_color_override("font_color", Color("ffd166"))
 	row.add_child(_treasure_label)
 	_hearts_label = Label.new()
-	_hearts_label.add_theme_font_size_override("font_size", _us(26))
+	_hearts_label.add_theme_font_size_override("font_size", _us(19))
 	_hearts_label.add_theme_color_override("font_color", Color("ff4438"))
 	_hearts_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	_hearts_label.add_theme_constant_override("outline_size", 6)
 	_hearts_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	_hearts_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_hearts_label.offset_top = -_us(148)
-	_hearts_label.offset_bottom = -_us(118)
+	_hearts_label.offset_top = -_us(116)
+	_hearts_label.offset_bottom = -_us(94)
 	_hearts_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_hearts_label)
 	_name_label.visible = false
@@ -433,8 +433,14 @@ func _ready() -> void:
 	if world != null:
 		world.local_hurt.connect(func(hurt_id: String, from_pos: Vector3) -> void:
 			if hurt_id == Game.player_id(multiplayer.get_unique_id(), slot):
-				_damage_t = 0.7
+				_damage_t = 1.8
 				_damage_from = from_pos)
+		world.hearts_changed.connect(func() -> void:
+			var my_hp := int(world.hearts.get(Game.player_id(
+				multiplayer.get_unique_id(), slot), 8))
+			if my_hp < _prev_hp:
+				_damage_t = maxf(_damage_t, 1.2)
+			_prev_hp = my_hp)
 		world.treasures_changed.connect(_refresh_identity)
 		world.survival_changed.connect(_refresh_identity)
 		world.hearts_changed.connect(_refresh_identity)
@@ -915,7 +921,7 @@ func _update_radar() -> void:
 				color = Blocks.top_color_of(block).darkened(
 					WorldGen.hash01(wx, wz, 9) * 0.22)
 			image.set_pixel(px, py, color)
-	if world.match_phase == "BATTLE":
+	if world.match_phase == "BATTLE" and world.storm_radius > 0.0:
 		var ring: float = world.storm_radius
 		for angle_i in 200:
 			var a := angle_i * TAU / 200.0
@@ -923,8 +929,9 @@ func _update_radar() -> void:
 				world.storm_center.z + sin(a) * ring - center.z).rotated(yaw) / 1.5
 			var rx := 64 + int(rs.x)
 			var ry := 64 + int(rs.y)
-			if rx >= 0 and rx < 128 and ry >= 0 and ry < 128:
-				image.set_pixel(rx, ry, Color(1.0, 0.25, 0.2))
+			for ro in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]:
+				if rx + ro.x >= 0 and rx + ro.x < 128 and ry + ro.y >= 0 and ry + ro.y < 128:
+					image.set_pixel(rx + ro.x, ry + ro.y, Color(1.0, 0.25, 0.2))
 	if world.crates != null:
 		for crate in world.crates.get_children():
 			if crate is Node3D:
@@ -976,6 +983,7 @@ var _damage_flash: ColorRect
 var _damage_arrow: Label
 var _damage_t := 0.0
 var _damage_from := Vector3.ZERO
+var _prev_hp := 8
 var _world_row: HBoxContainer
 var _maps_row: HBoxContainer
 var _maps_label: Label
@@ -1430,7 +1438,21 @@ func _process(_delta: float) -> void:
 			_lobby_countdown.text = "🏆  Battle starts in %d — pick your team!" \
 				% int(ceil(world.match_seconds))
 	if _ride_hint != null and world != null and world.critter_view != null:
-		if player.riding >= 0:
+		var mate_down := ""
+		if world.match_phase == "BATTLE":
+			var my_team := int(Game.roster.get(Game.player_id(
+				multiplayer.get_unique_id(), slot), {}).get("team", -1))
+			for down_id: String in world.client_downed.keys():
+				if int(Game.roster.get(down_id, {}).get("team", -2)) != my_team:
+					continue
+				for child in world.players.get_children():
+					if child is Player and child.player_id == down_id \
+							and child.position.distance_to(player.position) < 6.0:
+						mate_down = str(Game.roster.get(down_id, {}).get("name", "?"))
+		if not mate_down.is_empty() and player.riding < 0:
+			_ride_hint.visible = true
+			_ride_hint.text = "⛑  Stay close to revive %s!" % mate_down
+		elif player.riding >= 0:
 			_ride_hint.visible = true
 			_ride_hint.text = "🐉  RT breathe fire · look to steer · Ⓐ climb · LT dive · Ⓐ Ⓐ hop off"
 		elif not _menu.visible and player.on_floor \
@@ -1494,7 +1516,8 @@ func _process(_delta: float) -> void:
 		_clock.position = Vector2(size.x - map_px - 10, 12 + map_px)
 		_clock.size.x = map_px
 		if _team_panel != null:
-			_team_panel.position = Vector2(size.x - map_px - 10, 34 + map_px)
+			_team_panel.position = Vector2(size.x - map_px - 10,
+				12 + map_px + maxf(map_px / 8.0, _us(22)))
 			_team_panel.custom_minimum_size = Vector2(map_px, 0)
 		_clock.add_theme_font_size_override("font_size", maxi(11, int(map_px / 11.0)))
 		# Split-screen: fonts are sized for the full window, so shrink the
@@ -1527,13 +1550,13 @@ func _process(_delta: float) -> void:
 		_water_tint.color.a = lerpf(_water_tint.color.a, 0.35 if under else 0.0, 0.25)
 	if _storm_tint != null and world != null:
 		var danger := 0.0
-		if world.match_phase == "BATTLE" \
+		if world.match_phase == "BATTLE" and world.storm_radius > 0.0 \
 				and Vector2(player.position.x - world.storm_center.x,
 					player.position.z - world.storm_center.z).length() > world.storm_radius:
 			danger = 0.25
 		_storm_tint.color.a = lerpf(_storm_tint.color.a, danger, 0.1)
 	# Caught outside the storm: a big arrow home plus the distance.
-	if world != null and world.match_phase == "BATTLE":
+	if world != null and world.match_phase == "BATTLE" and world.storm_radius > 0.0:
 		var flat := Vector2(player.position.x - world.storm_center.x,
 			player.position.z - world.storm_center.z)
 		var outside: float = flat.length() - world.storm_radius

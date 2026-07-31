@@ -1259,7 +1259,8 @@ func _bot_pick_goal(id: String, bot: Dictionary) -> Vector3:
 	var pos: Vector3 = bot.pos
 	if match_phase == "BATTLE" and _match_alive.has(id):
 		# Storm first: get inside.
-		if Vector2(pos.x - storm_center.x, pos.z - storm_center.z).length() > storm_radius - 8.0:
+		if storm_radius > 0.0 and Vector2(pos.x - storm_center.x,
+				pos.z - storm_center.z).length() > storm_radius - 8.0:
 			var inward := (storm_center - Vector3(pos.x, 0, pos.z)).normalized() * 20.0
 			inward.y = 0
 			return pos + inward
@@ -1338,8 +1339,8 @@ func _server_tick_bots(delta: float) -> void:
 					bot.think = 0.0
 					dir = Vector2.ZERO
 			if dir != Vector2.ZERO:
-				pos.x += dir.x * 4.4 * delta
-				pos.z += dir.y * 4.4 * delta
+				pos.x += dir.x * 3.4 * delta
+				pos.z += dir.y * 3.4 * delta
 				bot.yaw = atan2(-dir.x, -dir.y)
 			# Barely moving while far from the goal means wedged — re-think.
 			bot.moved = float(bot.get("moved", 0.0)) + pos.distance_to(Vector3(bot.get("last_pos", pos)))
@@ -1374,7 +1375,7 @@ func _server_tick_bots(delta: float) -> void:
 					cl_pos.rpc(id, pos, bot.yaw, 9)
 					_match_hurt(enemy, 1, epos, id)
 		if bot.send_t <= 0.0:
-			bot.send_t = 1.0 / 12.0
+			bot.send_t = 1.0 / 15.0
 			cl_pos.rpc(id, pos, bot.yaw, 1)
 
 ## Battle SETTINGS survive restarts (the world itself never does):
@@ -1549,11 +1550,17 @@ func _server_tick_match(delta: float) -> void:
 				# Unlimited: the storm never closes and the match only ends
 				# when one team is left standing.
 				_match_timer = 9999.0
-			var frac := 1.0 - clampf(_match_timer / (storm_minutes * 60.0), 0.0, 1.0)
-			storm_radius = lerpf(_storm_start(), STORM_END, frac)
-			cl_storm.rpc(storm_radius, storm_center)
-			_storm_damage()
-			_storm_bite()
+			var elapsed := 1.0 - clampf(_match_timer / (storm_minutes * 60.0), 0.0, 1.0)
+			if elapsed < 0.5:
+				# First half: fight freely, no storm anywhere.
+				storm_radius = -1.0
+				cl_storm.rpc(-1.0, storm_center)
+			else:
+				var frac := (elapsed - 0.5) * 2.0
+				storm_radius = lerpf(_storm_start(), STORM_END, frac)
+				cl_storm.rpc(storm_radius, storm_center)
+				_storm_damage()
+				_storm_bite()
 			_tick_revives()
 			_check_match_win()
 			if _match_timer <= 0.0:
@@ -1630,7 +1637,7 @@ func _server_match_drop() -> void:
 		if ly > 2 and ly < WorldGen.CHUNK_H - 6 \
 				and store.get_block(Vector3i(lx, ly, lz)) != Blocks.WATER \
 				and (store.theme != "sky" or ly > WorldGen.SEA_LEVEL + 6):
-			var lpool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 14, 15]
+			var lpool := [1, 1, 1, 2, 3, 5, 9, 9, 11, 12, 12, 15, 15]
 			_crates[_next_crate_id] = {"weapon": lpool[randi() % lpool.size()],
 				"pos": Vector3(lx + 0.5, ly + 1.0, lz + 0.5)}
 			_next_crate_id += 1
@@ -1789,8 +1796,9 @@ func _match_hurt(id: String, amount: int, from_pos: Vector3, attacker := "") -> 
 	if _downed_ids.has(id):
 		return  # ghosts are untouchable — revive or bleed out, nothing else
 	var now := Time.get_ticks_msec()
-	if now - int(_last_hit_ms.get(id, -MERCY_MS)) < MERCY_MS:
-		return  # mercy window: recently hit, briefly untouchable
+	var mercy := 250 if _bots.has(id) else 800
+	if now - int(_last_hit_ms.get(id, -mercy)) < mercy:
+		return  # brief mercy so one volley can't insta-delete you
 	_last_hit_ms[id] = now
 	var state: Dictionary = _player_state.get(id, {})
 	if state.is_empty():
@@ -1809,6 +1817,7 @@ func _teams_differ(a: String, b: String) -> bool:
 signal match_score_changed
 signal knockout(attacker: String, victim: String)
 var ghost_ids: Dictionary = {}
+var client_downed: Dictionary = {}
 var alive_ids: Dictionary = {}
 
 @rpc("authority", "reliable")
@@ -1817,6 +1826,7 @@ func cl_match(phase: String, seconds: float) -> void:
 	match_seconds = seconds
 	if phase == "DROP":
 		ghost_ids.clear()
+		client_downed.clear()
 		alive_ids.clear()
 		for rid: String in Game.roster.keys():
 			alive_ids[rid] = true
@@ -1824,6 +1834,7 @@ func cl_match(phase: String, seconds: float) -> void:
 			if child is Player:
 				child.visible = true
 		match_score_changed.emit()
+		_refresh_overheads()
 	elif phase == "IDLE" or phase == "LOBBY":
 		ghost_ids.clear()
 		for child in players.get_children():
@@ -1859,12 +1870,17 @@ func cl_drop(id: String, pos: Vector3, loot := false) -> void:
 
 @rpc("authority", "reliable")
 func cl_downed_state(id: String, is_down: bool) -> void:
+	if is_down:
+		client_downed[id] = true
+	else:
+		client_downed.erase(id)
 	for child in players.get_children():
 		if child is Player and child.player_id == id:
 			child.downed = is_down
 			child.set_ghost(is_down)
 			if child.is_local and is_down:
-				Sfx.play("drop")
+				Sfx.play("drop", -4.0)
+	_refresh_overheads()
 
 @rpc("authority", "unreliable")
 func cl_revive_noise(pos: Vector3) -> void:
@@ -2080,7 +2096,7 @@ func _server_tick_crates() -> void:
 				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER \
 				and (store.theme != "sky" or y > WorldGen.SEA_LEVEL + 6):
 			# Rarer weapons show up less often.
-			var pool := [1, 1, 2, 2, 5, 6, 7, 8, 9, 9, 11, 11, 12, 12, 14, 15]
+			var pool := [1, 1, 1, 2, 3, 5, 9, 9, 11, 12, 12, 15, 15]
 			_crates[_next_crate_id] = {"weapon": pool[randi() % pool.size()],
 				"pos": Vector3(wx + 0.5, y + 1.0, wz + 0.5)}
 			_next_crate_id += 1
@@ -2312,7 +2328,7 @@ func _client_setup() -> void:
 	_storm_wall.visible = false
 	add_child(_storm_wall)
 	storm_changed.connect(func() -> void:
-		_storm_wall.visible = match_phase == "BATTLE"
+		_storm_wall.visible = match_phase == "BATTLE" and storm_radius > 0.0
 		_storm_wall.scale = Vector3(storm_radius, 1.0, storm_radius)
 		_storm_wall.position = Vector3(storm_center.x,
 			float(WorldGen.SEA_LEVEL) + 8.0, storm_center.z))
@@ -2577,6 +2593,19 @@ func cl_party_fx(pos: Vector3i) -> void:
 func cl_hearts(id: String, hp: int) -> void:
 	hearts[id] = hp
 	hearts_changed.emit()
+	_refresh_overheads()
+
+## Push hearts + team color onto every player's overhead tag.
+func _refresh_overheads() -> void:
+	if players == null:
+		return
+	for child in players.get_children():
+		if child is Player:
+			var team := int(Game.roster.get(child.player_id, {}).get("team", -1))
+			var team_color: Color = TEAM_COLORS[team] if team >= 0 and \
+				team < TEAM_COLORS.size() else Color(1, 1, 1)
+			child.refresh_overhead(int(hearts.get(child.player_id, 8)),
+				team_color, client_downed.has(child.player_id))
 
 signal local_hurt(id: String, from_pos: Vector3)
 

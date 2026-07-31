@@ -144,8 +144,8 @@ func _refresh_interest() -> void:
 	# Nothing unloads anymore — the whole map is only a few MB, so chunks
 	# stay resident forever and moving never re-pulls from the server.
 	# Far chunks simply hide, which is what draw distance means.
-	var show_r := view_radius + 1
-	var hide_r := view_radius + 3   # hysteresis: no flicker at the boundary
+	var show_r := view_radius
+	var hide_r := view_radius + 1   # tight: draw distance means draw distance
 	for cpos: Vector2i in _holders.keys():
 		var holder: Node3D = _holders[cpos]
 		var best := 1e18

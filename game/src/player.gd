@@ -129,15 +129,32 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	add_child(_avatar)
 	_tag = Label3D.new()
 	_tag.text = str(entry.name)
-	_tag.font_size = 64
+	_tag.font_size = 44
 	_tag.pixel_size = 0.006
 	_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_tag.no_depth_test = false
 	_tag.modulate = Color.WHITE
 	_tag.outline_modulate = Color(0.05, 0.05, 0.1, 0.9)
-	_tag.outline_size = 16
+	_tag.outline_size = 14
 	_tag.position = Vector3(0, 1.5, 0)
 	add_child(_tag)
+
+## Overhead display: hearts in two rows of four, trimmed in team color —
+## you read health and side at a glance instead of a name.
+func refresh_overhead(hp: int, team_color: Color, downed_now: bool) -> void:
+	if _tag == null:
+		return
+	if downed_now:
+		_tag.text = "⛑ HELP!"
+		_tag.modulate = Color(1.0, 0.75, 0.3)
+		_tag.outline_modulate = Color(0.4, 0.1, 0.05, 0.95)
+		return
+	hp = clampi(hp, 0, 8)
+	var top_row := "".rpad(mini(hp, 4), "♥")
+	var bottom_row := "".rpad(maxi(hp - 4, 0), "♥")
+	_tag.text = top_row if bottom_row.is_empty() else top_row + "\n" + bottom_row
+	_tag.modulate = Color("ff4438")
+	_tag.outline_modulate = Color(team_color.r, team_color.g, team_color.b, 0.95)
 	if is_local:
 		# A faint personal glow so caves and midnight are never a black void.
 		var glow := OmniLight3D.new()
@@ -169,7 +186,7 @@ func set_ghost(ghost: bool) -> void:
 		var mat := mesh_instance.material_override as StandardMaterial3D
 		if mat != null:
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if ghost else BaseMaterial3D.TRANSPARENCY_DISABLED
-			mat.albedo_color.a = 0.3 if ghost else 1.0
+			mat.albedo_color.a = 0.6 if ghost else 1.0
 
 func refresh_from_roster(entry: Dictionary) -> void:
 	set_team_glow(int(entry.get("team", -1)))
@@ -477,9 +494,10 @@ func _local_move(delta: float) -> void:
 
 	if fly_mode and (world.survival_active or world.match_phase != "IDLE"):
 		fly_mode = false  # no flying away from raids or matches
-	if world != null and world.match_phase == "DROP":
-		# Everyone drifts down together — no diving ahead of the pack.
-		velocity.y = maxf(velocity.y, -8.0)
+	if world != null and world.match_phase == "DROP" and not on_floor:
+		# Everyone drifts down together at the SAME speed — no diving
+		# ahead, no floating behind.
+		velocity.y = -8.0
 	if fly_mode:
 		var vert := 0.0
 		if jump_now:

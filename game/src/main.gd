@@ -512,7 +512,7 @@ func _update_minimap() -> void:
 			if block > 0:
 				color = Blocks.top_color_of(block)
 			image.set_pixel(px, py, color)
-	if Game.world.match_phase == "BATTLE":
+	if Game.world.match_phase == "BATTLE" and Game.world.storm_radius > 0.0:
 		var ring: float = Game.world.storm_radius
 		for angle_i in 140:
 			var a := angle_i * TAU / 140.0

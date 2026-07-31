@@ -102,8 +102,9 @@ func _physics_process(delta: float) -> void:
 							var rise: float = maxf(delta_v.y + 1.6, 1.5)
 							var vy := sqrt(2.0 * 22.0 * rise)
 							var flight := vy / 22.0 + 0.25
-							child.velocity = Vector3(delta_v.x / flight, vy, delta_v.z / flight)
-							child.carry_time = flight + 0.3
+							child.velocity = Vector3(delta_v.x / flight, vy,
+								delta_v.z / flight).limit_length(22.0)
+							child.carry_time = minf(flight + 0.1, 1.4)
 							child.on_floor = false
 							Sfx.play("warp", -4.0)
 		if not died and orb.mine:
