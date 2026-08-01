@@ -14,7 +14,7 @@ jobs:
         id: build
         with:
           container_name: world
-          command_to_run: "(cd deployments/world && .bin/build.sh)"
+          command_to_run: "(cd deployments/world && GIT_SHA=${{ github.sha }} .bin/build.sh)"
           docker_registry: ${{ secrets.KLUSTA_DOCKER_REGISTRY }}
       - name: Update deployment
         uses: steebchen/kubectl@v2.0.0
