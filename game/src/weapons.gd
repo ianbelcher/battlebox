@@ -12,7 +12,7 @@ const WEAPONS := [
 		"blurb": "Quick-fire explosions. Steel only chips on a direct hit"},
 	{"id": 15, "name": "Big Shooter", "color": Color("d63d2e"), "cooldown": 2.0, "speed": 30.0,
 		"blurb": "One shot every two seconds - but the boom is ENORMOUS"},
-	{"id": 2, "name": "Grapple", "color": Color("c9b3ff"), "cooldown": 0.9, "speed": 50.0,
+	{"id": 2, "name": "Grapple", "color": Color("c9b3ff"), "cooldown": 0.9, "speed": 70.0,
 		"blurb": "Hit a wall, get zipped to it. Great escapes"},
 	{"id": 12, "name": "Digger", "color": Color("b5975f"), "cooldown": 1.2, "speed": 44.0,
 		"blurb": "Drills a 3x3 tunnel 15 blocks through anything soft"},

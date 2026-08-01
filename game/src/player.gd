@@ -103,6 +103,10 @@ var carry_time := 0.0
 ## Guided grapple zip: fly waypoint to waypoint, stop ON the last one.
 var _grapple_path: Array = []
 var grapple_time := 0.0
+var _reel_accum := 0.0
+
+const GRAPPLE_ZIP := 70.0  # matches the hook's flight speed: the reel-in
+                           # takes exactly as long as the shot did
 
 func start_grapple(path: Array) -> void:
 	if path.is_empty():
@@ -111,7 +115,7 @@ func start_grapple(path: Array) -> void:
 	var total := position.distance_to(path[0] as Vector3)
 	for i in range(1, path.size()):
 		total += (path[i - 1] as Vector3).distance_to(path[i] as Vector3)
-	grapple_time = total / 26.0 + 0.8
+	grapple_time = total / GRAPPLE_ZIP + 0.6
 	carry_time = grapple_time
 	on_floor = false
 	Sfx.play("warp", -4.0)
@@ -356,7 +360,7 @@ func _physics_process(delta: float) -> void:
 		# or leaves the island's surroundings. If physics ever blows up
 		# (impulse bursts after a frame hitch), clamp instead of flying
 		# to the horizon.
-		if velocity.length_squared() > 60.0 * 60.0:
+		if velocity.length_squared() > 60.0 * 60.0 and grapple_time <= 0.0:
 			push_warning("Speed clamp: %s at %.0f m/s" % [player_id, velocity.length()])
 			velocity = velocity.limit_length(60.0)
 		if absf(position.x) > 900.0 or absf(position.z) > 900.0 \
@@ -629,7 +633,12 @@ func _local_move(delta: float) -> void:
 			else:
 				_grapple_path.pop_front()
 		else:
-			velocity = to_hook.normalized() * 26.0
+			velocity = to_hook.normalized() * GRAPPLE_ZIP
+			_reel_accum += delta
+			if _reel_accum > 0.11:
+				_reel_accum = 0.0
+				# Reeling whirr: rapid quiet clicks while being pulled.
+				Sfx.play("click", -16.0, randf_range(1.5, 1.8))
 	for axis: Vector3 in [Vector3.RIGHT, Vector3.BACK]:
 		var step: float = velocity.dot(axis) * delta
 		if absf(step) < 0.0001:
