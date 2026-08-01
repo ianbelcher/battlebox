@@ -95,20 +95,11 @@ func _physics_process(delta: float) -> void:
 			if orb.mine:
 				world.sv_shot.rpc_id(1, orb.slot, cell, orb.kind)
 				if orb.kind == 2:
-					# Grapple: launch the shooter in an arc that lands them ON
-					# TOP of the block they hooked (ceilings just bonk you).
+					# Grapple: a guided zip that sets you down ON TOP of the
+					# hooked block — never a slingshot past it.
 					for child in world.players.get_children():
 						if child is Player and child.player_id == orb.shooter_id:
-							var target := Vector3(cell) + Vector3(0.5, 1.2, 0.5)
-							var delta_v: Vector3 = target - child.position
-							var rise: float = maxf(delta_v.y + 1.6, 1.5)
-							var vy := sqrt(2.0 * 22.0 * rise)
-							var flight := vy / 22.0 + 0.25
-							child.velocity = Vector3(delta_v.x / flight, vy,
-								delta_v.z / flight).limit_length(22.0)
-							child.carry_time = minf(flight + 0.1, 1.4)
-							child.on_floor = false
-							Sfx.play("warp", -4.0)
+							child.start_grapple(Vector3(cell) + Vector3(0.5, 1.15, 0.5))
 		if not died and orb.mine:
 			# Player hits (anyone but the shooter): pellets bonk, shells boom.
 			for child in world.players.get_children():

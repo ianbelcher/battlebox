@@ -100,6 +100,16 @@ func _set_riding(dragon_id: int) -> void:
 ## While > 0, horizontal velocity is carried (grapple zips, knockbacks)
 ## instead of being overwritten by stick input every frame.
 var carry_time := 0.0
+## Guided grapple zip: fly straight at the hook point, stop ON it.
+var grapple_target := Vector3.ZERO
+var grapple_time := 0.0
+
+func start_grapple(target: Vector3) -> void:
+	grapple_target = target
+	grapple_time = target.distance_to(position) / 26.0 + 0.6
+	carry_time = grapple_time
+	on_floor = false
+	Sfx.play("warp", -4.0)
 var _prev_slot_pick := -1
 var _last_note_cell := Vector3i(0, -99, 0)
 var _warp_cooldown := 0.0
@@ -590,6 +600,19 @@ func _local_move(delta: float) -> void:
 			dropping = false
 		else:
 			velocity.y = -3.0
+	if grapple_time > 0.0:
+		# Guided zip: straight line at constant speed, hard stop at the
+		# target — overshooting slingshots are gone.
+		grapple_time -= delta
+		var to_hook := grapple_target - position
+		if to_hook.length() < 1.0 or grapple_time <= 0.0:
+			if to_hook.length() < 2.5:
+				position = grapple_target
+			velocity = Vector3.ZERO
+			grapple_time = 0.0
+			carry_time = 0.0
+		else:
+			velocity = to_hook.normalized() * 26.0
 	for axis: Vector3 in [Vector3.RIGHT, Vector3.BACK]:
 		var step: float = velocity.dot(axis) * delta
 		if absf(step) < 0.0001:

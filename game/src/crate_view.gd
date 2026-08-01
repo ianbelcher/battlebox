@@ -39,15 +39,6 @@ func update_crates(payload: Array) -> void:
 		light.shadow_enabled = false
 		light.position = Vector3(0, 1.2, 0)
 		node.add_child(light)
-		var tag := Label3D.new()
-		tag.text = str(Weapons.spec(weapon).name)
-		tag.font_size = 52
-		tag.pixel_size = 0.008
-		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		tag.modulate = Color(1, 1, 1)
-		tag.outline_size = 12
-		tag.position = Vector3(0, 1.9, 0)
-		node.add_child(tag)
 		for part in node.find_children("*", "GeometryInstance3D", true, false):
 			(part as GeometryInstance3D).visibility_range_end = 140.0
 		add_child(node)

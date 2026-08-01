@@ -17,6 +17,18 @@ func _init(p_block := 0, p_kind := "block") -> void:
 func _dim(c: Color) -> Color:
 	return c.darkened(0.3) if dimmed else c
 
+static var _weapon_textures: Dictionary = {}
+
+static func _weapon_texture(id: int) -> Texture2D:
+	if _weapon_textures.has(id):
+		return _weapon_textures[id]
+	var tex: Texture2D = null
+	var path := "res://assets/ui/weapons/w%d.png" % id
+	if ResourceLoader.exists(path):
+		tex = load(path)
+	_weapon_textures[id] = tex
+	return tex
+
 func _draw() -> void:
 	if kind == "empty":
 		draw_circle(size * 0.5, size.x * 0.06, Color(1, 1, 1, 0.2))
@@ -27,10 +39,15 @@ func _draw() -> void:
 	if kind == "weapon":
 		var spec := Weapons.spec(block_id)
 		var c := _dim(spec.color)
-		# Big colorful glyph on a soft tinted plate — no more circles.
+		# Soft tinted plate + the ACTUAL weapon rendered in profile.
 		draw_rect(Rect2(w * 0.05, h * 0.05, w * 0.9, h * 0.9), Color(c.r, c.g, c.b, 0.16))
 		draw_rect(Rect2(w * 0.05, h * 0.05, w * 0.9, h * 0.9),
 			Color(c.r, c.g, c.b, 0.85), false, w * 0.035)
+		var wtex := _weapon_texture(block_id)
+		if wtex != null:
+			draw_texture_rect(wtex, Rect2(w * 0.08, h * 0.08, w * 0.84, h * 0.84),
+				false, Color(0.62, 0.62, 0.62) if dimmed else Color.WHITE)
+			return
 		var ink := Color(c.lightened(0.22), 1.0)
 		draw_set_transform(mid * -0.4, 0.0, Vector2(1.4, 1.4))
 		match block_id:
