@@ -51,7 +51,9 @@ func relaunch_with_renderer(lite: bool) -> void:
 	video["renderer"] = "lite" if lite else "full"
 	save_video()
 	var args := PackedStringArray()
-	if not OS.has_feature("standalone"):
+	# ONLY editor-run dev needs --path; 4.7 export templates are built
+	# without path overrides and ABORT if they ever see the flag.
+	if OS.has_feature("editor"):
 		args.append("--path")
 		args.append(ProjectSettings.globalize_path("res://"))
 	args.append("--rendering-method")

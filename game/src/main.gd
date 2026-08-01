@@ -55,9 +55,18 @@ func _ready() -> void:
 			and OS.get_environment("WORLD_SHOTS").is_empty():
 		var want_lite: bool = str(Game.video.get("renderer", "full")) == "lite"
 		var is_lite := RenderingServer.get_rendering_device() == null
-		if want_lite != is_lite:
-			Game.relaunch_with_renderer(want_lite)
+		if want_lite and not is_lite:
+			# Asked for Lite but booted Vulkan: switching down always works.
+			Game.relaunch_with_renderer(true)
 			return
+		if not want_lite and is_lite:
+			# Asked for Full but the driver fell back to OpenGL: this
+			# machine can't do Vulkan. Relaunching would loop forever
+			# (the old Linux "crash on startup") — remember Lite for
+			# this machine and just play.
+			print("Vulkan unavailable — staying on the Lite renderer.")
+			Game.video["renderer"] = "lite"
+			Game.save_video()
 	_build_connect_screen()
 	_build_game_screen()
 	Net.connected_to_server.connect(_on_connected)
