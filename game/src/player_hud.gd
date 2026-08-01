@@ -80,6 +80,8 @@ var _clock: Label
 var _storm_tint: ColorRect
 var _water_tint: ColorRect
 var _autoopened := false
+var _autopicked := false
+var _autopick_checked := false
 var _crosshair: Label
 var _storm_arrow: Label
 
@@ -299,7 +301,7 @@ func _ready() -> void:
 	_groups.set_tab_title(0, "🔨 Build")
 	_groups.set_tab_title(1, "🌍 World")
 	_groups.set_tab_title(2, "🙂 Character")
-	_groups.set_tab_title(3, "🎨 Video")
+	_groups.set_tab_title(3, "⚙️ Options")
 	_storm_tint = ColorRect.new()
 	_storm_tint.color = Color(0.9, 0.15, 0.1, 0.0)
 	_storm_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -571,6 +573,11 @@ func _page_control(page: int) -> Control:
 	return _inner_tabs(spec[0]).get_child(spec[1])
 
 func _poll_page_nav(input: InputSlot, delta: float) -> void:
+	if input.kind == InputSlot.Kind.KEYBOARD_WASD:
+		# The mouse player CLICKS: no roaming gold focus stealing WASD
+		# keys (and no scaled-up "selected" look on settings rows).
+		_set_nav_focus(null)
+		return
 	var controls: Array = []
 	var root := _page_control(_current_page())
 	for kind in ["BaseButton", "HSlider"]:
@@ -1596,6 +1603,36 @@ func _process(_delta: float) -> void:
 				_poll_page_nav(input, _delta)
 	if not _menu.visible and player.ui_locked:
 		player.ui_locked = false
+	if OS.get_environment("WORLD_AUTOTEST_PICK") != "" and slot == 0 \
+			and not _autopicked and Time.get_ticks_msec() > 12000:
+		_autopicked = true
+		var target_btn: Button = _char_buttons.get(
+			OS.get_environment("WORLD_AUTOTEST_PICK"))
+		if target_btn != null:
+			var vp_size := get_viewport().get_visible_rect().size
+			var win_size := Vector2(DisplayServer.window_get_size())
+			var pt := target_btn.get_global_rect().get_center() \
+				* (win_size / vp_size)
+			print("AUTOPICK clicking at ", pt, " visible=", target_btn.is_visible_in_tree(),
+				" vp=", get_viewport().get_visible_rect().size,
+				" win=", DisplayServer.window_get_size(),
+				" hud=", size, " menu_scale=", _menu.scale)
+			var down := InputEventMouseButton.new()
+			down.button_index = MOUSE_BUTTON_LEFT
+			down.pressed = true
+			down.position = pt
+			down.global_position = pt
+			Input.parse_input_event(down)
+			var up := InputEventMouseButton.new()
+			up.button_index = MOUSE_BUTTON_LEFT
+			up.pressed = false
+			up.position = pt
+			up.global_position = pt
+			Input.parse_input_event(up)
+	if _autopicked and not _autopick_checked and Time.get_ticks_msec() > 15000:
+		_autopick_checked = true
+		var my_e := _entry()
+		print("AUTOPICK roster style now: ", my_e.get("style"))
 	if OS.get_environment("WORLD_AUTOTEST_MENU") == "1" and slot == 0 \
 			and not _autoopened and Time.get_ticks_msec() > 9000:
 		_autoopened = true

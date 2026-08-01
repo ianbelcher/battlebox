@@ -208,6 +208,9 @@ func refresh_from_roster(entry: Dictionary) -> void:
 		add_child(_avatar)
 		old.queue_free()
 		_apply_render_layer()
+		# The held item died with the old avatar's arm — force a rebuild.
+		_hand_sig = ""
+		_refresh_hand()
 
 ## Local players' visuals live on a per-slot render layer so their own
 ## first-person camera can cull them (everyone else still sees them).
