@@ -26,7 +26,10 @@ static var ao_step := 0.16
 ## Ground cover drawn as Kenney Nature Kit models (chunk_view foliage
 ## layer) instead of crossed silhouette quads.
 const MODEL_PLANTS := {Blocks.TALL_GRASS: 1, Blocks.FERN: 1,
-	Blocks.FLOWER_RED: 1, Blocks.FLOWER_YELLOW: 1, Blocks.MUSHROOM: 1}
+	Blocks.FLOWER_RED: 1, Blocks.FLOWER_YELLOW: 1, Blocks.MUSHROOM: 1,
+	Blocks.FLOWER_PINK: 1, Blocks.DAISY: 1, Blocks.BLUEBELL: 1,
+	Blocks.CATTAIL: 1, Blocks.WHEAT_PLANT: 1, Blocks.DEAD_BUSH: 1,
+	Blocks.BERRY_BUSH: 1, Blocks.BAMBOO: 1}
 
 const CROSS_SIZES := {
 	Blocks.FLOWER_RED: Vector2(0.5, 0.7),

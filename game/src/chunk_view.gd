@@ -513,9 +513,16 @@ func _drop_chunk(cpos: Vector2i) -> void:
 # ------------------------------------------------------------------
 const FOLIAGE_MODELS := {Blocks.TALL_GRASS: "grass_large",
 	Blocks.FERN: "grass_leafs", Blocks.FLOWER_RED: "flower_redA",
-	Blocks.FLOWER_YELLOW: "flower_yellowA", Blocks.MUSHROOM: "mushroom_red"}
+	Blocks.FLOWER_YELLOW: "flower_yellowA", Blocks.MUSHROOM: "mushroom_red",
+	Blocks.FLOWER_PINK: "flower_purpleA", Blocks.DAISY: "flower_yellowB",
+	Blocks.BLUEBELL: "flower_purpleB", Blocks.CATTAIL: "grass_leafsLarge",
+	Blocks.WHEAT_PLANT: "crops_wheatStageB", Blocks.DEAD_BUSH: "plant_bushSmall",
+	Blocks.BERRY_BUSH: "plant_bushDetailed", Blocks.BAMBOO: "crops_bambooStageB"}
 const FOLIAGE_SCALES := {Blocks.TALL_GRASS: 1.6, Blocks.FERN: 1.5,
-	Blocks.FLOWER_RED: 1.2, Blocks.FLOWER_YELLOW: 1.2, Blocks.MUSHROOM: 1.1}
+	Blocks.FLOWER_RED: 1.2, Blocks.FLOWER_YELLOW: 1.2, Blocks.MUSHROOM: 1.1,
+	Blocks.FLOWER_PINK: 1.2, Blocks.DAISY: 1.2, Blocks.BLUEBELL: 1.2,
+	Blocks.CATTAIL: 1.4, Blocks.WHEAT_PLANT: 1.3, Blocks.DEAD_BUSH: 1.1,
+	Blocks.BERRY_BUSH: 1.3, Blocks.BAMBOO: 1.5}
 var _foliage_meshes: Dictionary = {}
 
 func _foliage_mesh(model: String) -> Mesh:
@@ -533,9 +540,9 @@ func _foliage_mesh(model: String) -> Mesh:
 	return mesh
 
 func _add_foliage(holder: Node3D, cpos: Vector2i) -> void:
-	if world == null or world.store == null:
-		return
-	var data: PackedByteArray = world.store.get_chunk(cpos)
+	# Read the CLIENT's own chunk copy (_data, fed by the server) — the
+	# world.store only holds real data on the server side.
+	var data: PackedByteArray = _data.get(cpos, PackedByteArray())
 	if data.is_empty():
 		return
 	var buckets: Dictionary = {}
