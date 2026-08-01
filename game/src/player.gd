@@ -89,6 +89,7 @@ var downed := false
 var dropping := false
 var _was_in_water := false
 var _ride_prev_jump := false
+var _ride_press_ms := 0
 var _ride_jump_ms := 0
 ## Riding a dragon (critter id) — grapple one to mount, jump to dismount.
 var riding := -1
@@ -469,7 +470,7 @@ func _local_move(delta: float) -> void:
 	if jump_now and not _prev_jump:
 		var now := Time.get_ticks_msec()
 		if now - _last_jump_ms < 480 and not world.survival_active \
-				and world.match_phase == "IDLE":
+				and world.match_phase == "IDLE" and riding < 0:
 			fly_mode = not fly_mode
 			if fly_mode:
 				velocity.y = 3.0
@@ -504,13 +505,19 @@ func _local_move(delta: float) -> void:
 			if not _collides(ride_next):
 				position = ride_next
 			anim = Anim.FLY
+			# Dismount = two quick TAPS. Held jumps are climb input and
+			# never count, so climbing doesn't eat the double-tap.
 			var ride_jump := input.is_jump_pressed()
 			if ride_jump and not _ride_prev_jump:
+				_ride_press_ms = Time.get_ticks_msec()
+			if not ride_jump and _ride_prev_jump:
 				var now_ride := Time.get_ticks_msec()
-				if now_ride - _ride_jump_ms < 450:
-					_set_riding(-1)
-					velocity.y = 5.0
-				_ride_jump_ms = now_ride
+				if now_ride - _ride_press_ms < 280:
+					if now_ride - _ride_jump_ms < 600:
+						_set_riding(-1)
+						velocity.y = 5.0
+						Sfx.play("boing", -8.0)
+					_ride_jump_ms = now_ride
 			_ride_prev_jump = ride_jump
 			return
 	elif on_floor and not downed and world.critter_view != null:
@@ -648,6 +655,13 @@ func _local_move(delta: float) -> void:
 			blocked_h = true
 		else:
 			next = attempt
+	# Soft world edge: the ocean goes on forever visually, but players
+	# stop a little past the island so nobody swims off and gets lost.
+	var edge := Vector2(next.x, next.z)
+	if edge.length() > world.world_radius:
+		edge = edge.normalized() * world.world_radius
+		next.x = edge.x
+		next.z = edge.y
 	# Kid-friendly auto-hop: walking into a single block steps you up it —
 	# and swimming into a bank hops you out of the water.
 	if blocked_h and (on_floor or in_water) and dir.length_squared() > 0.01:

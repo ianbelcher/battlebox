@@ -38,6 +38,7 @@ func _uscale() -> float:
 		w = float(DisplayServer.window_get_size().x)
 	return clampf(w / 1100.0, 0.75, 3.0)
 var _char_buttons: Dictionary = {}
+var _name_chip: Label
 var _menu: PanelContainer
 var _menu_dim: ColorRect
 # Two-level menu: a top row of groups, each holding a row of small tabs.
@@ -384,6 +385,21 @@ func _ready() -> void:
 	_death_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_death_note.visible = false
 	add_child(_death_note)
+	# Tiny name chip top-left: who this screen belongs to. No padding to
+	# speak of — just a sliver of backing so it reads over terrain.
+	_name_chip = Label.new()
+	_name_chip.add_theme_font_size_override("font_size", _us(14))
+	_name_chip.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
+	_name_chip.add_theme_constant_override("outline_size", 3)
+	var chip_bg := StyleBoxFlat.new()
+	chip_bg.bg_color = Color(0.04, 0.05, 0.08, 0.7)
+	chip_bg.set_content_margin_all(2)
+	chip_bg.content_margin_left = 6
+	chip_bg.content_margin_right = 6
+	chip_bg.set_corner_radius_all(4)
+	_name_chip.add_theme_stylebox_override("normal", chip_bg)
+	_name_chip.position = Vector2(4, 4)
+	add_child(_name_chip)
 	_score_label = Label.new()
 	_score_label.add_theme_font_size_override("font_size", _us(17))
 	_score_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
@@ -631,7 +647,7 @@ func _nav_move(controls: Array, dir: Vector2) -> void:
 		var along := to.dot(n)
 		if along <= 4.0:
 			continue
-		var score := along + absf(to.cross(n)) * 2.2
+		var score := along + absf(to.cross(n)) * 5.0
 		if score < best_score:
 			best_score = score
 			best = c
@@ -1060,14 +1076,9 @@ func _update_radar() -> void:
 			var blip_color: Color = WorldNode.TEAM_COLORS[team] if team >= 0 \
 				else Color("ff4426")
 			if team == my_team and my_team >= 0:
-				# Teammates draw as a fat bright cross so they pop.
 				blip_color = blip_color.lightened(0.4)
-				for off in [Vector3(0, 0, 0), Vector3(1.6, 0, 0), Vector3(-1.6, 0, 0),
-						Vector3(0, 0, 1.6), Vector3(0, 0, -1.6)]:
-					_blip(image, center, yaw, child.position + off, blip_color)
-			else:
-				_blip(image, center, yaw, child.position, blip_color)
-	_blip(image, center, yaw, player.position, Color.WHITE)
+			_blip(image, center, yaw, child.position, blip_color, true)
+	_blip(image, center, yaw, player.position, Color.WHITE, true)
 	_radar.texture = ImageTexture.create_from_image(image)
 	_update_clock()
 
@@ -1079,13 +1090,21 @@ func _update_clock() -> void:
 	var night: bool = world.clock > 0.78 or world.clock < 0.22
 	_clock.text = "%s %02d:00 · %d playing" % ["☾" if night else "☀", hour, Game.roster.size()]
 
-func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color) -> void:
+func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color,
+		big := false) -> void:
 	var s := Vector2(pos.x - center.x, pos.z - center.z).rotated(yaw) / 1.5
 	var px := 64 + int(s.x)
 	var py := 64 + int(s.y)
-	for dy in range(-1, 2):
-		for dx in range(-1, 2):
-			if px + dx >= 0 and px + dx < 128 and py + dy >= 0 and py + dy < 128:
+	var r := 2 if big else 1
+	for dy in range(-r - 1, r + 2):
+		for dx in range(-r - 1, r + 2):
+			if px + dx < 0 or px + dx >= 128 or py + dy < 0 or py + dy >= 128:
+				continue
+			if absi(dx) > r or absi(dy) > r:
+				# One-pixel dark outline so blips read on any terrain.
+				if absi(dx) <= r + 1 and absi(dy) <= r + 1:
+					image.set_pixel(px + dx, py + dy, Color(0.05, 0.05, 0.08))
+			else:
 				image.set_pixel(px + dx, py + dy, color)
 
 var _team_box: VBoxContainer
@@ -1227,7 +1246,7 @@ func _refresh_team_box() -> void:
 		var target_id := id
 		var target_slot := int(entry.slot)
 		for t in team_count:
-			if mine or bot:
+			if true:  # everyone can set every player's team (kids!)
 				var cell_btn := Button.new()
 				cell_btn.focus_mode = Control.FOCUS_NONE
 				cell_btn.custom_minimum_size = Vector2(cell_w, _us(20))
@@ -1242,11 +1261,10 @@ func _refresh_team_box() -> void:
 					cell_btn.add_theme_stylebox_override(state, style)
 				var pick_team := t
 				cell_btn.pressed.connect(func() -> void:
-					if bot and not mine:
-						if Game.world != null:
-							Game.world.sv_set_bot_team.rpc_id(1, target_id, pick_team)
-					else:
+					if mine:
 						Game.set_local_team(target_slot, pick_team)
+					elif Game.world != null:
+						Game.world.sv_set_bot_team.rpc_id(1, target_id, pick_team)
 					Sfx.play("tick", -8.0))
 				grid.add_child(cell_btn)
 			else:
@@ -1427,6 +1445,18 @@ func _build_video_tab() -> void:
 	# Renderer: Full (Vulkan, all effects) vs Lite (OpenGL, Minecraft-class
 	# speed on old computers). Switching restarts the game.
 	var is_lite := RenderingServer.get_rendering_device() == null
+	# Self-updater: one button grabs the newest build from the server's
+	# downloads page and swaps the executable (Windows swaps via a tiny
+	# helper script since a running exe can't overwrite itself).
+	if OS.has_feature("standalone") and (OS.has_feature("windows") or OS.has_feature("linux")):
+		var upd_btn := Button.new()
+		upd_btn.focus_mode = Control.FOCUS_NONE
+		upd_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		upd_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		upd_btn.add_theme_font_size_override("font_size", _us(20))
+		upd_btn.text = "🔄  Check for updates"
+		upd_btn.pressed.connect(func() -> void: _updater_step(upd_btn))
+		tab.add_child(upd_btn)
 	var lite_btn := Button.new()
 	lite_btn.focus_mode = Control.FOCUS_NONE
 	lite_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -1508,6 +1538,11 @@ func _refresh_identity() -> void:
 	if entry.is_empty():
 		return
 	_name_label.text = str(entry.name)
+	if _name_chip != null:
+		_name_chip.text = str(entry.name)
+		var chip_team := int(entry.get("team", -1))
+		_name_chip.add_theme_color_override("font_color",
+			WorldNode.TEAM_COLORS[chip_team] if chip_team >= 0 else Color.WHITE)
 	var my_who := str(AvatarFactory.normalize_style(entry.get("style")).get("who", ""))
 	for who_key: String in _char_buttons:
 		_mark_selected(_char_buttons[who_key] as Button, who_key == my_who)
@@ -1640,14 +1675,11 @@ func _process(_delta: float) -> void:
 	if _autoopened and _menu.visible and not OS.get_environment("WORLD_AUTOTEST_TAB").is_empty():
 		_set_page(int(OS.get_environment("WORLD_AUTOTEST_TAB")))
 
-	var am_host: bool = Game.host_peer == multiplayer.get_unique_id()
 	if _game_tabs != null and _game_tabs.get_tab_count() >= 3:
-		_game_tabs.set_tab_hidden(0, not am_host)
-		_game_tabs.set_tab_hidden(1, not am_host)
-		if not am_host and _game_tabs.current_tab != 2:
-			_game_tabs.current_tab = 2
+		_game_tabs.set_tab_hidden(0, false)
+		_game_tabs.set_tab_hidden(1, false)
 	if _battle_start != null and world != null:
-		_battle_start.visible = am_host and world.client_mode == "battle"
+		_battle_start.visible = world.client_mode == "battle"
 		match world.match_phase:
 			"IDLE":
 				_battle_start.disabled = false
@@ -1881,3 +1913,81 @@ func _process(_delta: float) -> void:
 				menu_icon.dimmed = not selected
 				menu_icon.queue_redraw()
 				menu_btn.modulate = Color(1, 1, 1, 1.0) if selected else Color(1, 1, 1, 0.6)
+
+
+# ------------------------------------------------------------------
+# Self-updater: version.txt in the pck vs the server's downloads page.
+# ------------------------------------------------------------------
+var _update_state := "idle"   # idle / ready / busy
+var _update_req: HTTPRequest
+
+func _updater_base() -> String:
+	return "http://%s:30811/downloads" % Net.last_host
+
+func _local_version() -> String:
+	var f := FileAccess.open("res://version.txt", FileAccess.READ)
+	return f.get_as_text().strip_edges() if f != null else "dev"
+
+func _updater_step(btn: Button) -> void:
+	if _update_state == "busy":
+		return
+	if _update_req == null:
+		_update_req = HTTPRequest.new()
+		add_child(_update_req)
+	if _update_state == "idle":
+		_update_state = "busy"
+		btn.text = "🔄  Checking…"
+		_update_req.download_file = ""
+		_update_req.request_completed.connect(
+			func(_res: int, code: int, _hdr: PackedStringArray, body: PackedByteArray) -> void:
+				_update_state = "idle"
+				if code != 200:
+					btn.text = "🔄  Update check failed — try again"
+					return
+				var remote := body.get_string_from_utf8().strip_edges()
+				if remote.is_empty() or remote == _local_version():
+					btn.text = "✅  Up to date — check again"
+				else:
+					_update_state = "ready"
+					btn.text = "⬇  Update available — install now",
+			CONNECT_ONE_SHOT)
+		_update_req.request(_updater_base() + "/version.txt")
+	elif _update_state == "ready":
+		_update_state = "busy"
+		btn.text = "⬇  Downloading… (the game restarts itself)"
+		var fname := "voxel-battle-windows.exe" if OS.has_feature("windows") \
+			else "voxel-battle-linux.x86_64"
+		var dest := ProjectSettings.globalize_path("user://update-download")
+		_update_req.download_file = dest
+		_update_req.request_completed.connect(
+			func(_res: int, code: int, _hdr: PackedStringArray, _b: PackedByteArray) -> void:
+				if code != 200:
+					_update_state = "idle"
+					btn.text = "🔄  Download failed — try again"
+					return
+				_apply_update(dest),
+			CONNECT_ONE_SHOT)
+		_update_req.request(_updater_base() + "/" + fname)
+
+func _apply_update(new_file: String) -> void:
+	var exe := OS.get_executable_path()
+	if OS.has_feature("windows"):
+		# A running exe can't replace itself: hand off to a helper that
+		# waits for us to exit, swaps the files, and relaunches.
+		var bat_path := ProjectSettings.globalize_path("user://apply-update.bat")
+		var bat := FileAccess.open(bat_path, FileAccess.WRITE)
+		bat.store_string("@echo off\r\n"
+			+ "timeout /t 2 /nobreak >nul\r\n"
+			+ ":loop\r\n"
+			+ "del \"%~1\" 2>nul\r\n"
+			+ "if exist \"%~1\" (timeout /t 1 /nobreak >nul\r\ngoto loop)\r\n"
+			+ "move /y \"%~2\" \"%~1\" >nul\r\n"
+			+ "start \"\" \"%~1\"\r\n")
+		bat.close()
+		OS.create_process("cmd.exe", ["/C", bat_path, exe, new_file])
+	else:
+		DirAccess.rename_absolute(exe, exe + ".old")
+		DirAccess.rename_absolute(new_file, exe)
+		OS.execute("chmod", ["+x", exe])
+		OS.create_process(exe, [])
+	get_tree().quit()

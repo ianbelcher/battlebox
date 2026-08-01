@@ -136,6 +136,9 @@ var _last_hit_ms: Dictionary = {}
 ## Players view. Size always equals team_count.
 var team_names: Array = ["A", "B", "C", "D"]
 var match_phase := "IDLE"
+## Soft edge for players: the world's hard chunk bound plus a splash of
+## swimmable ocean — nobody drifts into the infinite procedural sea.
+var world_radius := float(ChunkStore.WORLD_RADIUS_CHUNKS) * 16.0 + 16.0
 var match_seconds := 0.0
 var storm_radius := 0.0
 var storm_center := Vector3.ZERO
@@ -1499,9 +1502,10 @@ func _load_battle_setup() -> void:
 	print("Battle setup restored: %d min, %d blocks, %d teams, %d bots" % [
 		int(storm_minutes), int(battle_size), team_count, _bots.size()])
 
-func _is_host(sender: int) -> bool:
-	var peer := sender if sender != 0 else multiplayer.get_unique_id()
-	return Game.host_peer == 0 or peer == Game.host_peer
+func _is_host(_sender: int) -> bool:
+	# Family rule: ANYBODY at the table can run battles, change maps and
+	# manage teams — young kids can't wait for player 1.
+	return true
 
 @rpc("any_peer", "call_local", "reliable")
 func sv_set_loop(on: bool) -> void:
@@ -1526,7 +1530,8 @@ var _storm_hurt_ms: Dictionary = {}
 func sv_set_bot_team(target_id: String, team: int) -> void:
 	if not multiplayer.is_server():
 		return
-	if Game.roster.has(target_id) and Game.roster[target_id].get("bot", false):
+	if Game.roster.has(target_id):
+		# Anyone can set ANY player's team — grown-ups sort the kids out.
 		Game.roster[target_id].team = clampi(team, -1, team_count - 1)
 		Game.cl_roster.rpc(Game.roster)
 
@@ -2625,6 +2630,10 @@ func cl_world_info(p_spawn: Vector3i, p_clock: float, p_source: String) -> void:
 	spawn_pos = p_spawn
 	clock = p_clock
 	source = p_source
+	# Procedural islands end well inside the chunk bound — fence closer so
+	# kids don't drift over empty ocean; imported maps keep the full area.
+	world_radius = 250.0 if p_source == "procedural" \
+		else float(ChunkStore.WORLD_RADIUS_CHUNKS) * 16.0 + 16.0
 	print("World info: spawn %s, clock %.2f, source %s" % [spawn_pos, clock, source])
 	_client_update_focus()
 

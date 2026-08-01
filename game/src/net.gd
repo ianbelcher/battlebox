@@ -38,7 +38,15 @@ func start_server() -> Error:
 	print("Voxel Battle server listening on ws://0.0.0.0:%d" % port)
 	return OK
 
+## Host of the server we last connected to (updater fetches from its web
+## port). Falls back to the LAN default.
+var last_host := DEFAULT_LAN_HOST
+
 func connect_to(url: String) -> Error:
+	var stripped := url.replace("ws://", "").replace("wss://", "")
+	var host_part := stripped.split(":")[0].split("/")[0]
+	if not host_part.is_empty():
+		last_host = host_part
 	var peer := WebSocketMultiplayerPeer.new()
 	peer.outbound_buffer_size = 256 * 1024
 	peer.inbound_buffer_size = 4 * 1024 * 1024
