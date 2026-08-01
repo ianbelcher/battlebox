@@ -100,13 +100,18 @@ func _set_riding(dragon_id: int) -> void:
 ## While > 0, horizontal velocity is carried (grapple zips, knockbacks)
 ## instead of being overwritten by stick input every frame.
 var carry_time := 0.0
-## Guided grapple zip: fly straight at the hook point, stop ON it.
-var grapple_target := Vector3.ZERO
+## Guided grapple zip: fly waypoint to waypoint, stop ON the last one.
+var _grapple_path: Array = []
 var grapple_time := 0.0
 
-func start_grapple(target: Vector3) -> void:
-	grapple_target = target
-	grapple_time = target.distance_to(position) / 26.0 + 0.6
+func start_grapple(path: Array) -> void:
+	if path.is_empty():
+		return
+	_grapple_path = path.duplicate()
+	var total := position.distance_to(path[0] as Vector3)
+	for i in range(1, path.size()):
+		total += (path[i - 1] as Vector3).distance_to(path[i] as Vector3)
+	grapple_time = total / 26.0 + 0.8
 	carry_time = grapple_time
 	on_floor = false
 	Sfx.play("warp", -4.0)
@@ -600,17 +605,29 @@ func _local_move(delta: float) -> void:
 			dropping = false
 		else:
 			velocity.y = -3.0
-	if grapple_time > 0.0:
-		# Guided zip: straight line at constant speed, hard stop at the
-		# target — overshooting slingshots are gone.
+	if grapple_time > 0.0 and not _grapple_path.is_empty():
+		# Guided zip along waypoints (off the face, over the edge, onto
+		# the top) at constant speed, hard stop at the final point.
 		grapple_time -= delta
-		var to_hook := grapple_target - position
-		if to_hook.length() < 1.0 or grapple_time <= 0.0:
-			if to_hook.length() < 2.5:
-				position = grapple_target
+		var waypoint: Vector3 = _grapple_path[0]
+		var to_hook := waypoint - position
+		var last := _grapple_path.size() == 1
+		if grapple_time <= 0.0:
+			if last and to_hook.length() < 2.5:
+				position = waypoint
 			velocity = Vector3.ZERO
 			grapple_time = 0.0
 			carry_time = 0.0
+			_grapple_path.clear()
+		elif to_hook.length() < (1.0 if last else 0.8):
+			if last:
+				position = waypoint
+				velocity = Vector3.ZERO
+				grapple_time = 0.0
+				carry_time = 0.0
+				_grapple_path.clear()
+			else:
+				_grapple_path.pop_front()
 		else:
 			velocity = to_hook.normalized() * 26.0
 	for axis: Vector3 in [Vector3.RIGHT, Vector3.BACK]:

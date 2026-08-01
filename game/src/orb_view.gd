@@ -95,11 +95,12 @@ func _physics_process(delta: float) -> void:
 			if orb.mine:
 				world.sv_shot.rpc_id(1, orb.slot, cell, orb.kind)
 				if orb.kind == 2:
-					# Grapple: a guided zip that sets you down ON TOP of the
-					# hooked block — never a slingshot past it.
+					# Grapple: a guided zip that routes AROUND the hooked
+					# block — off the face you hit, up past the edge, then
+					# down onto its top. Never a slingshot.
 					for child in world.players.get_children():
 						if child is Player and child.player_id == orb.shooter_id:
-							child.start_grapple(Vector3(cell) + Vector3(0.5, 1.15, 0.5))
+							child.start_grapple(_grapple_path_for(cell, orb.vel, child.position))
 		if not died and orb.mine:
 			# Player hits (anyone but the shooter): pellets bonk, shells boom.
 			for child in world.players.get_children():
@@ -198,3 +199,31 @@ func _spawn_flare(pos: Vector3) -> void:
 	tween.tween_callback(func() -> void:
 		if is_instance_valid(flare):
 			flare.queue_free())
+
+
+## Waypoints from the face the hook hit to standing on the block's top.
+static func _grapple_path_for(cell: Vector3i, shot_vel: Vector3, from: Vector3) -> Array:
+	var center := Vector3(cell) + Vector3(0.5, 0.5, 0.5)
+	var top := Vector3(cell) + Vector3(0.5, 1.15, 0.5)
+	var d := shot_vel.normalized()
+	# Face normal = opposite of the shot's dominant axis.
+	var n := Vector3.ZERO
+	if absf(d.x) >= absf(d.y) and absf(d.x) >= absf(d.z):
+		n = Vector3(-signf(d.x), 0, 0)
+	elif absf(d.y) >= absf(d.z):
+		n = Vector3(0, -signf(d.y), 0)
+	else:
+		n = Vector3(0, 0, -signf(d.z))
+	if n.y > 0.5:
+		return [top]  # hit the top: straight on
+	if n.y < -0.5:
+		# Hit the underside: slide out sideways (toward the shooter),
+		# then up past the edge, then onto the top.
+		var back := from - center
+		var h := Vector3(back.x, 0, back.z)
+		h = h.normalized() if h.length() > 0.1 else Vector3.RIGHT
+		var out := center + Vector3(0, -1.2, 0) + h * 1.5
+		return [out, out + Vector3(0, 2.9, 0), top]
+	# Hit a side: off the face, up over the lip, onto the top.
+	var off := center + n * 1.4
+	return [off, off + Vector3(0, 1.7, 0), top]
