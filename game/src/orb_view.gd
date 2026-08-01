@@ -67,7 +67,7 @@ func _add_orb(shooter_id: String, origin: Vector3, dir: Vector3, mine: bool, slo
 		dir = (dir * 0.35 + Vector3.UP).normalized()
 	_orbs.append({"node": node, "vel": dir.normalized() * speed,
 		"shooter_id": shooter_id, "age": 0.0, "mine": mine, "slot": slot,
-		"kind": kind})
+		"kind": kind, "start": origin, "next_whoosh": 0.0})
 
 func _physics_process(delta: float) -> void:
 	var world: Node = get_parent()
@@ -78,6 +78,18 @@ func _physics_process(delta: float) -> void:
 		orb.age += delta
 		var node: Node3D = orb.node
 		node.position += orb.vel * delta
+		if orb.kind == 2:
+			# The hook whooshes while it flies and fizzles at 150 blocks —
+			# you always know whether it's still going or gave up.
+			if orb.mine and orb.age > float(orb.next_whoosh):
+				orb.next_whoosh = orb.age + 0.28
+				Sfx.play("whoosh", -14.0, randf_range(1.1, 1.3))
+			if node.position.distance_to(orb.start) > 150.0:
+				if orb.mine:
+					Sfx.play("pop", -10.0, 0.7)
+				node.queue_free()
+				_orbs.remove_at(i)
+				continue
 		if orb.kind == 14:
 			if orb.age > 1.1:
 				_spawn_flare(node.position)
