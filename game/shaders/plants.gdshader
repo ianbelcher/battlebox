@@ -64,7 +64,9 @@ void fragment() {
 		if (cap.y > 0.0 && length(cap) < 1.0) { mask = 1.0; }
 	} else if (shape == 3) { // fire: licking animated flame
 		vec2 f = vec2(u - 0.5, up);
-		f.x += sin(TIME * 7.0 + up * 9.0 + hash1(floor(UV.x)) * 6.28) * 0.09 * up;
+		// Phase DECREASES with height so the licks travel upward the way
+		// real flames do.
+		f.x += sin(TIME * 7.0 - up * 9.0 + hash1(floor(UV.x)) * 6.28) * 0.09 * up;
 		float body = 1.0 - smoothstep(0.0, mix(0.42, 0.02, f.y), abs(f.x));
 		mask = (f.y < 1.0 && body > 0.5) ? 1.0 : 0.0;
 		float core = 1.0 - smoothstep(0.0, mix(0.2, 0.01, f.y), abs(f.x));
