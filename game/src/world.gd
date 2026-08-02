@@ -2403,7 +2403,8 @@ func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 		return
 	var ground := store.get_block(Vector3i(wx, y, wz))
 	var kind := -1
-	if WorldGen.hash01(wx, wz, 501) < 0.02 and not _dragon_exists():
+	var dragon_chance := 1.0 if OS.get_environment("WORLD_DRAGON_NOW") == "1" else 0.02
+	if WorldGen.hash01(wx, wz, 501) < dragon_chance and not _dragon_exists():
 		kind = CritterView.DRAGON
 	elif WorldGen.hash01(wx, wz, 500) < 0.15:
 		kind = CritterView.BIRD
