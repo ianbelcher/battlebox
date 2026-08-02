@@ -74,6 +74,7 @@ func _ready() -> void:
 	_build_players_tab()
 	_build_video_tab()
 	_build_help_tab()
+	_build_credits_tab()
 	Game.roster_changed.connect(_refresh)
 
 func open() -> void:
@@ -429,6 +430,34 @@ func _build_help_tab() -> void:
 		label.text = "• " + str(line)
 		label.add_theme_font_size_override("font_size", _s(19))
 		box.add_child(label)
+
+func _build_credits_tab() -> void:
+	var box := _tab("Credits")
+	_heading(box, "This game stands on other people's work — thank you")
+	for group: String in Credits.groups():
+		var head := Label.new()
+		head.text = group
+		head.add_theme_font_size_override("font_size", _s(21))
+		head.add_theme_color_override("font_color", Color("ffd166"))
+		box.add_child(head)
+		for entry: Dictionary in Credits.in_group(group):
+			var line := Label.new()
+			line.text = "   %s — %s  (%s)\n      %s" % [str(entry.name),
+				str(entry.by), str(entry.license), str(entry.what)]
+			line.add_theme_font_size_override("font_size", _s(17))
+			box.add_child(line)
+	if not Credits.BUILDS.is_empty():
+		var builds_head := Label.new()
+		builds_head.text = "Imported builds"
+		builds_head.add_theme_font_size_override("font_size", _s(21))
+		builds_head.add_theme_color_override("font_color", Color("ffd166"))
+		box.add_child(builds_head)
+		for entry: Dictionary in Credits.BUILDS:
+			var line := Label.new()
+			line.text = "   %s — built by %s  (%s)" % [str(entry.get("name", "?")),
+				str(entry.get("by", "unknown")), str(entry.get("license", "?"))]
+			line.add_theme_font_size_override("font_size", _s(17))
+			box.add_child(line)
 
 # ------------------------------------------------------------------
 # Self-updater
