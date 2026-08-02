@@ -18,7 +18,11 @@ the Minecraft save is never modified.
 ## Playing
 
 1. Open `http://<node-ip>:30811`, download the build for your machine, run it.
-2. Press **Connect** (the address is pre-filled: `ws://10.0.0.200:30810`).
+2. It connects itself. There is no server-picker screen — the client dials
+   the saved address (`ws://10.0.0.200:30810` by default) the moment it
+   launches, and if the link ever drops it says so and keeps retrying until
+   it's back, putting everyone who was playing straight back in their seat.
+   To point it somewhere else, use **Server** in the Esc menu's Map tab.
 3. Press **Space** / **Enter** / gamepad **A** to jump in — up to 4 per
    machine, the screen splits automatically. Characters (name, look,
    position, treasures) persist per device and per name.
@@ -31,8 +35,13 @@ switches to the isometric overview and back.
 | Keyboard | WASD       | Space | Left click/G | Right click/F | R / M-click  | E / Esc         | Tab   | Z C / X V            | Q            |
 | Gamepads | Left stick | A     | B            | X             | Right trigger| D-pad up / Start| Bumpers | Right stick        | Back         |
 
-**E** opens the Minecraft-style picker (all blocks + building kits, with
-names); **Esc / Start** opens the same tabbed menu on a how-to-play guide.
+**E** (or **X** / **Start** on a pad) opens the Minecraft-style picker.
+Its tabs run Tools, Build, Nature, Colors, Lights, Special, Kits and
+**You** — your character is a tab like any other — and the **bumpers**
+(Tab / Shift+Tab) step through them in either direction. **Esc** opens the
+separate WORLD menu, which is keyboard-and-mouse only on purpose: a
+grown-up can sort out the map, the battle setup, who's playing and the
+video settings while the kids keep running around on their controllers.
 **Orbs** can be thrown any time — they harmlessly bonk friends and they're
 your weapon during Grump attacks.
 
@@ -44,10 +53,10 @@ automatically when zoomed out); movement stays camera-relative.
 First person means mouse look on keyboard and right-stick look on
 gamepads. **Double-tap jump to fly** — hold jump to rise,
 Shift / left trigger to sink, land (or double-tap again) to stop; flyers
-strike a superhero pose. Characters are chunky mini-figures — click your
-name chip
-to type a name, and click the three swatches to cycle **skin tone**,
-**shirt color** and **hat** (7 of each, remembered per device). Blocks are
+strike a superhero pose. Characters are chunky mini-figures — 18 Kenney kids plus 30 "Little
+People" re-cut into rigged body parts so they walk, swing and crouch like
+everyone else. Pick one on the **You** tab (moving the cursor IS choosing);
+click your name chip to type a name. Blocks are
 infinite (creative-style); digging flowers, shells,
 mushrooms and berries counts treasures (✦). Saplings grow into trees after a
 couple of minutes, fresh flowers bloom at dawn, fireflies come out at night,
@@ -57,9 +66,12 @@ deer, penguins) wander their own terrain with distance-faded, pitch-varied
 voices. Biomes are small and dramatic — dense jungles, pine groves, flower
 fields, swamps — with **glowing caverns** underground and **floating sky
 islands** to find by flying. Water flows: blow up a pond wall and it pours
-into the crater. The picker's **building kits** stamp whole prefabs (house,
-watchtower, giant tree, bridge, camp, fort wall, pool, garden) that never
-overwrite existing builds.
+into the crater — falling water drops like a waterfall and only spreads out
+once it lands. The picker's **building kits** stamp whole prefabs that
+never overwrite existing builds: hand-written ones (house, watchtower,
+giant tree, bridge, camp, fort wall, pool, garden) plus real Minecraft
+builds imported from structure-block `.nbt`, which arrive as proper planks,
+cobble, stairs and glass and stay diggable.
 
 **⚔ Attack!** (top bar) starts a survival raid: waves of Grumps rise from
 low ground and water and march on the players. They can only step up one
@@ -119,6 +131,21 @@ decorations vanish). Missing chunks become open ocean. In the cluster
 deployment the Minecraft volume is mounted read-only at `/minecraft`; see
 `_configurations/world.yaml` for the switch.
 
+## Layout
+
+```
+game/            the Godot project (src/, assets/, tests/)
+game/src/        every script; gameplay is data-driven from creatures.gd,
+                 blocks.gd, structures.gd and avatar_factory.gd
+game/tests/      headless harnesses — rig contact sheet, map renders,
+                 the .mca importer test, the kit importer
+tools/           offline generators run by hand (rig_people.py, make_mca.py)
+maps/            selectable Minecraft maps, one folder each (see its README)
+source-art/      the original art zips — gitignored, README explains why
+web/             the downloads landing page nginx serves
+TODO.md          the outstanding-work list, and how this project runs
+```
+
 ## Local development
 
 ```sh
@@ -130,13 +157,40 @@ WORLD_ROLE=client WORLD_AUTOCONNECT=ws://127.0.0.1:9081 godot --path game
 ```
 
 Dev/test hooks: `WORLD_AUTOTEST=<n>` joins n wandering bot players,
-`WORLD_FAST=1` shrinks the day to 90s and sapling growth to 8s,
-`WORLD_SHOTS=<dir>` saves a screenshot every 1.5s, `WORLD_DEBUG=1` logs
-player physics state. The importer has a standalone test:
+`WORLD_AUTOTEST_WHO=p13,p29` pins each seat's character, `WORLD_FAST=1`
+shrinks the day to 90s and sapling growth to 8s, `WORLD_SHOTS=<dir>` saves
+a screenshot every 1.5s, `WORLD_DEBUG=1` logs player physics state.
+`TODO.md` lists the rest.
+
+Three things can be checked without running a server at all:
 
 ```sh
-python3 tools/make_mca.py /tmp/fixture   # or point at any 1.18+ world's region dir
+# Character rig: a posed contact sheet (ROT=90 is the side-on walk cycle,
+# which is where a bad pivot shows up).
+WORLD_RIG_SHOT=/tmp/rig.png WORLD_RIG_WHO=a,p0,p9 WORLD_RIG_ROT=180 \
+  godot --path game --resolution 1000x340 res://tests/rig_preview.tscn
+
+# Map generators: a top-down render of any theme.
+WORLD_MAP_OUT=/tmp/city.png WORLD_MAP_THEME=city WORLD_MAP_SPAN=8 \
+  WORLD_MAP_ZOOM=4 godot --headless --path game --script res://tests/city_map.gd
+
+# The .mca importer's standalone test.
+python3 tools/make_mca.py /tmp/fixture   # or any 1.18+ world's region dir
 WORLD_MCA_DIR=/tmp/fixture godot --headless --path game -s res://tests/test_mca.gd
+```
+
+### Regenerating art and kits
+
+```sh
+# Rigged Little People characters, from source-art/little_people_in_voxel_v2.zip
+python3 tools/rig_people.py
+
+# Kits, from a datapack of Minecraft structure-block .nbt files
+WORLD_NBT_DIR=<pack>/data/mcs/structure WORLD_NBT_OUT=$PWD/game/src/structures_imported.gd \
+  WORLD_NBT_BY="Silicon23" WORLD_NBT_LICENSE=MIT \
+  godot --headless --path game --script res://tests/import_structures.gd
+
+godot --headless --path game --import   # always, after generating either
 ```
 
 ## Deployment

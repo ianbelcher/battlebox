@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Cut the 30 "Little People in Voxel" characters into rigged body parts.
 
-The shipped art is a single MagicaVoxel file (``little_people_in_voxel_v2.zip``,
-gitignored beside this tool) holding 30 models. Exported whole they are one
+The shipped art is a single MagicaVoxel file (``little_people_in_voxel_v2.zip``
+in ``source-art/``, which is gitignored) holding 30 models. Exported whole they are one
 static mesh each, so they can't animate. Luckily all 30 share one construction:
 
     z 0..hips   two leg columns with a gap between them
@@ -30,7 +30,7 @@ import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORLD = os.path.dirname(HERE)
-DEFAULT_ZIP = os.path.join(WORLD, "little_people_in_voxel_v2.zip")
+DEFAULT_ZIP = os.path.join(WORLD, "source-art", "little_people_in_voxel_v2.zip")
 DEFAULT_OUT = os.path.join(WORLD, "game", "assets", "models", "people")
 
 ## Head starts here in every one of the 30 models (verified: the layer at

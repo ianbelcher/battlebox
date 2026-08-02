@@ -1,8 +1,6 @@
-# Source art pack: the models it contains are extracted into
-# game/assets/models/dinos, so the 28MB zip stays out of git.
-voxel_dinosaurs_pack.zip
-Little_People_in_Voxel.zip
-little_people_in_voxel_v2.zip
-farm_animals_pack_upload.zip
-jungle_animals_pack.zip
-voxel_forest_animals_pack.zip
+# Source art packs — see source-art/README.md. The zips are big and what
+# actually ships is the models extracted out of them under
+# game/assets/models/, so the directory's CONTENTS stay out of git while
+# the README that explains it stays in.
+source-art/*
+!source-art/README.md
