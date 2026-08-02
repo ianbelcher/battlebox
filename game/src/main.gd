@@ -378,6 +378,15 @@ func _on_connected() -> void:
 				if Game.world != null and Game.world.chunks != null:
 					Game.world.chunks.prefetch(radius)))
 	Game.video_changed.connect(_apply_video)
+	# APPLY the saved settings, don't just remember them: video.cfg was
+	# loaded into Game.video at boot and shown correctly in the menu, but
+	# nothing pushed it at the renderer until you toggled something — so
+	# glow/SSAO/shadows you had turned OFF came back on every restart
+	# (complete with the artifacts that made you turn them off).
+	# Deferred once for this frame's world, then again when the sky and
+	# chunk views actually exist.
+	_apply_video.call_deferred()
+	world.world_ready.connect(_apply_video)
 	world.survival_changed.connect(_refresh_survival)
 	world.match_changed.connect(_refresh_match)
 	world.match_changed.connect(func() -> void:
@@ -567,6 +576,8 @@ func _update_minimap() -> void:
 ## to exactly one thing — no presets, no automatic overrides.
 func _apply_video() -> void:
 	var v: Dictionary = Game.video
+	# Renderer-wide toggles that hold whether or not a world exists yet.
+	RenderingServer.set_debug_generate_wireframes(true)
 	if Game.world != null and Game.world.sky != null:
 		Game.world.sky.allow_shadows = bool(v.shadows)
 		var fog_end := float(int(v.dist_blocks))
@@ -584,6 +595,12 @@ func _apply_video() -> void:
 	if _split != null:
 		_split.set_render_scale(clampf(int(v.render_scale) / 100.0, 0.01, 1.0))
 		_split.set_wireframe(bool(v.wire))
+	if OS.get_environment("WORLD_VIDEO_DEBUG") == "1" and Game.world != null 			and Game.world.sky != null:
+		print("VIDEOCHECK glow=%s ssao=%s shadows=%s lightcap=%s" % [
+			Game.world.sky.environment.glow_enabled,
+			Game.world.sky.environment.ssao_enabled,
+			Game.world.sky.allow_shadows,
+			Game.world.chunks.light_cap if Game.world.chunks else -1])
 	RenderingServer.directional_shadow_atlas_set_size(
 		[1024, 2048, 4096][clampi(int(v.shadow_quality), 0, 2)], true)
 
