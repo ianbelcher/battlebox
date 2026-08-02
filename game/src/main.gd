@@ -588,6 +588,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			and (event as InputEventKey).keycode == KEY_ESCAPE:
 		if _world_menu != null:
 			_world_menu.toggle()
+			# Hand the cursor back while it's open, and only then.
+			if _split != null:
+				_split.world_menu_open = _world_menu.visible
 			get_viewport().set_input_as_handled()
 
 func _apply_video() -> void:

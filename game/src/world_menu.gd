@@ -26,7 +26,9 @@ var _update_state := "idle"
 var _update_req: HTTPRequest
 
 func _scale() -> float:
-	return clampf(size.x / 1100.0, 0.75, 2.4)
+	# Text is sized off the PANEL, which is a fraction of the screen —
+	# a full-width panel with small text was unreadable.
+	return clampf(size.x / 1500.0, 0.9, 2.6)
 
 func _s(n: int) -> int:
 	return int(n * _scale())
@@ -49,11 +51,16 @@ func _ready() -> void:
 	style.border_color = Color(1, 1, 1, 0.1)
 	style.set_border_width_all(1)
 	_panel.add_theme_stylebox_override("panel", style)
-	_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_panel.offset_left = 40
-	_panel.offset_right = -40
-	_panel.offset_top = 30
-	_panel.offset_bottom = -30
+	# A centred window, not the whole screen: roughly 62% x 68%.
+	_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_panel.anchor_left = 0.19
+	_panel.anchor_right = 0.81
+	_panel.anchor_top = 0.16
+	_panel.anchor_bottom = 0.84
+	_panel.offset_left = 0
+	_panel.offset_right = 0
+	_panel.offset_top = 0
+	_panel.offset_bottom = 0
 	add_child(_panel)
 
 	var outer := VBoxContainer.new()
@@ -140,12 +147,11 @@ func _mark(btn: Button, on: bool) -> void:
 
 func _build_map_tab() -> void:
 	var box := _tab("Map")
-	_heading(box, "Pick the world everyone plays in")
 	_map_row = HBoxContainer.new()
 	_map_row.add_theme_constant_override("separation", _s(8))
 	box.add_child(_map_row)
 	_saved_label = Label.new()
-	_saved_label.text = "Saved worlds"
+	_saved_label.text = "Custom worlds"
 	_saved_label.add_theme_font_size_override("font_size", _s(20))
 	box.add_child(_saved_label)
 	_saved_row = HBoxContainer.new()
@@ -246,9 +252,8 @@ func _build_battle_tab() -> void:
 
 func _build_players_tab() -> void:
 	var box := _tab("Players")
-	_heading(box, "Everyone playing — rename, pick teams, or remove")
 	var manage := HBoxContainer.new()
-	manage.add_theme_constant_override("separation", _s(8))
+	manage.add_theme_constant_override("separation", _s(10))
 	box.add_child(manage)
 	manage.add_child(_button("➕ Team", func() -> void:
 		if Game.world != null:
@@ -263,6 +268,11 @@ func _build_players_tab() -> void:
 	manage.add_child(_button("➖ Computer player", func() -> void:
 		if Game.world != null:
 			Game.world.sv_remove_bot.rpc_id(1, "")))
+	for child in manage.get_children():
+		var mb := child as Button
+		if mb != null:
+			mb.add_theme_font_size_override("font_size", _s(22))
+			mb.custom_minimum_size = Vector2(_s(190), _s(44))
 	_players_box = VBoxContainer.new()
 	_players_box.add_theme_constant_override("separation", _s(6))
 	box.add_child(_players_box)
@@ -352,7 +362,6 @@ func _refresh_players() -> void:
 
 func _build_video_tab() -> void:
 	var box := _tab("Video")
-	_heading(box, "These settings apply to the whole game")
 	_slider(box, "Draw distance", "dist_blocks", 32, 208, 16, "%d blocks")
 	_slider(box, "3D resolution", "render_scale", 1, 100, 1, "%d%%")
 	_slider(box, "Shadow quality", "shadow_quality", 0, 2, 1, "%d")

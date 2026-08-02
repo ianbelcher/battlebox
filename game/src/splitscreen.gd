@@ -27,6 +27,8 @@ var _capture_hold_until := 0
 func suppress_capture(ms: int) -> void:
 	_capture_hold_until = Time.get_ticks_msec() + ms
 var big_map: TextureRect = null
+## Set by main.gd while the full-screen world menu is showing.
+var world_menu_open := false
 var low_fx := false
 
 ## Render cheaper: fewer pixels, no MSAA. Applied to current and future cells.
@@ -372,6 +374,10 @@ func _process(delta: float) -> void:
 				and (cell.hud == null or not cell.hud.is_ui_open()):
 			want_capture = true
 	if Time.get_ticks_msec() < _capture_hold_until:
+		want_capture = false
+	# The world menu needs a real cursor: while it's open nobody holds the
+	# mouse captive, or none of its buttons can be clicked at all.
+	if world_menu_open:
 		want_capture = false
 	var target_mode := Input.MOUSE_MODE_CAPTURED if want_capture else Input.MOUSE_MODE_VISIBLE
 	if Input.mouse_mode != target_mode:
