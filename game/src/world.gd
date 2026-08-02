@@ -32,6 +32,7 @@ signal battle_config_changed
 var client_minutes := 5
 var client_size := 250
 var client_loot := false
+var client_fly := false
 var client_team_names: Array = ["A", "B", "C", "D"]
 var client_world := ""
 var client_mode := "battle"
@@ -307,7 +308,8 @@ func sv_hello() -> void:
 	cl_world_info.rpc_id(peer, spawn_pos, clock, source)
 	cl_map_list.rpc_id(peer, ChunkStore.list_maps())
 	cl_overview.rpc_id(peer, overview)
-	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only)
+	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only,
+		battle_fly)
 	cl_teams.rpc_id(peer, team_names)
 	cl_mode.rpc_id(peer, game_mode)
 	cl_world_sel.rpc_id(peer, selected_map if not selected_map.is_empty() \
@@ -1473,6 +1475,7 @@ func _save_battle_setup() -> void:
 	cfg.set_value("battle", "minutes", storm_minutes)
 	cfg.set_value("battle", "size", battle_size)
 	cfg.set_value("battle", "loot", loot_only)
+	cfg.set_value("battle", "fly", battle_fly)
 	cfg.set_value("battle", "team_names", team_names)
 	cfg.set_value("battle", "bots", _bots.size())
 	cfg.set_value("battle", "world", selected_map)
@@ -1486,6 +1489,7 @@ func _load_battle_setup() -> void:
 	storm_minutes = float(cfg.get_value("battle", "minutes", storm_minutes))
 	battle_size = float(cfg.get_value("battle", "size", battle_size))
 	loot_only = bool(cfg.get_value("battle", "loot", loot_only))
+	battle_fly = bool(cfg.get_value("battle", "fly", battle_fly))
 	var names: Array = cfg.get_value("battle", "team_names", team_names)
 	if names.size() >= 2:
 		team_names = names
@@ -1520,6 +1524,7 @@ func _storm_start() -> float:
 const STORM_END := 20.0
 var storm_minutes := 5.0
 var loot_only := false
+var battle_fly := false  # humans may fly in battles (kids get lost on foot)
 
 var _match_timer := 0.0
 var _match_alive: Dictionary = {}   # id -> true while still fighting
@@ -1536,7 +1541,7 @@ func sv_set_bot_team(target_id: String, team: int) -> void:
 		Game.cl_roster.rpc(Game.roster)
 
 @rpc("any_peer", "reliable")
-func sv_match_config(minutes: int, loot: int, size: int = -1) -> void:
+func sv_match_config(minutes: int, loot: int, size: int = -1, fly: int = -1) -> void:
 	if not multiplayer.is_server() or not (match_phase in ["IDLE", "LOBBY"]) \
 			or not _is_host(multiplayer.get_remote_sender_id()):
 		return
@@ -1546,7 +1551,9 @@ func sv_match_config(minutes: int, loot: int, size: int = -1) -> void:
 		loot_only = loot == 1
 	if size > 0:
 		battle_size = clampf(float(size), 25.0, 400.0)
-	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only)
+	if fly >= 0:
+		battle_fly = fly == 1
+	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only, battle_fly)
 	_save_battle_setup()
 
 @rpc("any_peer", "reliable")
@@ -2614,10 +2621,11 @@ func cl_overview(bytes: PackedByteArray) -> void:
 	overview = bytes
 
 @rpc("authority", "reliable")
-func cl_battle_config(minutes: int, size: int, loot: bool) -> void:
+func cl_battle_config(minutes: int, size: int, loot: bool, fly := false) -> void:
 	client_minutes = minutes
 	client_size = size
 	client_loot = loot
+	client_fly = fly
 	battle_config_changed.emit()
 
 @rpc("authority", "reliable")

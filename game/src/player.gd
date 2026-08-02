@@ -469,8 +469,10 @@ func _local_move(delta: float) -> void:
 	var jump_now := input.is_jump_pressed()
 	if jump_now and not _prev_jump:
 		var now := Time.get_ticks_msec()
+		var fly_allowed: bool = world.match_phase == "IDLE" \
+			or (world.client_fly and world.match_phase == "BATTLE")
 		if now - _last_jump_ms < 480 and not world.survival_active \
-				and world.match_phase == "IDLE" and riding < 0:
+				and fly_allowed and riding < 0:
 			fly_mode = not fly_mode
 			if fly_mode:
 				velocity.y = 3.0
@@ -562,8 +564,9 @@ func _local_move(delta: float) -> void:
 		heading = dir.normalized()
 
 	var is_out: bool = world.ghost_ids.has(player_id)
-	if fly_mode and (world.survival_active or world.match_phase != "IDLE") \
-			and not is_out:
+	var fly_ok: bool = world.match_phase == "IDLE" \
+		or (world.client_fly and world.match_phase == "BATTLE")
+	if fly_mode and (world.survival_active or not fly_ok) and not is_out:
 		fly_mode = false  # no flying away from raids or matches (ghosts may)
 	if world != null and world.match_phase == "DROP":
 		dropping = true

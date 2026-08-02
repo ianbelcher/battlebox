@@ -862,6 +862,25 @@ func _build_game_tab() -> void:
 			Sfx.play("tick", -8.0))
 		length_row.add_child(preset_btn)
 		_length_btns[minutes] = preset_btn
+	var fly_row := HBoxContainer.new()
+	fly_row.add_theme_constant_override("separation", _us(8))
+	_battle_opts.add_child(fly_row)
+	var fly_label := Label.new()
+	fly_label.text = "Flying:"
+	fly_label.add_theme_font_size_override("font_size", _us(20))
+	fly_row.add_child(fly_label)
+	for fly_spec in [[1, "Allowed"], [0, "No flying"]]:
+		var fly_btn := Button.new()
+		fly_btn.focus_mode = Control.FOCUS_NONE
+		fly_btn.text = str(fly_spec[1])
+		fly_btn.add_theme_font_size_override("font_size", _us(18))
+		var fly_val: int = fly_spec[0]
+		fly_btn.pressed.connect(func() -> void:
+			if Game.world != null:
+				Game.world.sv_match_config.rpc_id(1, -1, -1, -1, fly_val)
+			Sfx.play("tick", -8.0))
+		fly_row.add_child(fly_btn)
+		_fly_btns[fly_val] = fly_btn
 	var size_row := HBoxContainer.new()
 	size_row.add_theme_constant_override("separation", _us(8))
 	_battle_opts.add_child(size_row)
@@ -1110,6 +1129,7 @@ func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color
 var _team_box: VBoxContainer
 var _length_btns: Dictionary = {}
 var _size_btns: Dictionary = {}
+var _fly_btns: Dictionary = {}
 var _lobby_countdown: Label
 var _mode_btns: Dictionary = {}
 var _battle_opts: VBoxContainer
@@ -1174,6 +1194,8 @@ func _refresh_battle_highlights() -> void:
 		_mark_selected(_size_btns[arena], arena == world.client_size)
 	for mode_key: String in _mode_btns.keys():
 		_mark_selected(_mode_btns[mode_key], mode_key == world.client_mode)
+	for fly_val: int in _fly_btns.keys():
+		_mark_selected(_fly_btns[fly_val], (fly_val == 1) == world.client_fly)
 	if _battle_opts != null:
 		_battle_opts.visible = world.client_mode == "battle"
 	_refresh_team_box()
