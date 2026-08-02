@@ -71,12 +71,31 @@ three times now. Rebuild it:
 - [ ] **No sky islands in the city** — they make no sense there
 - [ ] Vary building footprints and heights; stop the uniform grid look
 
-### 5. Water flow
+### 5. Startup: no server-select screen (BLOCKER for the kids)
+- [ ] The connect screen makes a child find a mouse and click Connect
+      before they can play. **Just connect to the default server
+      immediately** on launch (`Net.default_server_url()`), straight into
+      the game. A way to choose a different server can come back later,
+      tucked in the world menu
+
+### 6. Fliers that don't fly
+- [ ] **Pterodactyls don't move at all**, and one or two of the birds sit
+      in one spot. Fliers (`Creatures.FLIER`: pterodactyl, owl, parrot,
+      toucan, the old bird) need to actually roam
+- [ ] Hint for whoever picks this up: in `world.gd::_move_critter` the
+      FLIER branch only runs *after* the `to_target.length() > 0.3`
+      check, and it pins `next.y` to ground+1 — so if a flier's wander
+      target lands where it already is, or the ground under it is
+      unreachable, it never moves. Give fliers their own wander logic
+      (bigger roaming radius, ignore ground validity, keep the view's
+      `fly_height` offset)
+
+### 7. Water flow
 - [ ] Water should only spread **laterally when it lands on something**.
       Otherwise it falls straight down like a waterfall. Today, breaking
       a pool makes it creep outwards across the ground
 
-### 6. Snake
+### 8. Snake
 - [ ] The jungle python (`creatures.gd`) must **not move** — it's
       modelled lying down / rotated, so walking looks wrong. Make it a
       stationary critter
