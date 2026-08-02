@@ -7,3 +7,4 @@ A live list of OPEN work only (git history is the record of done).
       generic wood/iron), glazed terracotta (imports as wool colors),
       tinted glass PANES (keep pane shape, lose tint), signs/pressure
       plates/rails (thin decor -> air by design)
+e

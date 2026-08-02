@@ -1641,6 +1641,8 @@ func _process(_delta: float) -> void:
 	if OS.get_environment("WORLD_AUTOTEST_PICK") != "" and slot == 0 \
 			and not _autopicked and Time.get_ticks_msec() > 12000:
 		_autopicked = true
+		if OS.get_environment("WORLD_AUTOTEST_NAME") != "":
+			Game.set_local_name(slot, OS.get_environment("WORLD_AUTOTEST_NAME"))
 		var target_btn: Button = _char_buttons.get(
 			OS.get_environment("WORLD_AUTOTEST_PICK"))
 		if target_btn != null:

@@ -36,6 +36,17 @@ func describe() -> String:
 ## key each device's character is saved under.
 func claim_key() -> String:
 	if kind == Kind.GAMEPAD:
+		# Device NUMBERS shuffle between sessions (plug order) which lost
+		# kids' saved characters — the controller GUID is stable.
+		var guid := Input.get_joy_guid(device)
+		if not guid.is_empty():
+			return "pad:%s" % guid
+		return "pad:%d" % device
+	return "kb:%d" % kind
+
+## The old unstable profile key, for one-time migration of saved data.
+func legacy_claim_key() -> String:
+	if kind == Kind.GAMEPAD:
 		return "pad:%d" % device
 	return "kb:%d" % kind
 

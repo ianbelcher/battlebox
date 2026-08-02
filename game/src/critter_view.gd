@@ -286,6 +286,24 @@ func _build(kind: int) -> Node3D:
 	var root := Node3D.new()
 	var visual := Node3D.new()
 	root.add_child(visual)
+	if kind == DRAGON:
+		# The Meshy boss dragon (CC0): obsidian scales, red eyes, shadow
+		# wings. The export's unit scale is microscopic — hence the huge
+		# corrective factor. Its walk clip loops so the legs paddle and
+		# the tail sways even in flight.
+		var dragon_scene: PackedScene = load("res://assets/models/dragon.glb")
+		if dragon_scene != null:
+			var dragon_inst: Node3D = dragon_scene.instantiate()
+			dragon_inst.scale = Vector3.ONE * 2400.0
+			dragon_inst.rotation_degrees = Vector3(0, 180, 0)
+			visual.add_child(dragon_inst)
+			var dragon_ap := dragon_inst.find_child("AnimationPlayer", true, false) as AnimationPlayer
+			if dragon_ap != null:
+				for anim_name in dragon_ap.get_animation_list():
+					dragon_ap.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
+					dragon_ap.play(anim_name)
+					dragon_ap.speed_scale = 0.8
+			return root
 	if PETS.has(kind):
 		var scene: PackedScene = load("res://assets/models/pets/%s.glb" % PETS[kind])
 		if scene != null:

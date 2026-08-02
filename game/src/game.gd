@@ -99,16 +99,24 @@ func join_local(input: InputSlot) -> void:
 	if local_inputs.size() >= MAX_LOCAL:
 		return
 	for existing: InputSlot in local_inputs.values():
-		if existing.claim_key() == input.claim_key():
+		if existing.kind == input.kind and existing.device == input.device:
 			return
 	var slot := 0
 	while local_inputs.has(slot):
 		slot += 1
 	local_inputs[slot] = input
 	# Each physical device remembers its character between sessions, so every
-	# kid's character comes back when they grab "their" controller.
-	profile_keys[slot] = input.claim_key()
-	var profile := _load_profile(input.claim_key())
+	# kid's character comes back when they grab "their" controller. Identical
+	# controllers (same GUID) get #1, #2... suffixes so both can join.
+	var base_key := input.claim_key()
+	var ordinal := 0
+	for used in profile_keys.values():
+		if str(used) == base_key or str(used).begins_with(base_key + "#"):
+			ordinal += 1
+	var key := base_key if ordinal == 0 else "%s#%d" % [base_key, ordinal]
+	profile_keys[slot] = key
+	_migrate_profile(input.legacy_claim_key(), key)
+	var profile := _load_profile(key)
 	sv_register_player.rpc_id(1, slot, profile.name, profile.style, input is BotSlot)
 
 func leave_local(slot: int) -> void:
@@ -268,6 +276,20 @@ func cl_host(peer: int) -> void:
 # ------------------------------------------------------------------
 
 const PROFILE_PATH := "user://characters.cfg"
+
+## One-time move of a saved character from the old device-number key to
+## the stable GUID key.
+func _migrate_profile(old_key: String, new_key: String) -> void:
+	if old_key == new_key:
+		return
+	var config := ConfigFile.new()
+	if config.load(PROFILE_PATH) != OK:
+		return
+	if config.has_section(new_key) or not config.has_section(old_key):
+		return
+	for section_key in config.get_section_keys(old_key):
+		config.set_value(new_key, section_key, config.get_value(old_key, section_key))
+	config.save(PROFILE_PATH)
 
 func _load_profile(device_key: String) -> Dictionary:
 	var config := ConfigFile.new()
