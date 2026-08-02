@@ -129,10 +129,38 @@ static func _cylinder(radius: float, height: float, color: Color) -> MeshInstanc
 const KENNEY_CHARS := ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
 	"k", "l", "m", "n", "o", "p", "q", "r"]
 
-## Little People in Voxel (30 more): static OBJ models with no rig, so
-## they get a code-driven waddle instead of walk clips. Keys are
-## "p0".."p29" so they can never collide with the Kenney letters.
+## Little People in Voxel (30 more). The pack ships one static mesh per
+## character, so `tools/rig_people.py` re-cuts them from the MagicaVoxel
+## source into five OBJs — body, arms, legs — that the procedural
+## `_swing_limb` animation in player.gd drives like the legacy rig.
+## Keys are "p0".."p29" so they can never collide with the Kenney letters.
 const PEOPLE_COUNT := 30
+## Node name -> file suffix. Body carries the head; the four limb pivots
+## are named exactly what player.gd looks for.
+const PEOPLE_PARTS := {
+	"Body": "body", "ArmL": "arm-l", "ArmR": "arm-r",
+	"LegL": "leg-l", "LegR": "leg-r",
+}
+## The parts are exported in voxel units, so ONE scale covers all 30 and
+## they end up the same size as each other (and as the Kenney kids): the
+## shared 25-voxel frame lands at ~1.55, hips at 0.43 and shoulders at
+## 0.87 — near enough the legacy rig that held items line up.
+const PERSON_SCALE := 0.062
+## Every part's UVs index one 256x1 palette strip. Godot's OBJ importer
+## quietly ignores the .mtl's map_Kd, so the material is built here — and
+## shared, so all 30 characters draw with one texture.
+static var _person_material: StandardMaterial3D
+
+static func person_material() -> StandardMaterial3D:
+	if _person_material == null:
+		_person_material = StandardMaterial3D.new()
+		_person_material.albedo_texture = load(
+			"res://assets/models/people/people-palette.png")
+		# Nearest, no mipmaps: neighbouring palette entries are unrelated
+		# colours and must never blend into each other.
+		_person_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		_person_material.roughness = 0.85
+	return _person_material
 
 ## Everything the character picker offers, in order.
 static func characters() -> Array:
@@ -146,7 +174,7 @@ static func is_person(who: String) -> bool:
 
 static func model_of(who: String) -> String:
 	if is_person(who):
-		return "res://assets/models/people/Character-%s.obj" % who.substr(1)
+		return "res://assets/models/people/Character-%s-body.obj" % who.substr(1)
 	return "res://assets/models/chars/character-%s.glb" % who
 
 static func portrait_of(who: String) -> String:
@@ -158,44 +186,73 @@ static func build_character(style: Dictionary) -> Node3D:
 	style = normalize_style(style)
 	if style.has("who"):
 		var who := str(style.who)
-		var path := model_of(who)
-		var res: Resource = load(path) if ResourceLoader.exists(path) else null
-		var inst: Node3D = null
-		if res is PackedScene:
-			inst = (res as PackedScene).instantiate()
-		elif res is Mesh:
-			# The Little People are plain OBJ meshes — no rig, no clips —
-			# so they get wrapped and waddle by code instead.
-			var mi := MeshInstance3D.new()
-			mi.mesh = res
-			inst = mi
-		if inst != null:
-			var root := Node3D.new()
-			if res is Mesh:
-				# Scale whatever the artist exported to about kid height.
-				var box: AABB = (res as Mesh).get_aabb()
-				var factor := 1.75 / maxf(box.size.y, 0.001)
-				inst.scale = Vector3.ONE * factor
-				# Stand them on their feet AND on the spot: these exports
-				# are modelled off-origin, so the character floated beside
-				# its own position and spun around empty air.
-				var mid := box.get_center()
-				inst.position = Vector3(-mid.x * factor, -box.position.y * factor,
-					-mid.z * factor)
-			else:
+		if is_person(who):
+			var person := _build_person(who)
+			if person != null:
+				person.set_meta("style", str(style))
+				return person
+		else:
+			var res: Resource = load(model_of(who)) \
+				if ResourceLoader.exists(model_of(who)) else null
+			if res is PackedScene:
+				var inst: Node3D = (res as PackedScene).instantiate()
+				var root := Node3D.new()
 				inst.scale = Vector3.ONE * 0.52
-			inst.rotation_degrees = Vector3(0, 180, 0)
-			root.add_child(inst)
-			var ap := inst.find_child("AnimationPlayer", true, false) as AnimationPlayer
-			if ap != null:
-				for anim_name in ["idle", "walk", "sprint", "holding-right", "die", "sit"]:
-					if ap.has_animation(anim_name):
-						ap.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
-				ap.play("idle")
-				root.set_meta("ap", ap)
-			root.set_meta("style", str(style))
-			return root
+				inst.rotation_degrees = Vector3(0, 180, 0)
+				root.add_child(inst)
+				var ap := inst.find_child("AnimationPlayer", true, false) as AnimationPlayer
+				if ap != null:
+					for anim_name in ["idle", "walk", "sprint", "holding-right",
+							"die", "sit"]:
+						if ap.has_animation(anim_name):
+							ap.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
+					ap.play("idle")
+					root.set_meta("ap", ap)
+				root.set_meta("style", str(style))
+				return root
 	return _build_legacy(style)
+
+## Assembles a Little Person from its five part meshes. Each limb hangs
+## under a pivot placed at the top centre of its own bounding box — the
+## shoulder or the hip — which is exactly what _swing_limb rotates.
+static func _build_person(who: String) -> Node3D:
+	var index := who.substr(1)
+	var root := Node3D.new()
+	var built := 0
+	for node_name in PEOPLE_PARTS:
+		var path := "res://assets/models/people/Character-%s-%s.obj" % [
+			index, PEOPLE_PARTS[node_name]]
+		if not ResourceLoader.exists(path):
+			continue
+		var mesh := load(path) as Mesh
+		if mesh == null:
+			continue
+		built += 1
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.material_override = person_material()
+		mi.scale = Vector3.ONE * PERSON_SCALE
+		if node_name == "Body":
+			mi.name = node_name
+			root.add_child(mi)
+			continue
+		var box := mesh.get_aabb()
+		var joint := Vector3(box.get_center().x, box.end.y, box.get_center().z)
+		var pivot := Node3D.new()
+		pivot.name = node_name
+		pivot.position = joint * PERSON_SCALE
+		mi.position = -joint * PERSON_SCALE
+		pivot.add_child(mi)
+		if node_name == "ArmR":
+			# Where a held tool sits: the far end of this arm, which is
+			# shorter on some of the 30 than on the legacy rig.
+			pivot.set_meta("hand",
+				Vector3(0, (box.position.y - joint.y + 0.5) * PERSON_SCALE, -0.05))
+		root.add_child(pivot)
+	if built == 0:
+		root.queue_free()
+		return null
+	return root
 
 static func _build_legacy(style: Dictionary) -> Node3D:
 	var skin := skin_color(style)

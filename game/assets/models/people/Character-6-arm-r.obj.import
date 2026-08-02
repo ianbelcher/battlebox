@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://dn1j60n2627ll"
+path="res://.godot/imported/Character-6-arm-r.obj-63a09be8f9a09b0e6f480adb14f1616f.mesh"
+
+[deps]
+
+files=["res://.godot/imported/Character-6-arm-r.obj-63a09be8f9a09b0e6f480adb14f1616f.mesh"]
+
+source_file="res://assets/models/people/Character-6-arm-r.obj"
+dest_files=["res://.godot/imported/Character-6-arm-r.obj-63a09be8f9a09b0e6f480adb14f1616f.mesh", "res://.godot/imported/Character-6-arm-r.obj-63a09be8f9a09b0e6f480adb14f1616f.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

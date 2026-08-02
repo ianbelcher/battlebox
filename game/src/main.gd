@@ -440,10 +440,20 @@ func _maybe_start_autotest() -> void:
 		else:
 			Game.join_local(BotSlot.new(i))
 	_split.update_layout()
-	# Exercise the customization RPCs the way HUD swatch clicks would.
-	get_tree().create_timer(3.0).timeout.connect(func() -> void:
+	# WORLD_AUTOTEST_WHO=p13,a,...: pin each seat to a named character.
+	# WORLD_AUTOTEST_PICK drives the picker UI instead, which can only
+	# reach the grid when the character page happens to be on screen.
+	var who_list := OS.get_environment("WORLD_AUTOTEST_WHO")
+	if not who_list.is_empty():
+		var names := who_list.split(",")
 		for slot: int in Game.local_inputs.keys():
-			Game.cycle_local_style(slot, ["body", "shirt", "hat"][slot % 3], 1))
+			Game.set_local_style(slot, {"who": names[slot % names.size()]})
+	# Exercise the customization RPCs the way HUD swatch clicks would —
+	# unless a run pinned specific characters, which this would undo.
+	if who_list.is_empty():
+		get_tree().create_timer(3.0).timeout.connect(func() -> void:
+			for slot: int in Game.local_inputs.keys():
+				Game.cycle_local_style(slot, ["body", "shirt", "hat"][slot % 3], 1))
 	# WORLD_AUTOTEST_BLOCK=<id>: pin every bot's hotbar to one block so a
 	# smoke test can hammer a specific mechanic (booms, warp stones...).
 	# WORLD_AUTOTEST_SERVER_BOTS=<n>: ask the server for n computer players

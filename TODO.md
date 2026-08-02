@@ -9,23 +9,14 @@ session (or any tool) can pick the work up cold.
 
 ## NEXT UP — Ian's priority order (agreed 2/8)
 
-### 1. Little People characters — rig them or delete them
-The 30 "Little People in Voxel" characters (`assets/models/people/*.obj`,
-ids `p0`..`p29` in `avatar_factory.gd`) are **single-mesh OBJ exports with
-no skeleton**, so they can't animate.
-
-- [x] Origin fixed — they were modelled off-origin, so a character floated
-      beside its own position, spun around empty air in third person and
-      previewed blank (commit 97d70e93)
-- [ ] **RIG THEM.** They're all the same construction, so one rig should
-      serve all 30. Likely approach: rebuild each from the MagicaVoxel
-      source (`Little People in Voxel V2.vox`, kept outside git) into
-      separate body parts — head / torso / arms / legs — named
-      `Head`/`ArmL`/`ArmR`/`LegL`/`LegR` so the EXISTING procedural
-      animation in `player.gd` (`_swing_limb`) drives them for free
-- [ ] If rigging proves unworkable: **delete them** (Ian's explicit
-      fallback — he'd rather have none than broken ones)
-- [ ] They should all end up about the same size
+### ~~1. Little People characters — rig them~~ DONE
+Rigged, not deleted. `tools/rig_people.py` re-cuts all 30 from the
+MagicaVoxel source into Body / ArmL / ArmR / LegL / LegR OBJs; the pivots
+are derived from each limb's own bounding box so `_swing_limb` walks them.
+One shared 256x1 palette texture, one uniform scale (so they are all the
+same size, matched to the Kenney kids), and the picker icons are real
+portraits now instead of a palette strip. Re-run the tool after any art
+change; eyeball it with `res://tests/rig_preview.tscn`.
 
 ### 2. Player menu (the per-player modal) — controls and character tab
 - [ ] **Character selection becomes a TAB in the tool chooser**, beside
@@ -71,12 +62,16 @@ three times now. Rebuild it:
 - [ ] **No sky islands in the city** — they make no sense there
 - [ ] Vary building footprints and heights; stop the uniform grid look
 
-### 5. Startup: no server-select screen (BLOCKER for the kids)
+### 5. Connection must look after itself (BLOCKER for the kids)
 - [ ] The connect screen makes a child find a mouse and click Connect
       before they can play. **Just connect to the default server
       immediately** on launch (`Net.default_server_url()`), straight into
       the game. A way to choose a different server can come back later,
       tucked in the world menu
+- [ ] **Auto-reconnect.** If the client drops, it must say so on screen
+      (a clear "Disconnected — reconnecting…" banner) and **keep retrying
+      by itself** until it's back. A child must never have to find the
+      mouse, click Connect, or restart the app to get back into the world
 
 ### 6. Fliers that don't fly
 - [ ] **Pterodactyls don't move at all**, and one or two of the birds sit
@@ -179,7 +174,14 @@ session scratchpad (NOT in git — they'd need re-fetching), in two tiers:
   `WORLD_AUTOTEST`, and `WORLD_SHOTS` screenshots; check BOTH split-screen
   seats for anything UI-related.
 - Test hooks: `WORLD_DINOS_NOW=1`, `WORLD_DRAGON_NOW=1`,
-  `WORLD_MENU_TEST=1`, `WORLD_VIDEO_DEBUG=1`, `WORLD_AUTOTEST_PICK=<char>`.
+  `WORLD_MENU_TEST=1`, `WORLD_VIDEO_DEBUG=1`, `WORLD_AUTOTEST_PICK=<char>`
+  (drives the picker UI — only works when the character page is on screen),
+  `WORLD_AUTOTEST_WHO=p13,p29` (pins each seat's character directly).
+- Character rig contact sheet, no server needed:
+  `WORLD_RIG_SHOT=/tmp/rig.png WORLD_RIG_WHO=a,p0,p9 WORLD_RIG_ROT=180
+  godot --path <game> --resolution 1000x340 res://tests/rig_preview.tscn`
+  (`WORLD_RIG_FROM`/`WORLD_RIG_COUNT` walk the p-series; `ROT=90` gives the
+  side-on walk cycle, which is where a bad pivot shows up).
 - Godot runs must use an **absolute** `--path` (the shell cwd resets
   between commands, and `--path .` silently loads the wrong project and
   hangs).

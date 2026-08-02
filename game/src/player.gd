@@ -346,7 +346,9 @@ func _refresh_hand() -> void:
 		_hand_item.scale = Vector3.ONE * (1.0 / maxf(rig_scale, 0.01))
 		_hand_item.position = Vector3(0, -1.1, 0.2)
 	else:
-		_hand_item.position = Vector3(0, -0.42, -0.05)
+		# The Little People rig measures its own hand position; the legacy
+		# mini-figure's is fixed.
+		_hand_item.position = arm.get_meta("hand", Vector3(0, -0.42, -0.05))
 	arm.add_child(_hand_item)
 	for node in _hand_item.find_children("*", "VisualInstance3D", true, false):
 		(node as VisualInstance3D).layers = render_layer_bit()
