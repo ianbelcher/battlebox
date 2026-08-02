@@ -2393,6 +2393,24 @@ func _server_tick_critters() -> void:
 		payload.append([id, critter.kind, critter.pos])
 	cl_critters.rpc(payload)
 
+
+## Coarse biome patches (~112 blocks across, fixed per world seed) so the
+## island reads as REGIONS — a farm valley here, deep forest over there,
+## jungle beyond it and wild country where the dinosaurs roam — instead
+## of every animal everywhere. Which creatures suit which biome is set in
+## src/creatures.gd, not here.
+func _biome_at(wx: int, wz: int) -> String:
+	var patch_x := floori(float(wx) / 112.0)
+	var patch_z := floori(float(wz) / 112.0)
+	var roll := WorldGen.hash01(patch_x, patch_z, 4242)
+	if roll < 0.30:
+		return Creatures.FOREST
+	if roll < 0.56:
+		return Creatures.FARM
+	if roll < 0.78:
+		return Creatures.JUNGLE
+	return Creatures.LAND  # wild country: dinosaur territory
+
 func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 	var angle := randf() * TAU
 	var dist := randf_range(10.0, 26.0)
@@ -2407,7 +2425,7 @@ func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 	# Registry creatures (dinosaurs and friends) get first refusal: add or
 	# retire them in src/creatures.gd and the world follows — nothing here
 	# needs touching.
-	var habitat := Creatures.LAND
+	var habitat := _biome_at(wx, wz)
 	if ground == Blocks.WATER:
 		habitat = Creatures.WATER
 	elif ground == Blocks.SAND:

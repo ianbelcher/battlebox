@@ -1470,7 +1470,10 @@ func _build_video_tab() -> void:
 	# Self-updater: one button grabs the newest build from the server's
 	# downloads page and swaps the executable (Windows swaps via a tiny
 	# helper script since a running exe can't overwrite itself).
-	if OS.has_feature("standalone") and (OS.has_feature("windows") or OS.has_feature("linux")):
+	# NOT has_feature("editor") is the Godot 4 test for "this is a real
+	# exported build" — the old "standalone" tag is Godot 3 and never
+	# matches, which is why this button never appeared for anyone.
+	if not OS.has_feature("editor") and (OS.has_feature("windows") or OS.has_feature("linux")):
 		var upd_btn := Button.new()
 		upd_btn.focus_mode = Control.FOCUS_NONE
 		upd_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT

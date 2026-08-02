@@ -316,6 +316,53 @@ func _sphere(radius: float, color: Color, squash := 1.0, emissive := false) -> M
 	return instance
 
 
+## Collect model-space positions of parts whose names contain a needle.
+static func _collect(node: Node, xf: Transform3D, needles: Array, hits: Array) -> void:
+	var lower := str(node.name).to_lower()
+	for needle: String in needles:
+		if lower.contains(needle):
+			hits.append(xf.origin)
+			break
+	for child in node.get_children():
+		var child_xf := xf
+		if child is Node3D:
+			child_xf = xf * (child as Node3D).transform
+		_collect(child, child_xf, needles, hits)
+
+static func _avg(points: Array) -> Vector3:
+	var sum := Vector3.ZERO
+	for p: Vector3 in points:
+		sum += p
+	return sum / maxf(float(points.size()), 1.0)
+
+## WHICH WAY IS FORWARD? Model packs disagree wildly — within one pack the
+## horse faced +X, the cow +Z and the chicken -Z — so instead of trusting
+## the exporter we ask the model: a head sits in front of the hips, and
+## front legs sit in front of back legs. Returns the yaw that points that
+## direction down -Z (the way the game aims creatures), or NAN when the
+## model has no recognisable parts and the registry's "yaw" wins.
+static func _auto_yaw(inst: Node3D) -> float:
+	var heads: Array = []
+	var hips: Array = []
+	_collect(inst, Transform3D.IDENTITY, ["head"], heads)
+	_collect(inst, Transform3D.IDENTITY, ["hip"], hips)
+	var forward := Vector3.ZERO
+	if not heads.is_empty() and not hips.is_empty():
+		forward = _avg(heads) - _avg(hips)
+	else:
+		var front: Array = []
+		var back: Array = []
+		_collect(inst, Transform3D.IDENTITY, ["front"], front)
+		_collect(inst, Transform3D.IDENTITY, ["back"], back)
+		if not front.is_empty() and not back.is_empty():
+			forward = _avg(front) - _avg(back)
+	forward.y = 0.0
+	if forward.length() < 0.0001:
+		return NAN
+	forward = forward.normalized()
+	return rad_to_deg(atan2(forward.x, -forward.z))
+
+
 ## True size of a model in its own space: every mesh counted through the
 ## transforms of the parts it hangs off (body parts sit ALL OVER a rigged
 ## model, so measuring raw mesh bounds under-reads it wildly).
@@ -359,7 +406,10 @@ func _build_from_registry(kind: int, visual: Node3D, root: Node3D) -> bool:
 	if measured and aabb.size.y > 0.0001:
 		factor = float(Creatures.def(kind).get("height", 1.0)) / aabb.size.y
 	inst.scale = Vector3.ONE * factor
-	inst.rotation_degrees = Vector3(0, 180, 0)
+	var yaw := _auto_yaw(inst)
+	if is_nan(yaw):
+		yaw = float(Creatures.def(kind).get("yaw", 0.0))
+	inst.rotation_degrees = Vector3(0, yaw, 0)
 	if measured:
 		inst.position.y = -aabb.position.y * factor  # stand on its feet
 	var ap := inst.find_child("AnimationPlayer", true, false) as AnimationPlayer
