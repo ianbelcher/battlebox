@@ -8,9 +8,11 @@ extends RefCounted
 ## Keyboard  WASD        Space   L-click/G  R-click/F  E          Z / C  X / V    T           Q
 ## Gamepad   Left stick  A       B          X          D-pad up   R stick ←→ / ↕  Y      Back/Select
 ##
-## Tab / R and the bumpers still quick-cycle the selection; E (or D-pad up)
-## opens the full picker with names. In first person the right stick looks
-## around; on keyboard the mouse looks. Esc leaves first person.
+## The BUMPERS (Tab / Shift+Tab on the keyboard) step through the picker's
+## tabs — blocks, kits and your character — and quick-cycle the held item
+## when no menu is open. E (or X/Start) opens the full picker with names.
+## In first person the right stick looks around; on keyboard the mouse
+## looks. Esc leaves first person.
 
 enum Kind { KEYBOARD_WASD, KEYBOARD_ARROWS, GAMEPAD }
 
@@ -106,14 +108,18 @@ func is_place_pressed() -> bool:
 			return Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.5
 
 ## Cycle the hotbar selection. Returns -1, 0 or +1.
+## Step BOTH ways: the bumpers walk the picker's tabs (which is why the
+## character page is a tab now and LB no longer owns it), and in-world the
+## same buttons cycle what you're holding.
 func cycle_direction() -> int:
 	match kind:
 		Kind.KEYBOARD_WASD:
 			if Input.is_physical_key_pressed(KEY_TAB):
-				return 1
+				return -1 if Input.is_physical_key_pressed(KEY_SHIFT) else 1
 		Kind.GAMEPAD:
-			if Input.is_joy_button_pressed(device, JOY_BUTTON_RIGHT_SHOULDER):
-				return 1
+			var right := Input.is_joy_button_pressed(device, JOY_BUTTON_RIGHT_SHOULDER)
+			var left := Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER)
+			return (1 if right else 0) - (1 if left else 0)
 	return 0
 
 ## Throw an orb (R / middle click / right trigger) — always available.
@@ -153,15 +159,6 @@ func is_menu_pressed() -> bool:
 				or Input.is_joy_button_pressed(device, JOY_BUTTON_X)
 	return false
 
-## Open this player's CHARACTER picker: LB on a pad, C on the keyboard.
-func is_character_pressed() -> bool:
-	match kind:
-		Kind.KEYBOARD_WASD:
-			return Input.is_physical_key_pressed(KEY_C)
-		Kind.GAMEPAD:
-			return Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER)
-	return false
-
 ## Open/close the block & structure picker (E / D-pad up).
 func is_picker_pressed() -> bool:
 	match kind:
@@ -188,13 +185,6 @@ func get_ui_vector() -> Vector2:
 
 ## Sprint is retired — walking is the normal pace now.
 ## Triggers cycle the menu's TOP-LEVEL group (Build / Game / Options).
-func group_cycle_direction() -> int:
-	if kind != Kind.GAMEPAD:
-		return 0
-	var right := Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.5
-	var left := Input.get_joy_axis(device, JOY_AXIS_TRIGGER_LEFT) > 0.5
-	return (1 if right else 0) - (1 if left else 0)
-
 func is_sprint_pressed() -> bool:
 	return false
 

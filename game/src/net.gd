@@ -57,6 +57,13 @@ func connect_to(url: String) -> Error:
 	multiplayer.multiplayer_peer = peer
 	return OK
 
+## Drop the link on purpose — the world menu pointing this client at a
+## different server. main.gd's reconnect loop dials the new address.
+func disconnect_now() -> void:
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer.close()
+	server_disconnected.emit()
+
 func go_offline() -> void:
 	if multiplayer.multiplayer_peer != null:
 		multiplayer.multiplayer_peer.close()

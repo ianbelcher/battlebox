@@ -21,6 +21,7 @@ class_name Creatures
 const GROUND := 0   # walks the surface, falls when the ground goes
 const FLIER := 1    # soars above the terrain
 const SWIMMER := 2  # stays in the water
+const STILL := 3    # doesn't roam (modelled lying down, so walking looks wrong)
 
 ## Where it is allowed to appear.
 const LAND := "land"
@@ -155,7 +156,7 @@ const DEFS := {
 		"height": 0.9, "move": GROUND, "speed": 1.4, "habitat": JUNGLE,
 		"weight": 0.12, "anims": DINO_ANIMS},
 	55: {"name": "Python", "model": "res://assets/models/jungle/python.glb",
-		"height": 0.6, "move": GROUND, "speed": 1.6, "habitat": JUNGLE,
+		"height": 0.6, "move": STILL, "speed": 0.0, "habitat": JUNGLE,
 		"weight": 0.12, "anims": DINO_ANIMS},
 	56: {"name": "Cassowary", "model": "res://assets/models/jungle/cassowary.glb",
 		"height": 1.7, "move": GROUND, "speed": 2.4, "habitat": JUNGLE,

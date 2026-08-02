@@ -35,7 +35,7 @@ var client_loot := false
 var client_fly := false
 var client_team_names: Array = ["A", "B", "C", "D"]
 var client_world := ""
-var client_mode := "battle"
+var client_mode := "creative"
 ## player_id -> dragon critter id, replicated so everyone sees who rides.
 var riding_map: Dictionary = {}
 
@@ -127,7 +127,7 @@ const TEAM_COLORS := [Color("ff5a5a"), Color("4a9df8"), Color("51c979"),
 var team_count := 4
 var selected_map := ""
 ## "battle" = matches loop continuously · "creative" = free build/play.
-var game_mode := "battle"
+var game_mode := "creative"
 ## Kid-tuned battle health: plenty of hearts, and after any hit you're
 ## untouchable for a moment — no more getting deleted in one volley.
 const MATCH_HP := 8
@@ -964,13 +964,20 @@ func _server_tick_fire() -> void:
 			cl_zap_hit.rpc(monster_id, dead)
 
 ## Water flow: when blocks vanish next to water (dig, blast), the hole
-## fills and the fill spreads — ponds pour into TNT craters properly.
+## fills and the fill keeps going — ponds pour into TNT craters properly.
+##
+## Water only creeps SIDEWAYS once it has landed on something. Anything
+## with air underneath simply falls, like a waterfall; that is why a hole
+## punched in the side of a pool now dribbles out and drops, instead of
+## the old behaviour where it crawled outwards across flat ground.
+const WATER_SPREAD := 10
 var _holes: Array = []
 
 func _disturb_water(removed_cells: Array) -> void:
 	for cell in removed_cells:
 		if cell is Vector3i and _holes.size() < 400:
-			_holes.append({"pos": cell, "range": 10})
+			# Spread 0: a dug hole leaks, it doesn't spill across the floor.
+			_holes.append({"pos": cell, "spread": 0})
 
 func _server_tick_water() -> void:
 	if _holes.is_empty():
@@ -981,7 +988,7 @@ func _server_tick_water() -> void:
 	while not _holes.is_empty() and budget > 0:
 		var entry = _holes.pop_front()
 		var hole: Vector3i = entry.pos
-		var hole_range: int = entry.range
+		var spread: int = int(entry.get("spread", 0))
 		if store.get_block(hole) != Blocks.AIR:
 			continue
 		var wet := false
@@ -996,15 +1003,20 @@ func _server_tick_water() -> void:
 		budget -= 1
 		store.set_block(hole, Blocks.WATER)
 		filled.append(hole)
-		# The new water keeps flowing: down freely, sideways only ~10 blocks
-		# from where the leak started (like Minecraft, but wider).
-		for off in [Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
-				Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
-			var next: Vector3i = hole + off
-			var next_range := 10 if off.y < 0 else hole_range - 1
-			if next_range >= 0 and store.get_block(next) == Blocks.AIR \
-					and next_holes.size() < 200:
-				next_holes.append({"pos": next, "range": next_range})
+		# Nothing underneath? Fall, and only fall. The cell below carries a
+		# full spread budget, which it spends only if it lands on something.
+		var below: Vector3i = hole + Vector3i(0, -1, 0)
+		if store.get_block(below) == Blocks.AIR:
+			if next_holes.size() < 200:
+				next_holes.append({"pos": below, "spread": WATER_SPREAD})
+		elif spread > 0:
+			# Landed: puddle outwards, a block less reach each step.
+			for off in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
+					Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+				var next: Vector3i = hole + off
+				if store.get_block(next) == Blocks.AIR \
+						and next_holes.size() < 200:
+					next_holes.append({"pos": next, "spread": spread - 1})
 	_holes.append_array(next_holes)
 	if not filled.is_empty():
 		cl_batch.rpc(filled, Blocks.WATER)
@@ -1504,7 +1516,7 @@ func _load_battle_setup() -> void:
 	if names.size() >= 2:
 		team_names = names
 		team_count = names.size()
-	game_mode = str(cfg.get_value("battle", "mode", "battle"))
+	game_mode = str(cfg.get_value("battle", "mode", "creative"))
 	match_loop = game_mode == "battle"
 	selected_map = str(cfg.get_value("battle", "world", ""))
 	if not _known_map(selected_map):
@@ -1552,7 +1564,9 @@ func sv_set_bot_team(target_id: String, team: int) -> void:
 
 @rpc("any_peer", "reliable")
 func sv_match_config(minutes: int, loot: int, size: int = -1, fly: int = -1) -> void:
-	if not multiplayer.is_server() or not (match_phase in ["IDLE", "LOBBY"]) \
+	# No phase guard: the grown-up gets to re-size the arena, allow flying
+	# or change the round length WHILE a battle is running.
+	if not multiplayer.is_server() \
 			or not _is_host(multiplayer.get_remote_sender_id()):
 		return
 	if minutes > 0:
@@ -2487,6 +2501,12 @@ func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 	var delta := 0.33
 	var move_mode := Creatures.move_of(int(critter.kind))
+	# The jungle python is modelled lying down and rotated, so any walking
+	# at all looks wrong — it just rests on the ground where it spawned.
+	if move_mode == Creatures.STILL:
+		critter.pos.y = float(store.surface_y(int(critter.pos.x),
+			int(critter.pos.z))) + 1.0
+		return
 	# Ground creatures settle onto whatever is under them EVERY tick, not
 	# just while walking: shoot the block out from under an animal and it
 	# falls instead of hanging in mid-air.
@@ -2506,6 +2526,10 @@ func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 				critter.target = critter.pos + away.normalized() * 7.0
 				critter.think = 3.0
 				break
+	# Fliers roam on their own terms — see _move_flier.
+	if move_mode == Creatures.FLIER:
+		_move_flier(critter, delta)
+		return
 	critter.think -= delta
 	if critter.think <= 0.0:
 		critter.think = randf_range(2.0, 5.0)
@@ -2519,10 +2543,6 @@ func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 		var next: Vector3 = critter.pos + step
 		var y := store.surface_y(int(next.x), int(next.z))
 		var ground := store.get_block(Vector3i(int(next.x), y, int(next.z)))
-		if move_mode == Creatures.FLIER:
-			next.y = float(y) + 1.0  # the view adds its soaring height
-			critter.pos = next
-			return
 		if move_mode == Creatures.SWIMMER:
 			if ground != Blocks.WATER:
 				critter.think = 0.0
@@ -2540,6 +2560,34 @@ func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 				return
 			next.y = maxf(float(y) + 1.0, critter.pos.y - 9.0 * delta)
 		critter.pos = next
+
+## Fliers cruise between far-apart waypoints and never ask the ground for
+## permission to move. They used to share the walkers' 2-8 block wander and
+## the walkers' veto rules, which is why pterodactyls never moved at all
+## and the odd bird sat in one spot: a wander target that landed where the
+## bird already was, or over ground it couldn't have stood on, pinned it
+## there for good. The terrain now only sets a floor to stay above; the
+## species' fly_height is still added on top by CritterView.
+func _move_flier(critter: Dictionary, delta: float) -> void:
+	critter.think -= delta
+	if critter.think <= 0.0 or critter.pos.distance_to(critter.target) < 2.0:
+		critter.think = randf_range(4.0, 9.0)
+		var angle := randf() * TAU
+		var spot: Vector3 = critter.pos \
+			+ Vector3(cos(angle), 0, sin(angle)) * randf_range(14.0, 34.0)
+		spot.y = float(store.surface_y(int(spot.x), int(spot.z))) + 1.0 \
+			+ randf_range(0.0, 5.0)
+		critter.target = spot
+	var step: Vector3 = (critter.target - critter.pos).limit_length(
+		float(critter.speed) * delta)
+	var next: Vector3 = critter.pos + step
+	# Never fly into a hillside: keep a block of air under the wings.
+	next.y = maxf(next.y,
+		float(store.surface_y(int(next.x), int(next.z))) + 1.0)
+	if OS.get_environment("WORLD_FLIER_DEBUG") == "1":
+		print("FLIER kind=%d moved %.2f -> %v" % [int(critter.kind),
+			critter.pos.distance_to(next), next])
+	critter.pos = next
 
 # ------------------------------------------------------------------
 # Client

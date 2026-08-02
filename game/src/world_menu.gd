@@ -20,7 +20,9 @@ var _mode_btns: Dictionary = {}
 var _length_btns: Dictionary = {}
 var _size_btns: Dictionary = {}
 var _fly_btns: Dictionary = {}
-var _start_btn: Button
+var _length_head: HBoxContainer
+var _length_row: HBoxContainer
+var _server_edit: LineEdit
 var _add_bot_btn: Button
 var _update_state := "idle"
 var _update_req: HTTPRequest
@@ -75,6 +77,11 @@ func _ready() -> void:
 	_tabs = TabContainer.new()
 	_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_tabs.add_theme_font_size_override("font_size", _s(21))
+	# Controllers must not reach into this menu at all: focus is how a
+	# gamepad drives Godot's UI (ui_left/ui_right/ui_accept walk the focus
+	# chain), so nothing in here is focusable except by clicking it.
+	_tabs.focus_mode = Control.FOCUS_NONE
+	_tabs.get_tab_bar().focus_mode = Control.FOCUS_NONE
 	outer.add_child(_tabs)
 	_build_map_tab()
 	_build_battle_tab()
@@ -157,6 +164,30 @@ func _build_map_tab() -> void:
 	_saved_row = HBoxContainer.new()
 	_saved_row.add_theme_constant_override("separation", _s(8))
 	box.add_child(_saved_row)
+	# The launcher no longer asks which server to join — it just connects —
+	# so this is where a grown-up points the game somewhere else.
+	box.add_child(HSeparator.new())
+	_heading(box, "Server")
+	var server_row := HBoxContainer.new()
+	server_row.add_theme_constant_override("separation", _s(8))
+	box.add_child(server_row)
+	_server_edit = LineEdit.new()
+	_server_edit.text = Game.server_url()
+	_server_edit.focus_mode = Control.FOCUS_CLICK
+	_server_edit.custom_minimum_size = Vector2(_s(420), 0)
+	_server_edit.add_theme_font_size_override("font_size", _s(19))
+	server_row.add_child(_server_edit)
+	server_row.add_child(_button("Use this server", func() -> void:
+		var url := _server_edit.text.strip_edges()
+		if url.is_empty():
+			return
+		if not url.begins_with("ws://") and not url.begins_with("wss://"):
+			url = "ws://" + url
+		Game.set_server_url(url)
+		# Dropping the link is enough: main.gd notices, shows the
+		# reconnecting banner and dials the new address by itself.
+		close()
+		Net.disconnect_now()))
 
 func _refresh_maps() -> void:
 	if _map_row == null:
@@ -194,7 +225,7 @@ func _build_battle_tab() -> void:
 	var mode_row := HBoxContainer.new()
 	mode_row.add_theme_constant_override("separation", _s(8))
 	box.add_child(mode_row)
-	for spec in [["battle", "⚔  Battle royale"], ["creative", "🧱  Just building"]]:
+	for spec in [["battle", "Battle royale"], ["creative", "Just building"]]:
 		var key := str(spec[0])
 		var btn := _button(str(spec[1]), func() -> void:
 			if Game.world != null:
@@ -202,18 +233,9 @@ func _build_battle_tab() -> void:
 		mode_row.add_child(btn)
 		_mode_btns[key] = btn
 
-	_heading(box, "Game length")
-	var len_row := HBoxContainer.new()
-	len_row.add_theme_constant_override("separation", _s(8))
-	box.add_child(len_row)
-	for preset in [[3, "3 min"], [5, "5 min"], [8, "8 min"], [60, "Unlimited"]]:
-		var minutes: int = preset[0]
-		var btn := _button(str(preset[1]), func() -> void:
-			if Game.world != null:
-				Game.world.sv_match_config.rpc_id(1, minutes, -1, -1, -1))
-		len_row.add_child(btn)
-		_length_btns[minutes] = btn
-
+	# Arena size and flying are NOT battle settings — they shape the world
+	# in both modes — so they sit above the battle-only ones and always
+	# show. Everything here applies immediately, mid-battle included.
 	_heading(box, "Arena size")
 	var size_row := HBoxContainer.new()
 	size_row.add_theme_constant_override("separation", _s(8))
@@ -226,7 +248,7 @@ func _build_battle_tab() -> void:
 		size_row.add_child(btn)
 		_size_btns[arena] = btn
 
-	_heading(box, "Flying during battles")
+	_heading(box, "Flying")
 	var fly_row := HBoxContainer.new()
 	fly_row.add_theme_constant_override("separation", _s(8))
 	box.add_child(fly_row)
@@ -238,13 +260,21 @@ func _build_battle_tab() -> void:
 		fly_row.add_child(btn)
 		_fly_btns[val] = btn
 
-	box.add_child(HSeparator.new())
-	_start_btn = _button("🏆  START THE BATTLE", func() -> void:
-		if Game.world != null:
-			Game.world.sv_match_start.rpc_id(1, 0)
-		close())
-	_start_btn.add_theme_font_size_override("font_size", _s(24))
-	box.add_child(_start_btn)
+	# Battle-only, and last: how long a round runs for.
+	_length_head = HBoxContainer.new()
+	_length_head.add_theme_constant_override("separation", _s(8))
+	box.add_child(_length_head)
+	_heading(_length_head, "Game length")
+	_length_row = HBoxContainer.new()
+	_length_row.add_theme_constant_override("separation", _s(8))
+	box.add_child(_length_row)
+	for preset in [[3, "3 min"], [5, "5 min"], [8, "8 min"], [60, "Unlimited"]]:
+		var minutes: int = preset[0]
+		var btn := _button(str(preset[1]), func() -> void:
+			if Game.world != null:
+				Game.world.sv_match_config.rpc_id(1, minutes, -1, -1, -1))
+		_length_row.add_child(btn)
+		_length_btns[minutes] = btn
 
 # ------------------------------------------------------------------
 # Players
@@ -408,6 +438,7 @@ func _slider(parent: Control, label: String, key: String, low: int, high: int,
 	name_label.add_theme_font_size_override("font_size", _s(19))
 	row.add_child(name_label)
 	var slider := HSlider.new()
+	slider.focus_mode = Control.FOCUS_NONE
 	slider.min_value = low
 	slider.max_value = high
 	slider.step = step
@@ -429,7 +460,7 @@ func _build_help_tab() -> void:
 	var box := _tab("Help")
 	for line in ["Esc  —  this world menu (keyboard and mouse)",
 			"X  —  blocks and kits (controller)",
-			"LB  —  choose your character (controller)",
+			"LB / RB  —  flip through the picker's tabs (your character is one of them)",
 			"D-pad ◀ ▶  —  swap what you're holding",
 			"A / Space  —  jump.  Double-tap to fly (when allowed)",
 			"RT / R  —  throw or shoot.  LT  —  dig",
@@ -455,13 +486,13 @@ func _build_credits_tab() -> void:
 				str(entry.by), str(entry.license), str(entry.what)]
 			line.add_theme_font_size_override("font_size", _s(17))
 			box.add_child(line)
-	if not Credits.BUILDS.is_empty():
+	if not Credits.builds().is_empty():
 		var builds_head := Label.new()
 		builds_head.text = "Imported builds"
 		builds_head.add_theme_font_size_override("font_size", _s(21))
 		builds_head.add_theme_color_override("font_color", Color("ffd166"))
 		box.add_child(builds_head)
-		for entry: Dictionary in Credits.BUILDS:
+		for entry: Dictionary in Credits.builds():
 			var line := Label.new()
 			line.text = "   %s — built by %s  (%s)" % [str(entry.get("name", "?")),
 				str(entry.get("by", "unknown")), str(entry.get("license", "?"))]
@@ -558,9 +589,13 @@ func _refresh() -> void:
 		_mark(_size_btns[arena], arena == world.client_size)
 	for val: int in _fly_btns:
 		_mark(_fly_btns[val], (val == 1) == world.client_fly)
-	if _start_btn != null:
-		_start_btn.visible = world.client_mode == "battle"
-		_start_btn.disabled = world.match_phase != "IDLE"
+	# Game length only means anything in battle mode. There is no start
+	# button: picking Battle royale IS starting it.
+	var battling: bool = world.client_mode == "battle"
+	if _length_head != null:
+		_length_head.visible = battling
+	if _length_row != null:
+		_length_row.visible = battling
 
 var _auto_ms := 0
 
@@ -569,5 +604,10 @@ func _process(delta: float) -> void:
 		_auto_ms += int(delta * 1000.0)
 		if _auto_ms > 12000:
 			open()
+			# WORLD_MENU_TAB=<n> opens straight onto one tab for screenshots.
+			var want := OS.get_environment("WORLD_MENU_TAB")
+			if want.is_valid_int() and _tabs != null:
+				_tabs.current_tab = clampi(want.to_int(), 0,
+					_tabs.get_tab_count() - 1)
 	if visible:
 		_refresh()

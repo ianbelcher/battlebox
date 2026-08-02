@@ -27,9 +27,17 @@ const ENTRIES := [
 		"license": "MIT", "what": "The engine this runs on"},
 ]
 
-## Imported Minecraft builds get appended here by the kit importer, one
-## entry per build, so each builder is named individually.
-const BUILDS: Array = []
+## Imported Minecraft builds, read straight off the generated kit file so
+## the credits can never drift from what actually ships: one entry per
+## build, naming its builder and licence.
+static var _builds: Array = []
+
+static func builds() -> Array:
+	if _builds.is_empty():
+		for kit: Dictionary in StructuresImported.KITS:
+			_builds.append({"name": str(kit.name), "by": str(kit.by),
+				"license": str(kit.license)})
+	return _builds
 
 static func groups() -> Array:
 	var seen: Array = []

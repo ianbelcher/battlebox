@@ -25,11 +25,27 @@ const STRUCTURES := [
 	{"id": "castle_gate", "name": "Castle Gate", "color": Color("9aa0ab")},
 ]
 
+## Real Minecraft builds imported from structure-block .nbt files (see
+## tests/import_structures.gd). They come AFTER the hand-written kits, so
+## every existing hotbar index keeps meaning what it did.
+static var _all: Array = []
+
+static func all() -> Array:
+	if _all.is_empty():
+		_all = STRUCTURES.duplicate()
+		for kit: Dictionary in StructuresImported.KITS:
+			_all.append({"id": str(kit.id), "name": str(kit.name),
+				"color": Blocks.color_of(int(kit.get("top", Blocks.PLANKS))),
+				"roof": Blocks.color_of(int(kit.get("roof", Blocks.PLANKS))),
+				"imported": true})
+	return _all
+
 static func count() -> int:
-	return STRUCTURES.size()
+	return all().size()
 
 static func spec(index: int) -> Dictionary:
-	return STRUCTURES[posmod(index, STRUCTURES.size())]
+	var list := all()
+	return list[posmod(index, list.size())]
 
 ## The block list for a structure, rotated to face the builder (facing is a
 ## quadrant 0-3: -Z, +X, +Z, -X).
@@ -52,7 +68,10 @@ static func cells(index: int, roll: int, facing := 0) -> Array:
 	return out
 
 static func _cells_raw(index: int, roll: int) -> Array:
-	match spec(index).id:
+	var entry := spec(index)
+	if bool(entry.get("imported", false)):
+		return _imported_cells(index - STRUCTURES.size())
+	match entry.id:
 		"house":
 			return _house(roll)
 		"tower":
@@ -209,6 +228,24 @@ static func _barricade() -> Array:
 		if absi(x) < 3:
 			_put(list, x, 1, 0, Blocks.SAND)
 	return list
+
+## Unpack an imported kit: 4 bytes per block — x+128, y, z+128, block.
+static var _decoded: Dictionary = {}
+
+static func _imported_cells(kit_index: int) -> Array:
+	if _decoded.has(kit_index):
+		return _decoded[kit_index]
+	var kit: Dictionary = StructuresImported.KITS[posmod(kit_index,
+		StructuresImported.KITS.size())]
+	var bytes := Marshalls.base64_to_raw(str(kit.data))
+	var cells: Array = []
+	var i := 0
+	while i + 3 < bytes.size():
+		cells.append([Vector3i(bytes[i] - 128, bytes[i + 1], bytes[i + 2] - 128),
+			bytes[i + 3]])
+		i += 4
+	_decoded[kit_index] = cells
+	return cells
 
 static func _put(list: Array, x: int, y: int, z: int, block: int) -> void:
 	list.append([Vector3i(x, y, z), block])

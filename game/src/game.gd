@@ -32,6 +32,24 @@ var video: Dictionary = {
 }
 const VIDEO_PATH := "user://video.cfg"
 
+## The server this machine dials on launch. There is no server-picker
+## screen any more — the client just connects — so the address lives here
+## and is only ever changed from the world menu (or the rescue box that
+## appears when the client can't reach anything).
+func server_url() -> String:
+	var config := ConfigFile.new()
+	if config.load(VIDEO_PATH) == OK:
+		var saved := str(config.get_value("net", "server", ""))
+		if not saved.is_empty():
+			return saved
+	return Net.default_server_url()
+
+func set_server_url(url: String) -> void:
+	var config := ConfigFile.new()
+	config.load(VIDEO_PATH)
+	config.set_value("net", "server", url)
+	config.save(VIDEO_PATH)
+
 func load_video() -> void:
 	var config := ConfigFile.new()
 	if config.load(VIDEO_PATH) != OK:
@@ -41,6 +59,9 @@ func load_video() -> void:
 
 func save_video() -> void:
 	var config := ConfigFile.new()
+	# Load first: the file also holds the server address, and writing a
+	# fresh one would drop it.
+	config.load(VIDEO_PATH)
 	for key in video.keys():
 		config.set_value("video", key, video[key])
 	config.save(VIDEO_PATH)
@@ -416,5 +437,9 @@ func select_profile(slot: int, key: String) -> void:
 func reset_to_disconnected() -> void:
 	roster = {}
 	local_inputs = {}
+	# Clear the device->profile claims too. Leaving them behind made every
+	# reconnect hand the same controller a "#1" key, so the kid came back
+	# as a stranger with a random name and character.
+	profile_keys = {}
 	remove_world()
 	roster_changed.emit()

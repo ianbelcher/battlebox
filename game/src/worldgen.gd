@@ -144,9 +144,15 @@ func generate_chunk(cx: int, cz: int) -> PackedByteArray:
 			elif h == SEA_LEVEL + 1 and h + 1 < CHUNK_H and hash01(wx, wz, 62) < 0.1:
 				data[idx(lx, h + 1, lz)] = Blocks.CATTAIL
 			_carve_caves(data, lx, lz, wx, wz, h)
-			_sky_island(data, lx, lz, wx, wz)
+			# No floating islands over the city — they make no sense
+			# hanging above a street grid.
+			if theme != "city":
+				_sky_island(data, lx, lz, wx, wz)
 			_landmark_column(data, lx, lz, wx, wz, h)
-	_scatter_features(data, cx, cz)
+	# The city plants its own street trees, verges and parks; the wild
+	# scatter used to sprinkle forest over the pavements on top of it.
+	if theme != "city":
+		_scatter_features(data, cx, cz)
 	return data
 
 ## Winding underground caverns, lit by crystals and glowstone. Only under
@@ -276,128 +282,245 @@ func _landmark_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 		elif absi(dx) == 7 and dz == 0:
 			data[idx(lx, deck + 1, lz)] = Blocks.LANTERN
 
-## CITY: a street grid with procedural buildings, sidewalks and glass.
+## CITY: a real street plan rather than a uniform grid of boxes.
+##
+## Road centre lines sit every CITY_LOT blocks; every other one (the 64
+## grid) is a wide main avenue with a dashed centre line, the rest are
+## narrower side streets. Each road carries a pavement, then a grass verge,
+## and only then do the lots start — so buildings never grow straight out
+## of the tarmac. Lots become parks, squares or buildings whose footprint
+## and height are rolled per lot.
+const CITY_LOT := 40
+const CITY_VERGE := 2         # grass between the pavement and the lot
+
+## Half-width of the tarmac and of the tarmac-plus-pavement for the road
+## running down `centre`.
+static func _city_tar(centre: int) -> int:
+	return 5 if posmod(centre, 80) == 0 else 2
+
+static func _city_kerb(centre: int) -> int:
+	return 7 if posmod(centre, 80) == 0 else 4
+
+## Nearest road centre line to a coordinate, on the CITY_LOT grid.
+static func _city_centre(v: int) -> int:
+	return int(roundf(float(v) / float(CITY_LOT))) * CITY_LOT
+
 func _city_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: int) -> void:
 	if Vector2(wx, wz).length() > ISLAND_RADIUS - 40.0 or h <= SEA_LEVEL:
 		return
-	var street_x := posmod(wx, 26)
-	var street_z := posmod(wz, 26)
-	# Wide roads every 26 blocks, with a paler sidewalk strip on the edges.
-	if street_x < 6 or street_z < 6:
-		var sidewalk: bool = street_x == 5 or street_z == 5 \
-			or street_x == 0 or street_z == 0
-		data[idx(lx, h, lz)] = Blocks.SANDSTONE if sidewalk else Blocks.PATH
-		for y in range(h + 1, mini(h + 8, CHUNK_H)):
-			data[idx(lx, y, lz)] = Blocks.AIR
-		# Traffic lights at every intersection corner.
-		if street_x == 1 and street_z == 1:
-			for k in range(1, 4):
-				data[idx(lx, h + k, lz)] = Blocks.SLATE
-			if h + 6 < CHUNK_H:
-				data[idx(lx, h + 4, lz)] = Blocks.WOOL_GREEN
-				data[idx(lx, h + 5, lz)] = Blocks.WOOL_YELLOW
-				data[idx(lx, h + 6, lz)] = Blocks.WOOL_RED
-		# Street lamps midway along blocks.
-		elif street_x == 2 and street_z == 13:
+	var cx := _city_centre(wx)
+	var cz := _city_centre(wz)
+	var dx := absi(wx - cx)
+	var dz := absi(wz - cz)
+	var tar_x := _city_tar(cx)
+	var tar_z := _city_tar(cz)
+	var kerb_x := _city_kerb(cx)
+	var kerb_z := _city_kerb(cz)
+	var on_road: bool = dx <= tar_x or dz <= tar_z
+	var on_kerb: bool = dx <= kerb_x or dz <= kerb_z
+
+	if on_road:
+		data[idx(lx, h, lz)] = Blocks.SLATE
+		_city_clear(data, lx, lz, h, 10)
+		# Dashed white centre line down the middle of the main avenues,
+		# broken at the crossroads so junctions stay clear.
+		var main_x: bool = dx == 0 and posmod(cx, 80) == 0 and dz > tar_z
+		var main_z: bool = dz == 0 and posmod(cz, 80) == 0 and dx > tar_x
+		if (main_x and posmod(wz, 8) < 4) or (main_z and posmod(wx, 8) < 4):
+			data[idx(lx, h, lz)] = Blocks.WOOL_WHITE
+		return
+
+	if on_kerb:
+		data[idx(lx, h, lz)] = Blocks.SANDSTONE
+		_city_clear(data, lx, lz, h, 10)
+		# Street lights stand on the kerb of the main avenues, spaced out
+		# along the road and never in the middle of a junction.
+		var post_x: bool = dx == kerb_x and posmod(cx, 80) == 0 and dz > kerb_z \
+			and posmod(wz, 16) == 0
+		var post_z: bool = dz == kerb_z and posmod(cz, 80) == 0 and dx > kerb_x \
+			and posmod(wx, 16) == 0
+		if (post_x or post_z) and h + 6 < CHUNK_H:
 			for k in range(1, 5):
-				data[idx(lx, h + k, lz)] = Blocks.SLATE if k < 4 else Blocks.LANTERN
+				data[idx(lx, h + k, lz)] = Blocks.STEEL
+			data[idx(lx, h + 5, lz)] = Blocks.LANTERN
 		return
-	# City lot: one building per 22-grid cell, inset 2 from streets.
-	var bx := floori(wx / 26.0)
-	var bz := floori(wz / 26.0)
-	var build_roll := hash01(bx, bz, 800)
-	if build_roll < 0.42 and build_roll >= 0.3:
-		# Car park: striped lot with chunky parked cars.
-		if h + 2 >= CHUNK_H:
-			return
-		data[idx(lx, h, lz)] = Blocks.PATH
-		if posmod(street_z, 4) == 0 and street_x > 7 and street_x < 24:
-			data[idx(lx, h, lz)] = Blocks.SANDSTONE  # painted stripe
-		# Cars: 2x3 colored boxes with a glass cabin, in neat rows.
-		var carx := posmod(street_x - 8, 5)
-		var carz := posmod(street_z - 8, 4)
-		if street_x >= 8 and street_x <= 22 and street_z >= 8 and street_z <= 22 \
-				and carx < 2 and carz < 3 \
-				and hash01(bx * 40 + (street_x - 8) / 5, bz * 40 + (street_z - 8) / 4, 812) < 0.6:
-			var paint: int = [Blocks.WOOL_RED, Blocks.WOOL_BLUE, Blocks.WOOL_YELLOW,
-				Blocks.WOOL_GREEN][int(hash01(bx * 40 + (street_x - 8) / 5,
-				bz * 40 + (street_z - 8) / 4, 813) * 4.0)]
-			data[idx(lx, h + 1, lz)] = paint
-			if carz == 1:
-				data[idx(lx, h + 2, lz)] = Blocks.GLASS  # cabin
-		return
-	if build_roll < 0.3:
-		# Park lot: grass, flowers and little bushes break up the blocks.
-		var proll := hash01(wx, wz, 806)
+
+	# Grass verge along the front of every lot.
+	var verge_x: int = dx - kerb_x
+	var verge_z: int = dz - kerb_z
+	if verge_x <= CITY_VERGE or verge_z <= CITY_VERGE:
+		data[idx(lx, h, lz)] = Blocks.GRASS
+		_city_clear(data, lx, lz, h, 10)
+		var vroll := hash01(wx, wz, 815)
 		if h + 2 < CHUNK_H:
-			if proll < 0.012:
-				data[idx(lx, h + 1, lz)] = Blocks.LEAVES
-				data[idx(lx, h + 2, lz)] = Blocks.LEAVES
-			elif proll < 0.06:
+			if vroll < 0.05:
 				data[idx(lx, h + 1, lz)] = Blocks.TALL_GRASS
-			elif proll < 0.09:
-				data[idx(lx, h + 1, lz)] = [Blocks.FLOWER_RED,
-					Blocks.FLOWER_YELLOW, Blocks.FLOWER_PINK][int(proll * 100.0) % 3]
+			elif vroll < 0.075:
+				data[idx(lx, h + 1, lz)] = [Blocks.FLOWER_RED, Blocks.FLOWER_YELLOW,
+					Blocks.FLOWER_PINK, Blocks.DAISY][int(vroll * 400.0) % 4]
+			elif vroll < 0.085 and verge_x == CITY_VERGE and verge_z > CITY_VERGE:
+				# Street trees, in line, only along the length of a lot.
+				data[idx(lx, h + 1, lz)] = Blocks.LOG
+				data[idx(lx, h + 2, lz)] = Blocks.LEAVES
 		return
-	# Every building gets its own footprint and height.
-	var inset := 7 + int(hash01(bx, bz, 804) * 4.0)
-	var height := 5 + int(hash01(bx, bz, 801) * 22.0)
-	if street_x < inset or street_z < inset \
-			or street_x > 31 - inset or street_z > 31 - inset:
-		return  # sidewalk margin
-	var wall: bool = street_x == inset or street_z == inset \
-		or street_x == 31 - inset or street_z == 31 - inset
-	# Interior features: a staircase lane along one wall (climb a block per
-	# step, hole in each slab above the top step) and, in towers, an open
-	# lift shaft in the far corner — grapple straight up it.
-	var stair: int = -1
-	if (street_x == inset + 1 or street_x == inset + 2) \
-			and street_z > inset and street_z <= inset + 4:
-		stair = street_z - inset  # steps 1..4, then land on the slab itself
-	var stair_hole: bool = (street_x == inset + 1 or street_x == inset + 2) \
-		and street_z >= inset + 2 and street_z <= inset + 4
-	var shaft: bool = height > 16 \
-		and street_x >= 29 - inset and street_x <= 30 - inset \
-		and street_z >= 29 - inset and street_z <= 30 - inset
-	var material: int = [Blocks.BRICK, Blocks.MARBLE, Blocks.SLATE, Blocks.SANDSTONE][int(hash01(bx, bz, 802) * 4.0)]
-	for k in range(1, height + 1):
+
+	# The LOT index, not the nearest road: rounding here quartered every
+	# block into four different buildings that met in the middle.
+	var kx := floori(float(wx) / float(CITY_LOT))
+	var kz := floori(float(wz) / float(CITY_LOT))
+	var lot := hash01(kx, kz, 800)
+	if lot < 0.22:
+		_city_park(data, lx, lz, wx, wz, h, kx, kz)
+		return
+	if lot < 0.30:
+		_city_car_park(data, lx, lz, wx, wz, h, verge_x, verge_z)
+		return
+	_city_building(data, lx, lz, wx, wz, h, kx, kz, verge_x, verge_z)
+
+## Air above a surface block, so nothing from the base terrain pass is
+## left poking through a road or a lawn.
+func _city_clear(data: PackedByteArray, lx: int, lz: int, h: int, up: int) -> void:
+	for y in range(h + 1, mini(h + up, CHUNK_H)):
+		data[idx(lx, y, lz)] = Blocks.AIR
+
+## Parks: lawn, winding path, scattered trees, flower beds and a pond.
+func _city_park(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: int,
+		kx: int, kz: int) -> void:
+	data[idx(lx, h, lz)] = Blocks.GRASS
+	_city_clear(data, lx, lz, h, 12)
+	# A path crosses the park so it reads as somewhere you walk through.
+	var path_wave := int(sin(float(wx) * 0.22 + float(kz)) * 2.5)
+	if absi(posmod(wz - kz * CITY_LOT, CITY_LOT) - 16 - path_wave) <= 1:
+		data[idx(lx, h, lz)] = Blocks.PATH
+		return
+	var pond := hash01(kx, kz, 816)
+	if pond < 0.45:
+		var px := float(wx - kx * CITY_LOT) - 20.0
+		var pz := float(wz - kz * CITY_LOT) - 12.0
+		if Vector2(px, pz).length() < 4.5:
+			data[idx(lx, h, lz)] = Blocks.WATER
+			if h + 1 < CHUNK_H and hash01(wx, wz, 817) < 0.25:
+				data[idx(lx, h + 1, lz)] = Blocks.LILY_PAD
+			return
+	var proll := hash01(wx, wz, 806)
+	if h + 6 >= CHUNK_H:
+		return
+	if proll < 0.02:
+		# Proper little trees, not two-block shrubs.
+		var trunk := 3 + int(hash01(wx, wz, 818) * 3.0)
+		for k in range(1, trunk + 1):
+			data[idx(lx, h + k, lz)] = Blocks.LOG
+		data[idx(lx, h + trunk + 1, lz)] = Blocks.LEAVES
+	elif proll < 0.045:
+		data[idx(lx, h + 1, lz)] = Blocks.LEAVES  # bush
+	elif proll < 0.10:
+		data[idx(lx, h + 1, lz)] = Blocks.TALL_GRASS
+	elif hash01(floori(float(wx) / 5.0), floori(float(wz) / 5.0), 821) < 0.18 \
+			and proll < 0.55:
+		# Flower BEDS: a few 5x5 patches, not confetti over the whole lawn.
+		data[idx(lx, h + 1, lz)] = [Blocks.FLOWER_RED, Blocks.FLOWER_YELLOW,
+			Blocks.FLOWER_PINK, Blocks.BLUEBELL, Blocks.DAISY][
+			int(hash01(floori(float(wx) / 5.0), floori(float(wz) / 5.0), 822) * 5.0)]
+
+## Car park: painted bays and chunky parked cars.
+func _city_car_park(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
+		h: int, verge_x: int, verge_z: int) -> void:
+	data[idx(lx, h, lz)] = Blocks.PATH
+	_city_clear(data, lx, lz, h, 8)
+	if posmod(wz, 4) == 0:
+		data[idx(lx, h, lz)] = Blocks.SANDSTONE  # bay marking
+	if verge_x < CITY_VERGE + 2 or verge_z < CITY_VERGE + 2 or h + 3 >= CHUNK_H:
+		return
+	var car_x := posmod(wx, 5)
+	var car_z := posmod(wz, 4)
+	if car_x >= 2 or car_z >= 3:
+		return
+	if hash01(floori(float(wx) / 5.0), floori(float(wz) / 4.0), 812) > 0.55:
+		return
+	var paint: int = [Blocks.WOOL_RED, Blocks.WOOL_BLUE, Blocks.WOOL_YELLOW,
+		Blocks.WOOL_GREEN, Blocks.WOOL_WHITE][int(hash01(floori(float(wx) / 5.0),
+		floori(float(wz) / 4.0), 813) * 5.0)]
+	data[idx(lx, h + 1, lz)] = paint
+	if car_z == 1:
+		data[idx(lx, h + 2, lz)] = Blocks.GLASS
+
+## One building. Footprint (how far it is set back from its verge) and
+## height are rolled per lot, so the skyline stops looking stamped out.
+##
+## Inside, a WIDE staircase climbs one floor at a time. It sits along the
+## middle of a wall rather than jammed into a corner, and the floor above
+## it is cut away over the whole run — the old two-block lane against the
+## corner was nearly impossible to walk up.
+func _city_building(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
+		h: int, kx: int, kz: int, verge_x: int, verge_z: int) -> void:
+	# A wide range so the skyline stops looking stamped out: some lots are
+	# built almost to the pavement, others sit well back in their garden.
+	var setback_x := int(hash01(kx, kz, 804) * 6.0)
+	var setback_z := int(hash01(kx, kz, 819) * 6.0)
+	if verge_x <= CITY_VERGE + setback_x or verge_z <= CITY_VERGE + setback_z:
+		# Front garden: the green Ian asked for at the sides of buildings.
+		data[idx(lx, h, lz)] = Blocks.GRASS
+		_city_clear(data, lx, lz, h, 12)
+		var groll := hash01(wx, wz, 820)
+		if h + 2 < CHUNK_H:
+			if groll < 0.04:
+				data[idx(lx, h + 1, lz)] = Blocks.LEAVES
+			elif groll < 0.09:
+				data[idx(lx, h + 1, lz)] = Blocks.TALL_GRASS
+		return
+	var floors := 2 + int(hash01(kx, kz, 801) * 9.0)
+	var storey := 5
+	# Fit under the world roof, or the top storey gets sliced off and the
+	# building ends in a ring of glass with no roof on it.
+	var height: int = mini(floors * storey, CHUNK_H - 4 - h)
+	if height < storey:
+		return
+	var material: int = [Blocks.BRICK, Blocks.MARBLE, Blocks.SLATE,
+		Blocks.SANDSTONE, Blocks.DARK_PLANKS][int(hash01(kx, kz, 802) * 5.0)]
+	var wall: bool = verge_x == CITY_VERGE + setback_x + 1 \
+		or verge_z == CITY_VERGE + setback_z + 1
+	# The stair run: THREE wide and out in the middle of the floor plate,
+	# not a two-block lane wedged into a corner.
+	var ux := wx - kx * CITY_LOT
+	var uz := wz - kz * CITY_LOT
+	var mid := CITY_LOT / 2
+	var stair_lane: bool = ux >= mid - 1 and ux <= mid + 1
+	var stair_step := uz - (mid - 3)  # climbs a floor, then lands
+	var on_stairs: bool = stair_lane and stair_step >= 0 and stair_step < storey
+	var stair_void: bool = stair_lane and stair_step >= 0 and stair_step <= storey
+
+	data[idx(lx, h, lz)] = Blocks.PLANKS
+	for k in range(1, height + 2):
 		var y := h + k
 		if y >= CHUNK_H - 2:
 			break
+		var level := k % storey
 		if wall:
-			# Window bands, with the odd ivy patch creeping up the side.
-			var window: bool = k % 3 != 1 and posmod(wx + wz, 3) != 0
-			if not window and hash01(wx, wz + k, 805) < 0.07:
+			# Window bands with a door at street level, ivy here and there.
+			# The very top course is always solid: a parapet, not a ring of
+			# glass floating above the roof.
+			var window: bool = level != 1 and posmod(wx + wz, 4) != 0 \
+				and k < height + 1
+			if k <= 3 and verge_z == CITY_VERGE + setback_z + 1 \
+					and ux >= mid - 1 and ux <= mid + 1:
+				data[idx(lx, y, lz)] = Blocks.AIR  # doorway
+			elif not window and hash01(wx, wz + k, 805) < 0.06:
 				data[idx(lx, y, lz)] = Blocks.LEAVES
 			else:
 				data[idx(lx, y, lz)] = Blocks.GLASS if window else material
-		elif k == height:
-			# Roof — shaft and stairwell stay open so you can reach the top.
-			if shaft or stair_hole:
-				data[idx(lx, y, lz)] = Blocks.AIR
-			else:
-				data[idx(lx, y, lz)] = material
-				# Rooftop gardens on some buildings.
-				if y + 1 < CHUNK_H - 1 and hash01(bx, bz, 808) < 0.35 \
-						and hash01(wx, wz, 809) < 0.2:
-					data[idx(lx, y + 1, lz)] = Blocks.TALL_GRASS
-		elif shaft:
-			# Open shaft all the way up, glowstone marking each floor.
-			data[idx(lx, y, lz)] = Blocks.GLOWSTONE if k % 5 == 0 \
-				and street_x == 29 - inset and street_z == 29 - inset else Blocks.AIR
-		elif stair >= 0 and k % 5 == stair:
-			# Staircase: one step per level, repeating every floor.
-			data[idx(lx, y, lz)] = Blocks.PLANKS
-		elif k % 5 == 0:
-			# Real floors every five levels, with stairwell holes.
-			data[idx(lx, y, lz)] = Blocks.AIR if stair_hole else Blocks.PLANKS
-		elif k % 5 == 1 and hash01(wx, wz, 810) < 0.02:
+		elif k == height + 1:
+			data[idx(lx, y, lz)] = Blocks.AIR if stair_void else material
+		elif on_stairs and level == stair_step:
+			data[idx(lx, y, lz)] = Blocks.PLANKS  # one step per block along
+		elif level == 0:
+			data[idx(lx, y, lz)] = Blocks.AIR if stair_void else Blocks.PLANKS
+		elif level == 1 and hash01(wx, wz, 810) < 0.03:
 			data[idx(lx, y, lz)] = Blocks.GLOWSTONE
 		else:
 			data[idx(lx, y, lz)] = Blocks.AIR
-	# Rooftop lantern sometimes.
-	if wall and hash01(wx, wz, 803) < 0.02 and h + height + 1 < CHUNK_H:
-		data[idx(lx, h + height + 1, lz)] = Blocks.LANTERN
+	# Rooftop lantern on a corner now and then.
+	if wall and hash01(wx, wz, 803) < 0.03 and h + height + 2 < CHUNK_H:
+		data[idx(lx, h + height + 2, lz)] = Blocks.LANTERN
 
 ## CASTLES: one enormous central castle — curtain walls, corner towers,
 ## and a tall keep with floors you can fight through.

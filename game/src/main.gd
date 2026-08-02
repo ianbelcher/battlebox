@@ -16,6 +16,9 @@ var _game_screen: Control
 var _world_menu: WorldMenu
 var _split: SplitScreen
 var _address_edit: LineEdit
+var _play_button: Button
+var _play_holder: Control
+var _manual_hint: Label
 var _status_label: Label
 var _clock_label: Label
 var _players_label: Label
@@ -36,6 +39,25 @@ var _loading_label: Label
 var _prev_pressed: Dictionary = {}
 var _leave_hold: Dictionary = {}
 var _in_world := false
+
+# --- Connection keep-alive -----------------------------------------
+## Nobody should ever have to click Connect. The client dials the default
+## server the moment it launches and, if the link drops, says so and keeps
+## dialling until it's back — a four-year-old can't hunt for a mouse.
+const RECONNECT_DELAY := 2.0
+## A WebSocket that can't reach the host sometimes just sits there instead
+## of reporting a failure, so give any one attempt this long to land.
+const CONNECT_TIMEOUT := 8.0
+## Attempts before the address box appears for a grown-up to fix.
+const ATTEMPTS_BEFORE_MANUAL := 4
+
+var _want_url := ""
+var _connecting := false
+var _connect_started_ms := 0
+var _retry_at_ms := 0
+var _attempts := 0
+## Seats to put back after a drop, so the kids don't have to re-join.
+var _rejoin: Array = []
 
 func _ready() -> void:
 	if _is_server_mode():
@@ -71,15 +93,16 @@ func _ready() -> void:
 	_build_connect_screen()
 	_build_game_screen()
 	Net.connected_to_server.connect(_on_connected)
-	Net.connection_failed.connect(func() -> void:
-		_set_status("Couldn't reach the server. Is the address right?"))
+	Net.connection_failed.connect(_on_connect_failed)
 	Net.server_disconnected.connect(_on_server_lost)
 	Game.roster_changed.connect(_on_roster_changed)
 	_show_screen(_connect_screen)
+	# Straight into the world: no screen to read, no button to find.
 	var auto_url := OS.get_environment("WORLD_AUTOCONNECT")
-	if not auto_url.is_empty():
-		_address_edit.text = auto_url
-		_on_connect_pressed()
+	if auto_url.is_empty():
+		auto_url = Game.server_url()
+	_address_edit.text = auto_url
+	_on_connect_pressed()
 	# WORLD_SHOTS=<dir>: save a screenshot every 1.5s (visual debugging).
 	var shots_dir := OS.get_environment("WORLD_SHOTS")
 	if not shots_dir.is_empty():
@@ -175,11 +198,14 @@ func _build_connect_screen() -> void:
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, 10)
 	box.add_child(spacer)
+	# The address box and Play button are for a grown-up rescuing a wrong
+	# address — they stay hidden while the client is dialling by itself.
 	_address_edit = LineEdit.new()
 	_address_edit.text = Net.default_server_url()
 	_address_edit.add_theme_font_size_override("font_size", 22)
 	_address_edit.custom_minimum_size = Vector2(500, 0)
 	_address_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_address_edit.visible = false
 	box.add_child(_address_edit)
 	var button := Button.new()
 	button.focus_mode = Control.FOCUS_NONE
@@ -202,11 +228,18 @@ func _build_connect_screen() -> void:
 	button.add_theme_color_override("font_pressed_color", Color("1c2333"))
 	button.pressed.connect(_on_connect_pressed)
 	var holder := CenterContainer.new()
+	holder.visible = false
 	holder.add_child(button)
 	box.add_child(holder)
-	box.add_child(_make_label("or press Ⓐ on a controller", 16, Color(1, 1, 1, 0.5)))
+	# _play_button is the container, so hiding it hides the centring too.
+	_play_button = button
+	_play_holder = holder
+	_manual_hint = _make_label("Grown-ups: check the address above", 16,
+		Color(1, 1, 1, 0.5))
+	_manual_hint.visible = false
+	box.add_child(_manual_hint)
 	_address_edit.text_submitted.connect(func(_t: String) -> void: _on_connect_pressed())
-	_status_label = _make_label("", 18, Color("ff8888"))
+	_status_label = _make_label("Finding the world…", 18, Color(1, 1, 1, 0.75))
 	box.add_child(_status_label)
 
 func _build_game_screen() -> void:
@@ -361,12 +394,66 @@ func _on_connect_pressed() -> void:
 		return
 	if not url.begins_with("ws://") and not url.begins_with("wss://"):
 		url = "ws://" + url
-	_set_status("Connecting...")
-	Net.connect_to(url)
+	# A hand-typed address becomes the one we keep retrying, and the one
+	# this machine starts on next time.
+	if url != _want_url:
+		_attempts = 0
+		_want_url = url
+		Game.set_server_url(url)
+	_dial()
+
+## Where this client should be dialling right now. A test harness pins it;
+## otherwise it's whatever the world menu last saved.
+func _target_url() -> String:
+	var forced := OS.get_environment("WORLD_AUTOCONNECT")
+	return forced if not forced.is_empty() else Game.server_url()
+
+## One connection attempt. _process watches it and retries on its own.
+func _dial() -> void:
+	if _want_url.is_empty():
+		_want_url = _target_url()
+	_attempts += 1
+	_connecting = true
+	_connect_started_ms = Time.get_ticks_msec()
+	_retry_at_ms = 0
+	_set_status("Finding the world…" if _attempts <= 1 else _waiting_text())
+	Net.connect_to(_want_url)
+
+func _waiting_text() -> String:
+	if _attempts <= ATTEMPTS_BEFORE_MANUAL:
+		return "Lost the world — reconnecting…"
+	return "Lost the world — still trying (%s)" % _want_url
+
+## Give up on this attempt and queue another. Never gives up for good.
+func _retry_soon(message: String) -> void:
+	_connecting = false
+	Net.go_offline()
+	_set_status(message)
+	_retry_at_ms = Time.get_ticks_msec() + int(RECONNECT_DELAY * 1000.0)
+	# Only once it's clearly not coming back does the grown-up UI appear.
+	var manual := _attempts >= ATTEMPTS_BEFORE_MANUAL
+	if _address_edit != null:
+		_address_edit.visible = manual
+	if _play_holder != null:
+		_play_holder.visible = manual
+	if _manual_hint != null:
+		_manual_hint.visible = manual
+
+func _on_connect_failed() -> void:
+	_retry_soon(_waiting_text())
 
 func _on_connected() -> void:
 	print("Connected to world server as peer %d" % multiplayer.get_unique_id())
+	_connecting = false
+	_attempts = 0
+	_retry_at_ms = 0
 	_set_status("")
+	if _address_edit != null:
+		_address_edit.visible = false
+	if _play_holder != null:
+		_play_holder.visible = false
+	if _manual_hint != null:
+		_manual_hint.visible = false
 	var world := Game.create_world()
 	_split.world = world
 	world.world_ready.connect(func() -> void:
@@ -384,7 +471,9 @@ func _on_connected() -> void:
 		_world_menu = WorldMenu.new()
 		_game_screen.add_child(_world_menu)
 	_world_menu.world = world
-	Game.video_changed.connect(_apply_video)
+	# Once only — _on_connected runs again on every reconnect.
+	if not Game.video_changed.is_connected(_apply_video):
+		Game.video_changed.connect(_apply_video)
 	# APPLY the saved settings, don't just remember them: video.cfg was
 	# loaded into Game.video at boot and shown correctly in the menu, but
 	# nothing pushed it at the renderer until you toggled something — so
@@ -423,6 +512,15 @@ func _on_connected() -> void:
 	_loading_label.visible = false
 	_show_screen(_game_screen)
 	_split.update_layout()
+	# Put everyone who was playing before the drop straight back in their
+	# seats — nobody presses anything to resume.
+	if not _rejoin.is_empty():
+		var seats: Array = _rejoin
+		_rejoin = []
+		for input in seats:
+			Game.join_local(input as InputSlot)
+		_split.update_layout()
+		_show_banner("Back in the world!")
 	_maybe_start_autotest()
 
 ## WORLD_AUTOTEST=<n>: join n bot players who wander, dig and build — lets a
@@ -511,11 +609,30 @@ func _maybe_start_autotest() -> void:
 		pin.start()
 
 func _on_server_lost() -> void:
-	Net.go_offline()
+	# Remember who was playing so the same seats come back by themselves.
+	_rejoin = Game.local_inputs.values().duplicate()
+	# Re-read the address: the world menu may have just repointed us.
+	_want_url = _target_url()
 	Game.reset_to_disconnected()
 	_in_world = false
-	_set_status("Lost the server connection.")
+	# The menu node survives and gets re-pointed at the new world in
+	# _on_connected, exactly like the first connection does.
+	_attempts = 0
 	_show_screen(_connect_screen)
+	_retry_soon("Lost the world — reconnecting…")
+
+## Drives the dial-retry loop: times out a stuck attempt, fires the next
+## one when its moment comes. Runs every frame, in and out of the world.
+func _poll_connection() -> void:
+	if _in_world:
+		return
+	var now := Time.get_ticks_msec()
+	if _connecting:
+		if now - _connect_started_ms > int(CONNECT_TIMEOUT * 1000.0):
+			_retry_soon(_waiting_text())
+		return
+	if _retry_at_ms > 0 and now >= _retry_at_ms:
+		_dial()
 
 func _set_status(text: String) -> void:
 	if _status_label != null:
@@ -748,6 +865,7 @@ var _backdrop: Control
 func _process(_delta: float) -> void:
 	if Net.is_server:
 		return
+	_poll_connection()
 	if _connect_screen != null and _connect_screen.visible:
 		# Blocks drift gently up the title screen; Ⓐ on any pad connects.
 		if _backdrop != null:

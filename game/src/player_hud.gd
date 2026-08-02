@@ -44,10 +44,10 @@ var _char_cursor := 0
 var _name_chip: Label
 var _menu: PanelContainer
 var _menu_dim: ColorRect
-# Two-level menu: a top row of groups, each holding a row of small tabs.
-# Pages are addressed by a flat index so controllers can just bump LB/RB
-# through everything: 0-3 pickers, 4 Battle, 5 Players, 6 World,
-# 7 Character, 8 Video.
+# One flat row of tabs, LB/RB steps along it: Tools, Building, Natural,
+# Colored, Functional, Special, Kits — and then your Character, which is
+# a tab like any other (it used to hang off LB, which stole the button
+# the picker needs to change tabs).
 var _groups: TabContainer
 var _build_tabs: TabContainer
 var _game_tabs: TabContainer
@@ -56,10 +56,9 @@ var _char_tabs: TabContainer
 var _video_tabs: TabContainer
 const PAGE_CHARACTER := 7
 const _PAGES := [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6],
-	[1, 0]]
+	[0, 7]]
 var _prev_picker := false
 var _prev_menu := false
-var _prev_char := false
 
 
 var _chip: PanelContainer
@@ -72,7 +71,6 @@ var _last_held := ""
 var _slots_dirty := true
 var _prev_slot_pick_menu := -1
 var _menu_tab_latch := false
-var _menu_group_latch := false
 var _preview_viewport: SubViewport
 var _preview_avatar: Node3D
 var _preview_angle := PI
@@ -265,24 +263,20 @@ func _ready() -> void:
 	_build_tabs.name = "Build"
 	_game_tabs = TabContainer.new()
 	_game_tabs.name = "World"
-	_char_tabs = TabContainer.new()
-	_char_tabs.name = "Character"
+	_char_tabs = _build_tabs
 	_video_tabs = TabContainer.new()
 	_video_tabs.name = "Video"
-	_opt_tabs = _char_tabs
+	# The character page is built into the SAME tab strip as the pickers.
+	_opt_tabs = _build_tabs
 	var on_page_change := func(_t: int) -> void:
 		if not _tab_guard:
 			_last_tab = _current_page()
-	for inner_tc: TabContainer in [_build_tabs, _char_tabs]:
-		inner_tc.get_tab_bar().focus_mode = Control.FOCUS_NONE
-		inner_tc.add_theme_font_size_override("font_size", _us(17))
-		_groups.add_child(inner_tc)
-		inner_tc.tab_changed.connect(on_page_change)
+	_build_tabs.get_tab_bar().focus_mode = Control.FOCUS_NONE
+	_build_tabs.add_theme_font_size_override("font_size", _us(17))
+	_groups.add_child(_build_tabs)
+	_build_tabs.tab_changed.connect(on_page_change)
 	_groups.tab_changed.connect(on_page_change)
-	# Two per-player pages only: blocks (X) and your character (LB).
-	# Everything about the WORLD lives in the Escape menu now.
-	_groups.set_tab_title(0, "🔨 Build")
-	_groups.set_tab_title(1, "🙂 Character")
+	# One group, so its own tab strip is pointless.
 	_groups.tabs_visible = false
 	_storm_tint = ColorRect.new()
 	_storm_tint.color = Color(0.9, 0.15, 0.1, 0.0)
@@ -461,9 +455,12 @@ func _ready() -> void:
 	move_child(_menu, get_child_count() - 1)
 
 	_pickers = []
-	for spec in [["Tools", "tools"], ["Building", "building"],
-			["Natural", "nature"], ["Colored", "colors"],
-			["Functional", "lights"], ["Special", "special"], ["Kits", "kits"]]:
+	# Short titles: with the character page now living in this same strip
+	# there are eight tabs, and the long names overflowed into scroll
+	# arrows that a five-year-old will never find.
+	for spec in [["Tools", "tools"], ["Build", "building"],
+			["Nature", "nature"], ["Colors", "colors"],
+			["Lights", "lights"], ["Special", "special"], ["Kits", "kits"]]:
 		var picker := BlockPicker.new(spec[1])
 		picker.name = spec[0]
 		picker.picked.connect(_on_picked)
@@ -723,7 +720,7 @@ func _build_character_tab() -> void:
 	## preview on the right. Moving the cursor IS choosing — kids don't
 	## get "highlight then confirm" — and the right stick spins the model.
 	var char_scroll := ScrollContainer.new()
-	char_scroll.name = "Character"
+	char_scroll.name = "You"
 	char_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_opt_tabs.add_child(char_scroll)
 	var split := HBoxContainer.new()
@@ -1601,16 +1598,6 @@ func _process(_delta: float) -> void:
 		if menu_pressed and not _prev_menu:
 			_toggle_menu(player, 0)
 		_prev_menu = menu_pressed
-		# LB (or C) jumps straight to this player's character picker.
-		var char_pressed := input.is_character_pressed()
-		if char_pressed and not _prev_char:
-			if _menu.visible and _current_page() == PAGE_CHARACTER:
-				_close_menu()
-			else:
-				if not _menu.visible:
-					_toggle_menu(player, 0)
-				_set_page(PAGE_CHARACTER)
-		_prev_char = char_pressed
 		if _menu.visible:
 			# Controller-first: bumpers change tabs, stick/D-pad moves the
 			# grid, A picks (then hops to the next slot), 1-8 jump slots,
@@ -1625,11 +1612,6 @@ func _process(_delta: float) -> void:
 				_slots_dirty = true
 				Sfx.play("tick", -10.0)
 			_prev_slot_pick_menu = pick
-			var group_cycle := input.group_cycle_direction()
-			if group_cycle != 0 and not _menu_group_latch:
-				_groups.current_tab = posmod(_groups.current_tab + group_cycle, 4)
-				Sfx.play("tick", -12.0)
-			_menu_group_latch = group_cycle != 0
 			var tab_cycle := input.cycle_direction()
 			if tab_cycle != 0 and not _menu_tab_latch:
 				var next_tab := _current_page()
