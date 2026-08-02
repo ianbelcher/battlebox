@@ -230,8 +230,7 @@ func _process(delta: float) -> void:
 			DRAGON:
 				# Soaring: the body rides the beat (up on the downstroke)
 				# and the tail trails behind in a lazy S.
-				visual.position.y = 8.0 + sin(t * 0.9 + phase) * 1.2 \
-					+ sin(t * 4.0 + phase) * 0.25
+				visual.position.y = 8.0 + sin(t * 0.9 + phase) * 1.2
 				if node.has_meta("skel"):
 					var skel := node.get_meta("skel") as Skeleton3D
 					if is_instance_valid(skel):
@@ -303,29 +302,17 @@ func _build(kind: int) -> Node3D:
 		# The Meshy boss dragon (CC0): obsidian scales, red eyes, shadow
 		# wings. The export's unit scale is microscopic — hence the huge
 		# corrective factor. Its auto-rig has NO wing bones and only a
-		# walk clip, which looked like strolling through the sky: we keep
-		# the spread-wing rest pose, flap the wings in the vertex shader
-		# and sway the tail through its real bones instead.
+		# walk clip, which looked like strolling through the sky. So it
+		# GLIDES: spread-wing rest pose, no leg paddling, tail swaying
+		# through its real bones. (A vertex-shader flap was tried and
+		# looked worse than the glide — don't bring it back without a
+		# properly wing-rigged model.)
 		var dragon_scene: PackedScene = load("res://assets/models/dragon.glb")
 		if dragon_scene != null:
 			var dragon_inst: Node3D = dragon_scene.instantiate()
 			dragon_inst.scale = Vector3.ONE * 2400.0
 			dragon_inst.rotation_degrees = Vector3(0, 180, 0)
 			visual.add_child(dragon_inst)
-			for node in dragon_inst.find_children("*", "MeshInstance3D", true, false):
-				var wing_mi := node as MeshInstance3D
-				var flap_mat := ShaderMaterial.new()
-				flap_mat.shader = load("res://shaders/dragon.gdshader")
-				var src_mat := wing_mi.mesh.surface_get_material(0) as BaseMaterial3D
-				if src_mat != null and src_mat.albedo_texture != null:
-					flap_mat.set_shader_parameter("albedo_tex", src_mat.albedo_texture)
-				# Wings start just outside the body; everything further out
-				# rises and folds with the beat.
-				flap_mat.set_shader_parameter("wing_x0",
-					wing_mi.mesh.get_aabb().size.x * 0.10)
-				flap_mat.set_shader_parameter("flap_amount", 0.85)
-				flap_mat.set_shader_parameter("flap_speed", randf_range(3.6, 4.4))
-				wing_mi.material_override = flap_mat
 			var dragon_skel := dragon_inst.find_child("*", true, false)
 			for node in dragon_inst.find_children("*", "Skeleton3D", true, false):
 				dragon_skel = node
