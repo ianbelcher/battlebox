@@ -38,6 +38,9 @@ func _uscale() -> float:
 		w = float(DisplayServer.window_get_size().x)
 	return clampf(w / 1100.0, 0.75, 3.0)
 var _char_buttons: Dictionary = {}
+var _char_grid: GridContainer
+var _char_scroll: ScrollContainer
+var _char_cursor := 0
 var _name_chip: Label
 var _menu: PanelContainer
 var _menu_dim: ColorRect
@@ -51,12 +54,12 @@ var _game_tabs: TabContainer
 var _opt_tabs: TabContainer
 var _char_tabs: TabContainer
 var _video_tabs: TabContainer
-const PAGE_PLAYERS := 9
-const PAGE_CHARACTER := 10
+const PAGE_CHARACTER := 7
 const _PAGES := [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6],
-	[1, 0], [1, 1], [1, 2], [2, 0], [3, 0], [3, 1]]
+	[1, 0]]
 var _prev_picker := false
 var _prev_menu := false
+var _prev_char := false
 
 
 var _chip: PanelContainer
@@ -198,6 +201,11 @@ func _ready() -> void:
 	_menu_dim.visible = false
 	add_child(_menu_dim)
 	_menu = PanelContainer.new()
+	# Build and Character share one centred, fixed-width panel so neither
+	# spills out of a quarter-screen split cell.
+	_menu.set_anchors_preset(Control.PRESET_CENTER)
+	_menu.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_menu.grow_vertical = Control.GROW_DIRECTION_BOTH
 	var menu_style := StyleBoxFlat.new()
 	menu_style.bg_color = Color(0.05, 0.06, 0.1, 0.94)
 	menu_style.set_corner_radius_all(14)
@@ -265,44 +273,17 @@ func _ready() -> void:
 	var on_page_change := func(_t: int) -> void:
 		if not _tab_guard:
 			_last_tab = _current_page()
-	var game_wrap := VBoxContainer.new()
-	game_wrap.name = "World"
-	game_wrap.add_theme_constant_override("separation", _us(8))
-	_battle_start = Button.new()
-	_battle_start.focus_mode = Control.FOCUS_NONE
-	_battle_start.text = "🏆  Start Battle"
-	_battle_start.add_theme_font_size_override("font_size", _us(24))
-	var start_style := StyleBoxFlat.new()
-	start_style.bg_color = Color("ffd166")
-	start_style.set_corner_radius_all(10)
-	start_style.set_content_margin_all(_us(9))
-	_battle_start.add_theme_stylebox_override("normal", start_style)
-	var start_hover: StyleBoxFlat = start_style.duplicate()
-	start_hover.bg_color = Color("ffd166").lightened(0.12)
-	_battle_start.add_theme_stylebox_override("hover", start_hover)
-	_battle_start.add_theme_stylebox_override("pressed", start_hover)
-	for state in ["font_color", "font_hover_color", "font_pressed_color"]:
-		_battle_start.add_theme_color_override(state, Color("1c2333"))
-	_battle_start.pressed.connect(func() -> void:
-		if Game.world != null and Game.world.match_phase == "IDLE":
-			Game.world.sv_match_start.rpc_id(1, 0)
-			Sfx.play("cheer", -10.0))
-	game_wrap.add_child(_battle_start)
-	for inner_tc: TabContainer in [_build_tabs, _game_tabs, _char_tabs, _video_tabs]:
+	for inner_tc: TabContainer in [_build_tabs, _char_tabs]:
 		inner_tc.get_tab_bar().focus_mode = Control.FOCUS_NONE
 		inner_tc.add_theme_font_size_override("font_size", _us(17))
-		if inner_tc == _game_tabs:
-			inner_tc.size_flags_vertical = Control.SIZE_EXPAND_FILL
-			game_wrap.add_child(inner_tc)
-			_groups.add_child(game_wrap)
-		else:
-			_groups.add_child(inner_tc)
+		_groups.add_child(inner_tc)
 		inner_tc.tab_changed.connect(on_page_change)
 	_groups.tab_changed.connect(on_page_change)
+	# Two per-player pages only: blocks (X) and your character (LB).
+	# Everything about the WORLD lives in the Escape menu now.
 	_groups.set_tab_title(0, "🔨 Build")
-	_groups.set_tab_title(1, "🌍 World")
-	_groups.set_tab_title(2, "🙂 Character")
-	_groups.set_tab_title(3, "⚙️ Options")
+	_groups.set_tab_title(1, "🙂 Character")
+	_groups.tabs_visible = false
 	_storm_tint = ColorRect.new()
 	_storm_tint.color = Color(0.9, 0.15, 0.1, 0.0)
 	_storm_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -490,9 +471,6 @@ func _ready() -> void:
 		_pickers.append(picker)
 	_picker = _pickers[0]
 	_build_character_tab()
-	_build_game_tab()
-	_build_video_tab()
-	_build_help_tab()
 	# The 8 slots live inside the menu too: click a slot, then click items.
 	_menu_slots_row = HBoxContainer.new()
 	_menu_slots_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -633,6 +611,45 @@ func _poll_page_nav(input: InputSlot, delta: float) -> void:
 	_prev_nav_select = select
 
 ## Spatial move: nearest control mostly in the pushed direction.
+## The character grid: moving IS choosing. No cursor-then-confirm dance —
+## whatever you land on is who you are, and the right stick spins the
+## preview so kids can look at the back of their own head.
+var _char_nav_cd := 0.0
+
+func _poll_character_nav(input: InputSlot, delta: float) -> void:
+	_char_nav_cd = maxf(0.0, _char_nav_cd - delta)
+	var all: Array = AvatarFactory.characters()
+	if all.is_empty():
+		return
+	var entry := _entry()
+	var current: int = all.find(str(AvatarFactory.normalize_style(
+		entry.get("style")).get("who", "")))
+	if current < 0:
+		current = 0
+	var nav := input.get_ui_vector()
+	if _char_nav_cd <= 0.0 and nav.length() > 0.5:
+		var step := 0
+		if absf(nav.x) > absf(nav.y) * 1.35:
+			step = 1 if nav.x > 0 else -1
+		elif absf(nav.y) > absf(nav.x) * 1.35:
+			step = 6 if nav.y > 0 else -6
+		if step != 0:
+			var next := clampi(current + step, 0, all.size() - 1)
+			if next != current:
+				_char_nav_cd = 0.16
+				Game.set_local_style(slot, {"who": str(all[next])})
+				Sfx.play("tick", -14.0)
+				if _char_scroll != null and _char_grid != null \
+						and next < _char_grid.get_child_count():
+					_char_scroll.ensure_control_visible(
+						_char_grid.get_child(next) as Control)
+	# Right stick spins the preview.
+	var spin := input.get_look_vector()
+	if absf(spin.x) > 0.2:
+		_preview_angle = fposmod(_preview_angle + spin.x * delta * 2.4, TAU)
+		if _preview_avatar != null and is_instance_valid(_preview_avatar):
+			_preview_avatar.rotation.y = _preview_angle
+
 func _nav_move(controls: Array, dir: Vector2) -> void:
 	if _nav_focus == null:
 		return
@@ -702,100 +719,63 @@ func _toggle_menu(player: Player, open_tab: int) -> void:
 
 ## "Character" tab: big friendly buttons for name, skin, shirt and hat.
 func _build_character_tab() -> void:
+	## Just the characters: a scrolling grid on the left, a big spinning
+	## preview on the right. Moving the cursor IS choosing — kids don't
+	## get "highlight then confirm" — and the right stick spins the model.
 	var char_scroll := ScrollContainer.new()
 	char_scroll.name = "Character"
 	char_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_opt_tabs.add_child(char_scroll)
 	var split := HBoxContainer.new()
 	split.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	split.add_theme_constant_override("separation", _us(36))
+	split.add_theme_constant_override("separation", _us(20))
 	char_scroll.add_child(split)
-	var char_right := VBoxContainer.new()
-	char_right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	char_right.add_theme_constant_override("separation", _us(10))
-	var tab := VBoxContainer.new()
-	tab.add_theme_constant_override("separation", _us(14))
-	split.add_child(tab)
-	var prof_row := HBoxContainer.new()
-	prof_row.add_theme_constant_override("separation", _us(10))
-	tab.add_child(prof_row)
-	var prof_label := Label.new()
-	prof_label.text = "Character:"
-	prof_label.custom_minimum_size = Vector2(_us(140), 0)
-	prof_label.add_theme_font_size_override("font_size", _us(22))
-	prof_row.add_child(prof_label)
-	for direction in [-1, 1]:
-		var pbtn := Button.new()
-		pbtn.focus_mode = Control.FOCUS_NONE
-		pbtn.text = "◀" if direction < 0 else "▶"
-		pbtn.add_theme_font_size_override("font_size", _us(15))
-		var pd: int = direction
-		pbtn.pressed.connect(func() -> void:
-			var profiles: Array = Game.list_profiles()
-			if profiles.is_empty():
-				return
-			var current := str(Game.profile_keys.get(slot, ""))
-			var index := profiles.find(current)
-			index = posmod(index + pd, profiles.size())
-			Game.select_profile(slot, str(profiles[index]))
-			Sfx.play("pop", -6.0))
-		prof_row.add_child(pbtn)
-	tab.add_child(HSeparator.new())
-	var name_row := HBoxContainer.new()
-	name_row.add_theme_constant_override("separation", _us(10))
-	char_right.add_child(name_row)
-	var name_label := Label.new()
-	name_label.text = "Name:"
-	name_label.add_theme_font_size_override("font_size", _us(22))
-	name_row.add_child(name_label)
-	_name_edit = LineEdit.new()
-	var name_edit := _name_edit
-	name_edit.max_length = 12
-	name_edit.custom_minimum_size = Vector2(_us(220), 0)
-	name_edit.add_theme_font_size_override("font_size", _us(22))
-	name_edit.text_submitted.connect(func(text: String) -> void:
-		Game.set_local_name(slot, text)
-		Sfx.play("pop", -4.0))
-	name_row.add_child(name_edit)
+
+	var grid_holder := VBoxContainer.new()
+	grid_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	split.add_child(grid_holder)
 	var pick_label := Label.new()
-	pick_label.text = "Pick your character:"
-	pick_label.add_theme_font_size_override("font_size", _us(22))
-	tab.add_child(pick_label)
-	var char_grid := GridContainer.new()
-	char_grid.columns = 6
-	char_grid.add_theme_constant_override("h_separation", _us(6))
-	char_grid.add_theme_constant_override("v_separation", _us(6))
-	tab.add_child(char_grid)
-	for who in AvatarFactory.KENNEY_CHARS:
+	pick_label.text = "Move to choose your character"
+	pick_label.add_theme_font_size_override("font_size", _us(20))
+	grid_holder.add_child(pick_label)
+	var grid_scroll := ScrollContainer.new()
+	grid_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	grid_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	grid_scroll.custom_minimum_size = Vector2(0, _us(300))
+	grid_holder.add_child(grid_scroll)
+	_char_grid = GridContainer.new()
+	_char_grid.columns = 6
+	_char_grid.add_theme_constant_override("h_separation", _us(6))
+	_char_grid.add_theme_constant_override("v_separation", _us(6))
+	grid_scroll.add_child(_char_grid)
+	_char_scroll = grid_scroll
+	for who in AvatarFactory.characters():
 		var cbtn := Button.new()
 		cbtn.focus_mode = Control.FOCUS_NONE
-		cbtn.custom_minimum_size = Vector2(_us(72), _us(72))
-		var cicon := TextureRect.new()
-		cicon.texture = load("res://assets/ui/chars/character-%s.png" % who)
-		cicon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		cicon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		cicon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		cicon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		cbtn.add_child(cicon)
+		cbtn.custom_minimum_size = Vector2(_us(64), _us(64))
+		var icon := TextureRect.new()
+		var icon_path: String = AvatarFactory.portrait_of(str(who))
+		if ResourceLoader.exists(icon_path):
+			icon.texture = load(icon_path)
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cbtn.add_child(icon)
 		var pick_who := str(who)
 		cbtn.pressed.connect(func() -> void:
 			Game.set_local_style(slot, {"who": pick_who})
 			Sfx.play("pop", -6.0))
-		char_grid.add_child(cbtn)
+		_char_grid.add_child(cbtn)
 		_char_buttons[pick_who] = cbtn
-	var dice := Button.new()
-	dice.focus_mode = Control.FOCUS_NONE
-	dice.text = "🎲  Surprise me!"
-	dice.add_theme_font_size_override("font_size", _us(20))
-	dice.pressed.connect(func() -> void:
-		var pool: Array = AvatarFactory.KENNEY_CHARS
-		Game.set_local_style(slot, {"who": pool[randi() % pool.size()]})
-		Sfx.play("cheer", -12.0))
-	tab.add_child(dice)
+
+	var char_right := VBoxContainer.new()
+	char_right.add_theme_constant_override("separation", _us(8))
+	split.add_child(char_right)
 	_preview_viewport = SubViewport.new()
 	_preview_viewport.own_world_3d = true
 	_preview_viewport.transparent_bg = true
-	_preview_viewport.size = Vector2i(_us(330), _us(430))
+	_preview_viewport.size = Vector2i(_us(260), _us(340))
 	var holder := SubViewportContainer.new()
 	holder.stretch = false
 	holder.add_child(_preview_viewport)
@@ -807,7 +787,6 @@ func _build_character_tab() -> void:
 			if _preview_avatar != null and is_instance_valid(_preview_avatar):
 				_preview_avatar.rotation.y = _preview_angle)
 	char_right.add_child(holder)
-	split.add_child(char_right)
 	var cam := Camera3D.new()
 	cam.position = Vector3(0, 0.9, 2.6)
 	_preview_viewport.add_child(cam)
@@ -815,9 +794,6 @@ func _build_character_tab() -> void:
 	sun.rotation_degrees = Vector3(-40, 30, 0)
 	_preview_viewport.add_child(sun)
 
-
-## "Game" tab: battle royale (with options and teams inline), world picker
-## and computer players — grouped into tidy sections.
 func _build_game_tab() -> void:
 	var tab := _scrolled_tab("Mode", _game_tabs)
 	tab.add_theme_constant_override("separation", _us(10))
@@ -1623,8 +1599,18 @@ func _process(_delta: float) -> void:
 		_prev_picker = picker_pressed
 		var menu_pressed := input.is_menu_pressed()
 		if menu_pressed and not _prev_menu:
-			_toggle_menu(player, 1)
+			_toggle_menu(player, 0)
 		_prev_menu = menu_pressed
+		# LB (or C) jumps straight to this player's character picker.
+		var char_pressed := input.is_character_pressed()
+		if char_pressed and not _prev_char:
+			if _menu.visible and _current_page() == PAGE_CHARACTER:
+				_close_menu()
+			else:
+				if not _menu.visible:
+					_toggle_menu(player, 0)
+				_set_page(PAGE_CHARACTER)
+		_prev_char = char_pressed
 		if _menu.visible:
 			# Controller-first: bumpers change tabs, stick/D-pad moves the
 			# grid, A picks (then hops to the next slot), 1-8 jump slots,
@@ -1659,6 +1645,8 @@ func _process(_delta: float) -> void:
 			var page := _current_page()
 			if page < _pickers.size():
 				_pickers[page].poll(input, _delta)
+			elif page == PAGE_CHARACTER:
+				_poll_character_nav(input, _delta)
 			else:
 				_poll_page_nav(input, _delta)
 	if not _menu.visible and player.ui_locked:

@@ -144,6 +144,8 @@ func setup(p_id: String, entry: Dictionary, p_local: bool, p_input: InputSlot, p
 	input = p_input
 	world = p_world
 	_avatar = AvatarFactory.build_character(entry.get("style", {}))
+	if _avatar == null:
+		_avatar = AvatarFactory.build_character({})
 	_avatar.scale = Vector3(1.15, 1.15, 1.15)
 	add_child(_avatar)
 	_tag = Label3D.new()

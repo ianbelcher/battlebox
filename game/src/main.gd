@@ -13,6 +13,7 @@ const LEAVE_HOLD_SECONDS := 1.2
 
 var _connect_screen: Control
 var _game_screen: Control
+var _world_menu: WorldMenu
 var _split: SplitScreen
 var _address_edit: LineEdit
 var _status_label: Label
@@ -377,6 +378,12 @@ func _on_connected() -> void:
 			get_tree().create_timer(2.0 + i * 5.0).timeout.connect(func() -> void:
 				if Game.world != null and Game.world.chunks != null:
 					Game.world.chunks.prefetch(radius)))
+	# The world menu belongs to the table, not to one player: full screen,
+	# keyboard and mouse only, Escape to open.
+	if _world_menu == null:
+		_world_menu = WorldMenu.new()
+		_game_screen.add_child(_world_menu)
+	_world_menu.world = world
 	Game.video_changed.connect(_apply_video)
 	# APPLY the saved settings, don't just remember them: video.cfg was
 	# loaded into Game.video at boot and shown correctly in the menu, but
@@ -574,6 +581,15 @@ func _update_minimap() -> void:
 
 ## Applies the video settings (Game.video) everywhere. Each setting maps
 ## to exactly one thing — no presets, no automatic overrides.
+func _unhandled_input(event: InputEvent) -> void:
+	# Escape belongs to the world menu now. Controllers never reach it —
+	# their Start button opens each player's own build menu instead.
+	if event is InputEventKey and event.pressed and not event.echo \
+			and (event as InputEventKey).keycode == KEY_ESCAPE:
+		if _world_menu != null:
+			_world_menu.toggle()
+			get_viewport().set_input_as_handled()
+
 func _apply_video() -> void:
 	var v: Dictionary = Game.video
 	# Renderer-wide toggles that hold whether or not a world exists yet.

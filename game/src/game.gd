@@ -218,6 +218,32 @@ func sv_set_team(slot: int, team: int) -> void:
 		roster[id].team = clampi(team, -1, 23)
 		_broadcast_roster()
 
+## Kick anyone from the world menu: a kid who's done playing, or a
+## computer player nobody wants. Humans can rejoin by pressing start.
+@rpc("any_peer", "call_local", "reliable")
+func sv_kick_player(target_id: String) -> void:
+	if not multiplayer.is_server() or not roster.has(target_id):
+		return
+	var was_bot: bool = bool(roster[target_id].get("bot", false))
+	roster.erase(target_id)
+	if was_bot and world != null and world.has_method("drop_bot"):
+		world.drop_bot(target_id)
+	if world != null and world.has_method("forget_player"):
+		world.forget_player(target_id)
+	_broadcast_roster()
+
+## Rename ANY player from the world menu — typing a name on a controller
+## is beyond the little ones, so a grown-up does it on the keyboard.
+@rpc("any_peer", "call_local", "reliable")
+func sv_rename_any(target_id: String, pname: String) -> void:
+	if not multiplayer.is_server() or not roster.has(target_id):
+		return
+	var clean := pname.strip_edges().left(12)
+	if clean.is_empty():
+		return
+	roster[target_id].name = clean
+	_broadcast_roster()
+
 @rpc("any_peer", "call_local", "reliable")
 func sv_set_name(slot: int, pname: String) -> void:
 	if not multiplayer.is_server():
@@ -250,9 +276,9 @@ func sv_cycle_style(slot: int, attr: String, direction: int) -> void:
 	var style: Dictionary = AvatarFactory.normalize_style(roster[id].style)
 	# Characters are picked whole now: any attribute nudge steps through
 	# the roster of Kenney characters instead.
-	var index := AvatarFactory.KENNEY_CHARS.find(str(style.get("who", "a")))
-	style = {"who": AvatarFactory.KENNEY_CHARS[posmod(index + signi(direction),
-		AvatarFactory.KENNEY_CHARS.size())]}
+	var all := AvatarFactory.characters()
+	var index: int = all.find(str(style.get("who", "a")))
+	style = {"who": all[posmod(index + signi(direction), all.size())]}
 	roster[id].style = AvatarFactory.normalize_style(style)
 	_broadcast_roster()
 

@@ -1194,6 +1194,16 @@ func _spawn_bot() -> void:
 	_redistribute_bots()
 
 ## Roster-full eviction path (a human needs the seat).
+## Someone was kicked: clear every trace so their body and state don't
+## linger in a running battle.
+func forget_player(id: String) -> void:
+	_player_state.erase(id)
+	_match_alive.erase(id)
+	_downed_ids.erase(id)
+	hearts.erase(id)
+	riding_map.erase(id)
+	cl_eliminated.rpc(id)
+
 func drop_bot(id: String) -> void:
 	_bots.erase(id)
 	_player_state.erase(id)

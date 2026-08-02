@@ -56,7 +56,8 @@ const SHOE_COLORS: Array[Color] = [
 ]
 
 static func random_style() -> Dictionary:
-	return {"who": KENNEY_CHARS[randi() % KENNEY_CHARS.size()]}
+	var all := characters()
+	return {"who": all[randi() % all.size()]}
 
 ## Everyone is a Kenney character now. Legacy editor styles map to a
 ## stable pick (hash of the old dict) so returning players keep one
@@ -64,9 +65,10 @@ static func random_style() -> Dictionary:
 static func normalize_style(style) -> Dictionary:
 	if not (style is Dictionary):
 		return random_style()
-	if style.has("who") and str(style.who) in KENNEY_CHARS:
+	var all := characters()
+	if style.has("who") and str(style.who) in all:
 		return {"who": str(style.who)}
-	return {"who": KENNEY_CHARS[posmod(str(style).hash(), KENNEY_CHARS.size())]}
+	return {"who": all[posmod(str(style).hash(), all.size())]}
 
 static func skin_color(style: Dictionary) -> Color:
 	return SKIN_COLORS[posmod(int(style.get("body", 0)), SKIN_COLORS.size())]
@@ -127,14 +129,56 @@ static func _cylinder(radius: float, height: float, color: Color) -> MeshInstanc
 const KENNEY_CHARS := ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
 	"k", "l", "m", "n", "o", "p", "q", "r"]
 
+## Little People in Voxel (30 more): static OBJ models with no rig, so
+## they get a code-driven waddle instead of walk clips. Keys are
+## "p0".."p29" so they can never collide with the Kenney letters.
+const PEOPLE_COUNT := 30
+
+## Everything the character picker offers, in order.
+static func characters() -> Array:
+	var all: Array = KENNEY_CHARS.duplicate()
+	for i in PEOPLE_COUNT:
+		all.append("p%d" % i)
+	return all
+
+static func is_person(who: String) -> bool:
+	return who.begins_with("p") and who.length() > 1 and who.substr(1).is_valid_int()
+
+static func model_of(who: String) -> String:
+	if is_person(who):
+		return "res://assets/models/people/Character-%s.obj" % who.substr(1)
+	return "res://assets/models/chars/character-%s.glb" % who
+
+static func portrait_of(who: String) -> String:
+	if is_person(who):
+		return "res://assets/models/people/Character-%s.png" % who.substr(1)
+	return "res://assets/ui/chars/character-%s.png" % who
+
 static func build_character(style: Dictionary) -> Node3D:
 	style = normalize_style(style)
 	if style.has("who"):
-		var scene: PackedScene = load("res://assets/models/chars/character-%s.glb" % str(style.who))
-		if scene != null:
+		var who := str(style.who)
+		var path := model_of(who)
+		var res: Resource = load(path) if ResourceLoader.exists(path) else null
+		var inst: Node3D = null
+		if res is PackedScene:
+			inst = (res as PackedScene).instantiate()
+		elif res is Mesh:
+			# The Little People are plain OBJ meshes — no rig, no clips —
+			# so they get wrapped and waddle by code instead.
+			var mi := MeshInstance3D.new()
+			mi.mesh = res
+			inst = mi
+		if inst != null:
 			var root := Node3D.new()
-			var inst: Node3D = scene.instantiate()
-			inst.scale = Vector3.ONE * 0.52
+			if res is Mesh:
+				# Scale whatever the artist exported to about kid height.
+				var box: AABB = (res as Mesh).get_aabb()
+				var factor := 1.75 / maxf(box.size.y, 0.001)
+				inst.scale = Vector3.ONE * factor
+				inst.position.y = -box.position.y * factor
+			else:
+				inst.scale = Vector3.ONE * 0.52
 			inst.rotation_degrees = Vector3(0, 180, 0)
 			root.add_child(inst)
 			var ap := inst.find_child("AnimationPlayer", true, false) as AnimationPlayer

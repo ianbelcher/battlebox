@@ -114,8 +114,6 @@ func cycle_direction() -> int:
 		Kind.GAMEPAD:
 			if Input.is_joy_button_pressed(device, JOY_BUTTON_RIGHT_SHOULDER):
 				return 1
-			if Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER):
-				return -1
 	return 0
 
 ## Throw an orb (R / middle click / right trigger) — always available.
@@ -144,13 +142,24 @@ func slot_pick() -> int:
 	return -1
 
 ## Open the tabbed menu (Esc / Start).
+## Open this player's BUILD menu: X on a pad, E on the keyboard. Escape
+## is no longer here — it belongs to the whole-table world menu.
 func is_menu_pressed() -> bool:
 	match kind:
 		Kind.KEYBOARD_WASD:
-			return Input.is_physical_key_pressed(KEY_ESCAPE)
+			return false
 		Kind.GAMEPAD:
 			return Input.is_joy_button_pressed(device, JOY_BUTTON_START) \
 				or Input.is_joy_button_pressed(device, JOY_BUTTON_X)
+	return false
+
+## Open this player's CHARACTER picker: LB on a pad, C on the keyboard.
+func is_character_pressed() -> bool:
+	match kind:
+		Kind.KEYBOARD_WASD:
+			return Input.is_physical_key_pressed(KEY_C)
+		Kind.GAMEPAD:
+			return Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER)
 	return false
 
 ## Open/close the block & structure picker (E / D-pad up).
