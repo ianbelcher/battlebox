@@ -176,7 +176,12 @@ static func build_character(style: Dictionary) -> Node3D:
 				var box: AABB = (res as Mesh).get_aabb()
 				var factor := 1.75 / maxf(box.size.y, 0.001)
 				inst.scale = Vector3.ONE * factor
-				inst.position.y = -box.position.y * factor
+				# Stand them on their feet AND on the spot: these exports
+				# are modelled off-origin, so the character floated beside
+				# its own position and spun around empty air.
+				var mid := box.get_center()
+				inst.position = Vector3(-mid.x * factor, -box.position.y * factor,
+					-mid.z * factor)
 			else:
 				inst.scale = Vector3.ONE * 0.52
 			inst.rotation_degrees = Vector3(0, 180, 0)
