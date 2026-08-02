@@ -2404,8 +2404,23 @@ func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 	var ground := store.get_block(Vector3i(wx, y, wz))
 	var kind := -1
 	var dragon_chance := 1.0 if OS.get_environment("WORLD_DRAGON_NOW") == "1" else 0.02
+	# Registry creatures (dinosaurs and friends) get first refusal: add or
+	# retire them in src/creatures.gd and the world follows — nothing here
+	# needs touching.
+	var habitat := Creatures.LAND
+	if ground == Blocks.WATER:
+		habitat = Creatures.WATER
+	elif ground == Blocks.SAND:
+		habitat = Creatures.SAND
+	elif ground == Blocks.SNOW:
+		habitat = Creatures.SNOW
+	var rolled := Creatures.roll(habitat)
+	if OS.get_environment("WORLD_DINOS_NOW") == "1" and rolled < 0:
+		rolled = [12, 13, 14, 15, 16, 17, 18, 19][randi() % 8]
 	if WorldGen.hash01(wx, wz, 501) < dragon_chance and not _dragon_exists():
 		kind = CritterView.DRAGON
+	elif rolled >= 0:
+		kind = rolled
 	elif WorldGen.hash01(wx, wz, 500) < 0.15:
 		kind = CritterView.BIRD
 	elif ground == Blocks.WATER:
@@ -2436,13 +2451,24 @@ func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 	var pos := Vector3(wx + 0.5, y + 1.0, wz + 0.5)
 	_critters[_next_critter_id] = {
 		"kind": kind, "pos": pos, "target": pos,
-		"speed": [1.2, 2.2, 1.6, 0.9, 1.1, 1.4, 0.8, 1.3, 1.8, 0.9, 3.0, 2.4][kind],
+		"speed": Creatures.speed_of(kind),
 		"think": 0.0,
 	}
 	_next_critter_id += 1
 
 func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 	var delta := 0.33
+	var move_mode := Creatures.move_of(int(critter.kind))
+	# Ground creatures settle onto whatever is under them EVERY tick, not
+	# just while walking: shoot the block out from under an animal and it
+	# falls instead of hanging in mid-air.
+	if move_mode == Creatures.GROUND:
+		var rest_y := float(store.surface_y(int(critter.pos.x),
+			int(critter.pos.z))) + 1.0
+		if critter.pos.y > rest_y:
+			critter.pos.y = maxf(rest_y, critter.pos.y - 9.0 * delta)
+		elif critter.pos.y < rest_y:
+			critter.pos.y = rest_y  # a block grew underneath: pop out of it
 	# Flee players who get too close (except butterflies, who don't care).
 	if critter.kind != CritterView.BUTTERFLY:
 		for pos: Vector3 in player_positions:
@@ -2465,24 +2491,26 @@ func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 		var next: Vector3 = critter.pos + step
 		var y := store.surface_y(int(next.x), int(next.z))
 		var ground := store.get_block(Vector3i(int(next.x), y, int(next.z)))
-		if critter.kind == CritterView.DRAGON:
-			next.y = float(y) + 1.0
+		if move_mode == Creatures.FLIER:
+			next.y = float(y) + 1.0  # the view adds its soaring height
 			critter.pos = next
 			return
-		if critter.kind == CritterView.BIRD:
-			next.y = float(y) + 1.0  # view adds soaring height
-			critter.pos = next
-			return
-		if critter.kind == CritterView.DUCK:
+		if move_mode == Creatures.SWIMMER:
 			if ground != Blocks.WATER:
 				critter.think = 0.0
 				return
 			next.y = float(y) + 0.9
 		else:
-			if ground == Blocks.WATER or absf(float(y) + 1.0 - critter.pos.y) > 2.2:
+			if ground == Blocks.WATER:
 				critter.think = 0.0
 				return
-			next.y = float(y) + 1.0
+			# Climbing more than a block is a wall — but DROPPING is
+			# always allowed, so anything stranded on a ledge or pillar
+			# walks off the edge and falls instead of being stuck there.
+			if float(y) + 1.0 - critter.pos.y > 1.3:
+				critter.think = 0.0
+				return
+			next.y = maxf(float(y) + 1.0, critter.pos.y - 9.0 * delta)
 		critter.pos = next
 
 # ------------------------------------------------------------------

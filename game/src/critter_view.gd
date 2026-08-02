@@ -67,14 +67,21 @@ func nearest_dragon(pos: Vector3, radius: float) -> int:
 			best = id
 	return best
 
+## Nearest creature within reach. Big creatures are easier to hit than
+## small ones: a T-rex is four blocks of dinosaur, a chick is half of one,
+## so each entry's height widens its own hitbox.
 func nearest_id(pos: Vector3, radius: float) -> int:
 	var best := -1
-	var best_dist := radius
+	var best_score := INF
 	for id: int in _nodes.keys():
-		var node: Node3D = _nodes[id].node
-		var dist: float = node.position.distance_to(pos)
-		if dist < best_dist:
-			best_dist = dist
+		var entry: Dictionary = _nodes[id]
+		var node: Node3D = entry.node
+		var height := float(Creatures.def(int(entry.kind)).get("height", 1.0))
+		var reach := radius + height * 0.5
+		# Measure to the creature's middle, not its feet.
+		var dist: float = node.position.distance_to(pos - Vector3(0, height * 0.4, 0))
+		if dist < reach and dist < best_score:
+			best_score = dist
 			best = id
 	return best
 
@@ -202,23 +209,44 @@ func _process(delta: float) -> void:
 		var visual: Node3D = node.get_child(0) if node.get_child_count() > 0 else null
 		if visual == null:
 			continue
-		if node.has_meta("ap"):
-			# Kenney pets animate themselves: walk when moving, idle when
-			# not, dance for a bit after a pat.
-			var ap := node.get_meta("ap") as AnimationPlayer
-			if is_instance_valid(ap):
-				var want := "walk" if Vector2(to_target.x, to_target.z).length() > 0.2 \
-					else "idle"
+		if node.has_meta("model"):
+			# Registry creature: it animates itself and holds whatever
+			# altitude its entry asks for.
+			var ap := node.get_meta("ap") as AnimationPlayer if node.has_meta("ap") else null
+			if ap != null and is_instance_valid(ap):
+				var moving := Vector2(to_target.x, to_target.z).length() > 0.2
+				var role := "walk" if moving else "idle"
 				if t < float(entry.get("dance_until", 0.0)):
-					want = "dance"
-				if ap.current_animation != want:
-					ap.play(want, 0.25)
-			if kind == BUTTERFLY:
-				visual.position.y = 0.8 + sin(t * 2.0 + phase) * 0.25
-			elif kind == BIRD:
-				visual.position.y = 4.0 + sin(t * 1.4 + phase) * 0.8
+					role = "cheer"
+				var clip := Creatures.anim_of(kind, role)
+				if clip.is_empty():
+					clip = Creatures.anim_of(kind, "idle")
+				if not clip.is_empty() and ap.has_animation(clip) \
+						and ap.current_animation != clip:
+					ap.play(clip, 0.25)
+			var fly_h := Creatures.fly_height(kind)
+			var hover := float(Creatures.def(kind).get("hover", 0.0))
+			if fly_h > 0.0:
+				visual.position.y = fly_h + sin(t * 1.1 + phase) * 0.9
+			elif hover > 0.0:
+				visual.position.y = hover + sin(t * 2.0 + phase) * 0.25
 			else:
 				visual.position.y = 0.0
+			# Long-tailed creatures (the dragon) trail a lazy S.
+			if node.has_meta("skel"):
+				var skel := node.get_meta("skel") as Skeleton3D
+				if is_instance_valid(skel):
+					var seg := 0
+					for bone_name in ["tail", "tail1", "tail2", "tail3"]:
+						var bi := skel.find_bone(bone_name)
+						if bi < 0:
+							continue
+						seg += 1
+						var wave := sin(t * 1.8 + phase - float(seg) * 0.7) * 0.16
+						var rest := skel.get_bone_rest(bi)
+						skel.set_bone_pose_rotation(bi,
+							rest.basis.get_rotation_quaternion()
+							* Quaternion(Vector3.UP, wave))
 			continue
 		match kind:
 			BUTTERFLY:
@@ -287,53 +315,73 @@ func _sphere(radius: float, color: Color, squash := 1.0, emissive := false) -> M
 	instance.material_override = _mat(color, emissive)
 	return instance
 
-## Kenney Cube Pets (CC0) stand in for most critters — fireflies keep
-## their glow-mote look and the dragon stays our own beast.
-const PETS := {SHEEP: "animal-cow", BUNNY: "animal-bunny",
-	BUTTERFLY: "animal-bee", DUCK: "animal-beaver", CHICKEN: "animal-chick",
-	CRAB: "animal-crab", FROG: "animal-caterpillar", DEER: "animal-deer",
-	PENGUIN: "animal-penguin", BIRD: "animal-parrot"}
+
+## True size of a model in its own space: every mesh counted through the
+## transforms of the parts it hangs off (body parts sit ALL OVER a rigged
+## model, so measuring raw mesh bounds under-reads it wildly).
+static func _measure(node: Node, xf: Transform3D, box: AABB, started: bool) -> Array:
+	var out_box := box
+	var out_started := started
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		var b: AABB = xf * (node as MeshInstance3D).mesh.get_aabb()
+		out_box = b if not out_started else out_box.merge(b)
+		out_started = true
+	for child in node.get_children():
+		var child_xf := xf
+		if child is Node3D:
+			child_xf = xf * (child as Node3D).transform
+		var res := _measure(child, child_xf, out_box, out_started)
+		out_box = res[0]
+		out_started = bool(res[1])
+	return [out_box, out_started]
+
+## Registry creatures (see src/creatures.gd) are model files: ONE builder
+## handles every one of them — measure the model, scale it to the height
+## the registry asks for in blocks, face it forward and loop its clips.
+## Anything with no model (the firefly) falls through to the hand-built
+## shapes below.
+func _build_from_registry(kind: int, visual: Node3D, root: Node3D) -> bool:
+	var path := Creatures.model_of(kind)
+	if path.is_empty() or not ResourceLoader.exists(path):
+		return false
+	var scene: PackedScene = load(path)
+	if scene == null:
+		return false
+	var inst: Node3D = scene.instantiate()
+	visual.add_child(inst)
+	# Models arrive in whatever units their author used (voxels, metres,
+	# microscopic Meshy units): measure and rescale so every creature
+	# stands exactly as tall as its entry says.
+	var measure := _measure(inst, Transform3D.IDENTITY, AABB(), false)
+	var aabb: AABB = measure[0]
+	var measured: bool = measure[1]
+	var factor := 1.0
+	if measured and aabb.size.y > 0.0001:
+		factor = float(Creatures.def(kind).get("height", 1.0)) / aabb.size.y
+	inst.scale = Vector3.ONE * factor
+	inst.rotation_degrees = Vector3(0, 180, 0)
+	if measured:
+		inst.position.y = -aabb.position.y * factor  # stand on its feet
+	var ap := inst.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if ap != null:
+		for anim_name in ap.get_animation_list():
+			ap.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
+		var idle := Creatures.anim_of(kind, "idle")
+		if ap.has_animation(idle):
+			ap.play(idle)
+		root.set_meta("ap", ap)
+	for node in inst.find_children("*", "Skeleton3D", true, false):
+		root.set_meta("skel", node)
+		break
+	root.set_meta("model", true)
+	return true
 
 func _build(kind: int) -> Node3D:
 	var root := Node3D.new()
 	var visual := Node3D.new()
 	root.add_child(visual)
-	if kind == DRAGON:
-		# The Meshy boss dragon (CC0): obsidian scales, red eyes, shadow
-		# wings. The export's unit scale is microscopic — hence the huge
-		# corrective factor. Its auto-rig has NO wing bones and only a
-		# walk clip, which looked like strolling through the sky. So it
-		# GLIDES: spread-wing rest pose, no leg paddling, tail swaying
-		# through its real bones. (A vertex-shader flap was tried and
-		# looked worse than the glide — don't bring it back without a
-		# properly wing-rigged model.)
-		var dragon_scene: PackedScene = load("res://assets/models/dragon.glb")
-		if dragon_scene != null:
-			var dragon_inst: Node3D = dragon_scene.instantiate()
-			dragon_inst.scale = Vector3.ONE * 2400.0
-			dragon_inst.rotation_degrees = Vector3(0, 180, 0)
-			visual.add_child(dragon_inst)
-			var dragon_skel := dragon_inst.find_child("*", true, false)
-			for node in dragon_inst.find_children("*", "Skeleton3D", true, false):
-				dragon_skel = node
-				break
-			if dragon_skel is Skeleton3D:
-				root.set_meta("skel", dragon_skel)
-			return root
-	if PETS.has(kind):
-		var scene: PackedScene = load("res://assets/models/pets/%s.glb" % PETS[kind])
-		if scene != null:
-			var pet_inst: Node3D = scene.instantiate()
-			pet_inst.scale = Vector3.ONE * 0.5
-			pet_inst.rotation_degrees = Vector3(0, 180, 0)
-			visual.add_child(pet_inst)
-			var ap := pet_inst.find_child("AnimationPlayer", true, false) as AnimationPlayer
-			if ap != null:
-				for anim_name in ap.get_animation_list():
-					ap.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
-				ap.play("idle")
-				root.set_meta("ap", ap)
-			return root
+	if _build_from_registry(kind, visual, root):
+		return root
 	match kind:
 		SHEEP:
 			var body := _sphere(0.42, Color("f2efe6"), 0.85)

@@ -1,0 +1,3 @@
+# Source art pack: the models it contains are extracted into
+# game/assets/models/dinos, so the 28MB zip stays out of git.
+voxel_dinosaurs_pack.zip
