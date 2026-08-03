@@ -19,16 +19,12 @@ any tool) can pick the work up cold.
 
 ## Open work
 
-- [ ] **World size is a soft edge, not a wall.** Picking a size on the Map
-      tab now eases players back at the boundary in both modes, but the
-      terrain still generates past it and blocks can still be placed
-      out there. A real border (visible edge, generation limit) is the
-      proper job.
+- [ ] **Space map, second pass.** The generator exists now (grey ground,
+      glass biosphere domes with grass inside, steel bunkers with lit
+      shafts, glowing ships parked in the sky). Ian should say what it
+      needs — more ship variety, interiors, something to find.
 
-- [ ] **Space map** — floating spaceships built from glow blocks, barren
-      grey rolling hills, biosphere domes, underground bunkers. A `space`
-      entry already appears in the map list; the generator doesn't exist,
-      so picking it currently does nothing useful.
+
 - [ ] **Startup camera** — the title screen orbits empty space at 0,0. If
       players are already on the server, follow one of them around
       instead. (Lower stakes now: with auto-connect the title screen is

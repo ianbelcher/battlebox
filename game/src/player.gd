@@ -368,21 +368,25 @@ func _physics_process(delta: float) -> void:
 		if velocity.length_squared() > 60.0 * 60.0 and grapple_time <= 0.0:
 			push_warning("Speed clamp: %s at %.0f m/s" % [player_id, velocity.length()])
 			velocity = velocity.limit_length(60.0)
-		# "Size of the world" is a real edge in EVERY mode, not just a
-		# storm radius during battles — it used to be read only by the
-		# battle code, so changing it while building did nothing at all.
-		# Walk into it and you're eased back rather than stopped dead.
-		if world != null and not fly_mode and grapple_time <= 0.0 \
-				and world.match_phase != "DROP":
+		# The world is a SQUARE slab `client_size` blocks on a side, so a
+		# size of 50 means x and z both run -25..+25. Nothing is generated
+		# outside it, so this is a hard wall, not a nudge: you simply
+		# cannot walk off the edge of the world.
+		if world != null and world.match_phase != "DROP":
 			var edge := float(world.client_size) * 0.5
 			if edge > 8.0:
-				var flat := Vector2(position.x, position.z)
-				if flat.length() > edge:
-					var back := flat.normalized() * edge
-					position.x = lerpf(position.x, back.x, 0.35)
-					position.z = lerpf(position.z, back.y, 0.35)
-					velocity.x *= 0.4
-					velocity.z *= 0.4
+				var stopped := false
+				if absf(position.x) > edge:
+					position.x = signf(position.x) * edge
+					velocity.x = 0.0
+					stopped = true
+				if absf(position.z) > edge:
+					position.z = signf(position.z) * edge
+					velocity.z = 0.0
+					stopped = true
+				if stopped:
+					carry_time = 0.0
+					grapple_time = 0.0
 		if absf(position.x) > 900.0 or absf(position.z) > 900.0 \
 				or position.y < -40.0 or position.y > WorldGen.CHUNK_H + 120.0:
 			push_warning("Bounds clamp: %s at %v" % [player_id, position])

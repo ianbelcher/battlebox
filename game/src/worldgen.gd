@@ -15,7 +15,19 @@ const SEA_LEVEL := 24
 const ISLAND_RADIUS := 220.0
 
 var seed_value: int
-var theme := "classic"   # classic / desert / isles / castles
+var theme := "classic"   # classic / desert / isles / castles / city / sky / space
+## The world is a SQUARE slab: `world_size` blocks on a side, centred on
+## the origin, so a size of 50 means x and z both run -25..+25. Outside it
+## nothing is generated at all — the world simply ends, and players are
+## stopped at the edge. Bedrock floors the whole slab, so it reads as one
+## huge rectangular block you're standing on rather than terrain that
+## trails off forever.
+var world_size := 250
+
+## True when this column is inside the slab.
+func in_bounds(wx: int, wz: int) -> bool:
+	var half := world_size / 2
+	return wx >= -half and wx <= half and wz >= -half and wz <= half
 
 enum Biome { MEADOW, FOREST, JUNGLE, PINE, FLOWERS, SWAMP }
 
@@ -29,9 +41,10 @@ var _caves := FastNoiseLite.new()
 var _caves2 := FastNoiseLite.new()
 var _sky := FastNoiseLite.new()
 
-func _init(p_seed: int, p_theme := "classic") -> void:
+func _init(p_seed: int, p_theme := "classic", p_size := 250) -> void:
 	seed_value = p_seed
 	theme = p_theme
+	world_size = maxi(p_size, 32)
 	_continent.seed = p_seed
 	_continent.frequency = 0.004
 	_continent.fractal_octaves = 3
@@ -83,6 +96,10 @@ func height_at(wx: int, wz: int) -> int:
 	if theme == "sky":
 		# Skylands: a shallow ocean below, all the action up on the islands.
 		return clampi(SEA_LEVEL - 3 + int(detail * 0.8), 2, CHUNK_H - 12)
+	if theme == "space":
+		# Barren rolling moon-ground, well clear of any water table.
+		var swell := 10.0 + hills * hills * 22.0 + base * 6.0 + detail * 2.2
+		return clampi(int(SEA_LEVEL + 2.0 + swell * 0.55), 2, CHUNK_H - 14)
 	if theme == "desert":
 		# Flat rolling dunes well above the water table.
 		var dune := 14.0 + (base * 18.0 + hills * hills * 30.0) * falloff + detail * 1.8
@@ -130,6 +147,11 @@ func generate_chunk(cx: int, cz: int) -> PackedByteArray:
 		for lx in CHUNK_SIZE:
 			var wx := cx * CHUNK_SIZE + lx
 			var wz := cz * CHUNK_SIZE + lz
+			# Past the edge of the slab there is simply no world. Leaving
+			# the column empty is what makes the map a finite rectangle
+			# instead of terrain that keeps generating forever.
+			if not in_bounds(wx, wz):
+				continue
 			var h := height_at(wx, wz)
 			h -= lake_depth_at(wx, wz, h)
 			var moist := moisture_at(wx, wz)
@@ -144,9 +166,12 @@ func generate_chunk(cx: int, cz: int) -> PackedByteArray:
 			elif h == SEA_LEVEL + 1 and h + 1 < CHUNK_H and hash01(wx, wz, 62) < 0.1:
 				data[idx(lx, h + 1, lz)] = Blocks.CATTAIL
 			_carve_caves(data, lx, lz, wx, wz, h)
-			# No floating islands over the city — they make no sense
-			# hanging above a street grid.
-			if theme != "city":
+			# Bedrock floor across the whole slab: you can dig down, but
+			# never through the bottom of the world.
+			data[idx(lx, 0, lz)] = Blocks.BEDROCK
+			# No floating islands over the city (they make no sense above a
+			# street grid) and none in space, which has its own ships.
+			if theme != "city" and theme != "space":
 				_sky_island(data, lx, lz, wx, wz)
 			_landmark_column(data, lx, lz, wx, wz, h)
 	# The city plants its own street trees, verges and parks; the wild
@@ -214,6 +239,9 @@ func _landmark_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 		return
 	if theme == "city":
 		_city_column(data, lx, lz, wx, wz, h)
+		return
+	if theme == "space":
+		_space_landmark(data, lx, lz, wx, wz, h, ax, az, roll, dx, dz)
 		return
 	if theme == "castles":
 		_megacastle_column(data, lx, lz, wx, wz, h)
@@ -599,6 +627,118 @@ func _megacastle_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: in
 			data[idx(lx, cy, lz)] = Blocks.AIR
 		return
 
+## SPACE: barren grey rolling ground, biosphere domes you can walk into,
+## sunken bunkers, and glowing spaceships parked overhead. No water and
+## nothing growing — the whole point is that it reads as somewhere else.
+func _space_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
+		h: int) -> void:
+	for y in range(0, mini(h + 1, CHUNK_H)):
+		var block := Blocks.STONE
+		if y == 0:
+			block = Blocks.BEDROCK
+		elif y == h:
+			# Grey moon-ground: pale stone with darker slate showing
+			# through in patches. Nothing brown, nothing growing.
+			block = Blocks.SLATE if hash01(wx, wz, 71) < 0.25 else Blocks.STONE
+		elif y > h - 3:
+			block = Blocks.COBBLE if hash01(wx, wz, 72) < 0.4 else Blocks.STONE
+		elif y < 6 and hash01(wx, wz + y, 73) < 0.04:
+			block = Blocks.MAGMA          # a hot core, glowing in the dark
+		data[idx(lx, y, lz)] = block
+	# Scattered crystal outcrops so the ground isn't uniformly grey.
+	if h + 2 < CHUNK_H and hash01(wx, wz, 74) < 0.0018:
+		var crystals := [Blocks.CRYSTAL_PINK, Blocks.CRYSTAL_BLUE,
+			Blocks.CRYSTAL_GREEN]
+		var gem: int = crystals[int(hash01(wx, wz, 75) * 3.0)]
+		data[idx(lx, h + 1, lz)] = gem
+		if hash01(wx, wz, 76) < 0.4:
+			data[idx(lx, h + 2, lz)] = gem
+
+## The things you fly to and explore: domes on the surface, bunkers under
+## it, and ships hanging in the sky. Laid out on the same 96-block anchor
+## grid the other themes' landmarks use, so they generate seamlessly
+## across chunk borders.
+func _space_landmark(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
+		h: int, ax: int, az: int, roll: float, dx: int, dz: int) -> void:
+	if roll < 0.42:
+		# Biosphere dome: a glass hemisphere on a steel ring, with a way in
+		# and a floor of proper grass — the only green on the whole map.
+		var radius := 13.0 + roll * 18.0
+		var flat := Vector2(dx, dz).length()
+		if flat > radius + 1.0:
+			return
+		var base := height_at(ax * 96 + 48, az * 96 + 48)
+		if flat <= radius:
+			# Level the ground inside and carpet it.
+			for y in range(base, mini(h + 1, CHUNK_H)):
+				data[idx(lx, y, lz)] = Blocks.AIR
+			if base < CHUNK_H:
+				data[idx(lx, base, lz)] = Blocks.GRASS
+			if base + 1 < CHUNK_H and hash01(wx, wz, 77) < 0.06:
+				data[idx(lx, base + 1, lz)] = [Blocks.TALL_GRASS,
+					Blocks.FLOWER_RED, Blocks.SAPLING][int(hash01(wx, wz, 78) * 3.0)]
+		# The shell: glass where the sphere's surface passes this column.
+		var shell := radius * radius - flat * flat
+		if shell > 0.0:
+			var top := base + int(sqrt(shell))
+			if top < CHUNK_H and top > base:
+				# A doorway on the north face so you can walk in.
+				var door: bool = absi(dx) <= 2 and dz < 0 and top < base + 5
+				data[idx(lx, top, lz)] = Blocks.AIR if door else Blocks.GLASS
+		if absf(flat - radius) < 1.0 and base < CHUNK_H:
+			data[idx(lx, base, lz)] = Blocks.STEEL
+		return
+	if roll < 0.72:
+		# Underground bunker: a steel room with a lit interior, reached by
+		# a shaft you drop down.
+		var half := 9
+		if absi(dx) > half or absi(dz) > half:
+			return
+		var floor_y := 8
+		var roof_y := floor_y + 6
+		var wall: bool = absi(dx) == half or absi(dz) == half
+		for y in range(floor_y, mini(roof_y + 1, CHUNK_H)):
+			if wall or y == floor_y or y == roof_y:
+				data[idx(lx, y, lz)] = Blocks.STEEL
+			else:
+				data[idx(lx, y, lz)] = Blocks.AIR
+		if not wall and y_lit(wx, wz) and floor_y + 1 < CHUNK_H:
+			data[idx(lx, roof_y - 1, lz)] = Blocks.GLOWSTONE
+		# The entry shaft, straight up to daylight.
+		if absi(dx) <= 1 and absi(dz) <= 1:
+			for y in range(roof_y, mini(h + 2, CHUNK_H)):
+				data[idx(lx, y, lz)] = Blocks.AIR
+			if absi(dx) == 0 and absi(dz) == 0:
+				for y in range(roof_y, mini(h + 2, CHUNK_H)):
+					if y % 3 == 0:
+						data[idx(lx, y, lz)] = Blocks.GLOWSTONE
+		return
+	# Spaceship parked in the sky: a glowing hull you fly up to.
+	var ship_y := 52 + int(roll * 14.0)
+	var length := 16
+	var width := 6
+	if absi(dx) > length or absi(dz) > width:
+		return
+	var taper := 1.0 - float(absi(dx)) / float(length)
+	var beam := int(width * taper)
+	if absi(dz) > beam:
+		return
+	if ship_y + 3 >= CHUNK_H:
+		return
+	# Hull, a lit deck inside, and glow strips along the flanks.
+	data[idx(lx, ship_y, lz)] = Blocks.STEEL
+	data[idx(lx, ship_y + 1, lz)] = Blocks.AIR
+	data[idx(lx, ship_y + 2, lz)] = Blocks.STEEL if absi(dz) == beam \
+		else Blocks.GLASS
+	if absi(dz) == beam and posmod(dx, 4) == 0:
+		data[idx(lx, ship_y + 1, lz)] = Blocks.GLOWSTONE
+	if absi(dx) > length - 3:
+		data[idx(lx, ship_y + 1, lz)] = Blocks.CRYSTAL_BLUE
+
+## Cheap deterministic "is this cell lit" test for bunker ceilings.
+func y_lit(wx: int, wz: int) -> bool:
+	return posmod(wx, 5) == 0 and posmod(wz, 5) == 0
+
 ## Rare floating islands high above the world — fly up and explore. Grass
 ## on top, a crystal heart inside the bigger ones.
 func _sky_island(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int) -> void:
@@ -718,6 +858,9 @@ static func idx(lx: int, y: int, lz: int) -> int:
 	return (y * CHUNK_SIZE + lz) * CHUNK_SIZE + lx
 
 func _fill_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: int, moist: float) -> void:
+	if theme == "space":
+		_space_column(data, lx, lz, wx, wz, h)
+		return
 	var snow_line := SEA_LEVEL + 22
 	var beach_top := SEA_LEVEL + 2
 	for y in range(0, mini(h + 1, CHUNK_H)):

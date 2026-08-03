@@ -16,6 +16,10 @@ const WORLD_RADIUS_CHUNKS := 24
 var data_dir: String
 var source := "procedural"  # or "mca"
 var theme := "classic"
+## Side of the square world, in blocks — a size of 50 is a 50x50 slab
+## centred on the origin. Changing it regenerates the world, because the
+## terrain itself is cut to this shape.
+var world_size := 250
 var gen: WorldGen
 var mca: McaWorld = null
 
@@ -42,7 +46,8 @@ func _init() -> void:
 	theme = OS.get_environment("WORLD_THEME")
 	if theme.is_empty():
 		theme = str(config.get_value("world", "theme", "classic"))
-	gen = WorldGen.new(seed_value, theme)
+	world_size = int(config.get_value("world", "size", world_size))
+	gen = WorldGen.new(seed_value, theme, world_size)
 	if source == "mca":
 		var mca_dir := OS.get_environment("WORLD_MCA_DIR")
 		mca = McaWorld.new(mca_dir)
@@ -53,6 +58,7 @@ func _init() -> void:
 	config.set_value("world", "seed", seed_value)
 	config.set_value("world", "source", source)
 	config.set_value("world", "theme", theme)
+	config.set_value("world", "size", world_size)
 	config.save(data_dir.path_join("world.cfg"))
 	# Worlds are ephemeral: block edits never survive a restart — every
 	# boot starts from clean generation (only SETTINGS persist). This
@@ -180,7 +186,9 @@ static func list_maps() -> Array:
 	return out
 
 ## Wipe every edit and regenerate from a brand-new seed (map reset vote).
-func reset_world(new_seed: int, map_name := "") -> void:
+func reset_world(new_seed: int, map_name := "", new_size := 0) -> void:
+	if new_size > 0:
+		world_size = new_size
 	_cache.clear()
 	_dirty.clear()
 	var dir := DirAccess.open(data_dir.path_join("chunks"))
@@ -199,7 +207,7 @@ var current_map_key := ""
 
 func _apply_map(map_name: String, new_seed: int) -> void:
 	if map_name.is_empty():
-		var themes := ["classic", "desert", "isles", "castles", "city", "sky"]
+		var themes := ["classic", "desert", "isles", "castles", "city", "sky", "space"]
 		map_name = themes[randi() % themes.size()]
 	current_map_key = map_name
 	if map_name == "mca" or map_name.begins_with("mca:"):
@@ -224,12 +232,13 @@ func _apply_map(map_name: String, new_seed: int) -> void:
 		source = "procedural"
 		mca = null
 		theme = map_name
-	gen = WorldGen.new(new_seed, theme)
+	gen = WorldGen.new(new_seed, theme, world_size)
 	var config := ConfigFile.new()
 	config.load(data_dir.path_join("world.cfg"))
 	config.set_value("world", "seed", new_seed)
 	config.set_value("world", "source", source)
 	config.set_value("world", "theme", theme)
+	config.set_value("world", "size", world_size)
 	config.save(data_dir.path_join("world.cfg"))
 	# Forget saved positions (treasures survive).
 	var players := ConfigFile.new()

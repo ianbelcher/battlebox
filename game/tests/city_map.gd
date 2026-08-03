@@ -14,12 +14,16 @@ func _initialize() -> void:
 		out = "/tmp/map.png"
 	var zoom := int(OS.get_environment("WORLD_MAP_ZOOM")) if \
 		OS.get_environment("WORLD_MAP_ZOOM") != "" else 1
-	var gen := WorldGen.new(20260726, theme)
+	var size_env := OS.get_environment("WORLD_MAP_SIZE")
+	var gen := WorldGen.new(20260726, theme,
+		size_env.to_int() if size_env.is_valid_int() else 250)
 	var size := span * WorldGen.CHUNK_SIZE
 	var img := Image.create(size, size, false, Image.FORMAT_RGB8)
+	# Render centred on the origin so the square slab's edges are visible.
+	var first := -span / 2
 	for cz in span:
 		for cx in span:
-			var data := gen.generate_chunk(cx, cz)
+			var data := gen.generate_chunk(first + cx, first + cz)
 			for lz in WorldGen.CHUNK_SIZE:
 				for lx in WorldGen.CHUNK_SIZE:
 					var top := 0

@@ -1133,10 +1133,11 @@ func sv_new_map(map_name: String) -> void:
 		return
 	_do_world_reset(map_name)
 
-func _do_world_reset(map_name := "") -> void:
+func _do_world_reset(map_name := "", new_size := 0) -> void:
 	var new_seed := randi() % 1000000000
-	print("WORLD RESET: new seed %d map=%s" % [new_seed, map_name])
-	store.reset_world(new_seed, map_name)
+	print("WORLD RESET: new seed %d map=%s size=%d" % [new_seed, map_name,
+		new_size if new_size > 0 else store.world_size])
+	store.reset_world(new_seed, map_name, new_size)
 	spawn_pos = store.find_spawn()
 	_build_overview()
 	cl_overview.rpc(overview)
@@ -1580,13 +1581,20 @@ func sv_match_config(minutes: int, loot: int, size: int = -1, fly: int = -1) -> 
 		storm_minutes = clampf(float(minutes), 2.0, 99.0)
 	if loot >= 0:
 		loot_only = loot == 1
-	if size > 0:
+	# The world's SIZE is baked into the terrain — it's a square slab cut
+	# to this width — so changing it has to rebuild the world. Anything
+	# else just moves an invisible line while the old map stays put.
+	var resize_to := 0
+	if size > 0 and not is_equal_approx(float(size), battle_size):
 		battle_size = clampf(float(size), 25.0, 400.0)
+		resize_to = int(battle_size)
 	if fly >= 0:
 		battle_fly = fly == 1
 	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only,
 		battle_fly, team_count)
 	_save_battle_setup()
+	if resize_to > 0:
+		_do_world_reset(selected_map, resize_to)
 
 @rpc("any_peer", "reliable")
 func sv_match_start(_slot: int) -> void:
