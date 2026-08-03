@@ -15,9 +15,13 @@ extends SceneTree
 ## Anything taller or wider than the caps below is skipped: a kit has to be
 ## something a child can stamp down and walk around, not a whole village.
 
-const MAX_W := 26
-const MAX_H := 30
-const MAX_CELLS := 9000
+## A kit has to be something a child can stamp down and walk around, not
+## a whole village — but the first limits were far too mean: the Verdant
+## Treehouse missed by ONE block of height. Tall builds are exactly what
+## you want from a treehouse.
+const MAX_W := 34
+const MAX_H := 52
+const MAX_CELLS := 20000
 ## Picker thumbnail resolution. Every kit gets a front-on elevation of
 ## ITSELF rather than a generic house glyph, so a child can tell the
 ## library from the stable at a glance.
@@ -125,7 +129,8 @@ func _initialize() -> void:
 			continue
 		var built := _import_one(path, rel)
 		if built.is_empty():
-			skipped.append(rel)
+			skipped.append("%s (%s)" % [rel, _skip_reason])
+			print("  SKIPPED %-32s %s" % [rel, _skip_reason])
 			continue
 		# A manifest entry overrides the run-wide defaults, so a folder of
 		# builds from different people credits each of them properly.
@@ -140,8 +145,7 @@ func _initialize() -> void:
 	entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return str(a.id) < str(b.id))
 	_write(out, entries, by, license, source)
-	print("wrote %s: %d kits (%d skipped: %s)" % [out, entries.size(),
-		skipped.size(), ", ".join(skipped)])
+	print("wrote %s: %d kits, %d skipped" % [out, entries.size(), skipped.size()])
 	quit()
 
 func _find_nbt(dir: String) -> Array:
@@ -345,14 +349,19 @@ func _map_state_string(name: String) -> int:
 		name = name.substr(0, bracket)
 	return McaWorld.map_entry({"Name": name, "Properties": props})
 
+var _skip_reason := ""
+
 func _import_one(path: String, rel: String) -> Dictionary:
+	_skip_reason = "couldn't read it as a .schem/.schematic/.nbt"
 	var parsed := _read_any(path)
 	if parsed.is_empty():
 		return {}
+	_skip_reason = ""
 	var sx := int(parsed.w)
 	var sy := int(parsed.h)
 	var sz := int(parsed.l)
 	if sx > MAX_W or sz > MAX_W or sy > MAX_H or sx < 2 or sz < 2:
+		_skip_reason = "%dx%dx%d — over the %dx%d limit" % [sx, sy, sz, MAX_W, MAX_H]
 		return {}
 	var raw_cells: Array = []
 	var min_y := 1 << 30
@@ -362,8 +371,10 @@ func _import_one(path: String, rel: String) -> Dictionary:
 			int(r[2]) - sz / 2, int(r[3])])
 		min_y = mini(min_y, int(r[1]))
 		if raw_cells.size() > MAX_CELLS:
+			_skip_reason = "over %d blocks — too big to stamp" % MAX_CELLS
 			return {}
 	if raw_cells.size() < 30:
+		_skip_reason = "only %d blocks — too small to be a build" % raw_cells.size()
 		return {}
 	# Sit the kit ON the ground. Some builds (the cave dwellings, the deep
 	# well) have their lowest block well above the structure block's own
@@ -457,6 +468,11 @@ func _pretty(rel: String) -> String:
 	var leaf := rel.get_file().replace("_", " ")
 	if RENAME.has(leaf):
 		return str(RENAME[leaf])
+	# Downloads from the schematic sites are named after their id ("30747"),
+	# which tells a child nothing. Give it something readable; the real
+	# name comes from kits/sources.txt via the manifest when it's known.
+	if leaf.strip_edges().is_valid_int():
+		return "Build #%s" % leaf.strip_edges()
 	var words := leaf.split(" ")
 	var out: Array = []
 	for w: String in words:

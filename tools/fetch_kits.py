@@ -166,10 +166,34 @@ def main():
             print("  MANUAL  %-28s %s" % (label, note))
             manual.append(entry)
 
-    # Anything already sitting in downloads/ counts too, however it arrived.
-    for fname in sorted(os.listdir(args.out)):
-        if fname.lower().endswith(BUILD_EXT) and fname not in manifest:
-            manifest[fname] = {"name": "", "by": "", "url": "(added by hand)"}
+    # Anything already sitting under kits/ counts too, however it arrived —
+    # a hand-download is a first-class way to add a build, not a fallback.
+    # If the filename carries the site's id (30747.schem) we can match it
+    # back to its sources.txt line and keep the name and builder.
+    by_id = {}
+    for entry in entries:
+        m = re.search(r"/(\d+)/?$", entry["url"].rstrip("/") + "/")
+        if m:
+            by_id[m.group(1)] = entry
+    kits_root = os.path.dirname(args.out)
+    for root, _dirs, files in os.walk(kits_root):
+        for fname in sorted(files):
+            if not fname.lower().endswith(BUILD_EXT):
+                continue
+            known = manifest.get(fname, {})
+            # Re-match every run: an earlier pass may have filed this as an
+            # anonymous hand-drop before its link was in sources.txt.
+            if known.get("name") and known.get("by"):
+                continue
+            stem = os.path.splitext(fname)[0]
+            hit = by_id.get(stem)
+            if hit:
+                manifest[fname] = {"name": hit["name"], "by": hit["by"],
+                                   "url": hit["url"]}
+                print("  matched %-28s -> %s" % (fname, hit["name"] or hit["url"]))
+            elif fname not in manifest:
+                manifest[fname] = {"name": "", "by": "",
+                                   "url": "(added by hand)"}
 
     with open(MANIFEST, "w") as fh:
         json.dump(manifest, fh, indent=2, sort_keys=True)

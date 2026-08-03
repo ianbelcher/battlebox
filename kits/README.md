@@ -7,7 +7,25 @@ Buildings the picker can stamp into the world. Two kinds live here:
 - **Imported kits** — real Minecraft builds, which is what this
   directory is for.
 
-## Adding a build
+## Adding a build — just drop the file in
+
+Most of these sites want a login (minecraft-schematics.com is also behind
+Cloudflare), so downloading by hand is the NORMAL way to do this, not a
+fallback:
+
+1. Download the `.schem` / `.schematic` / `.nbt`.
+2. Drop it **anywhere under `kits/`** — subfolder or not, doesn't matter.
+3. Run `./tools/import_kits.sh`, then commit.
+
+That's it. If you also paste the build's link into `sources.txt` and the
+file keeps the site's id as its name (`30747.schem`), the importer matches
+the two up and uses the name and builder you wrote there — otherwise it
+falls back to something readable.
+
+Anything skipped is reported with the reason (usually "bigger than the
+limit"), so a build never disappears silently.
+
+## Adding a build by link
 
 1. Put its link in `sources.txt`, one per line, with the name and builder.
 2. Run the fetcher, then the importer:

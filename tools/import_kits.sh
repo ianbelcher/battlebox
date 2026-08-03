@@ -14,12 +14,15 @@ WORLD="$PWD"
 echo "==> fetching anything new from kits/sources.txt"
 python3 tools/fetch_kits.py || true
 
-count=$(find kits/downloads -type f \( -name '*.schem' -o -name '*.schematic' \
+# Anywhere under kits/ counts. Insisting on kits/downloads/ meant a file
+# dropped one folder up was silently ignored, which is a rotten way to
+# treat someone who just did what you asked.
+count=$(find kits -type f \( -name '*.schem' -o -name '*.schematic' \
   -o -name '*.nbt' \) 2>/dev/null | wc -l | tr -d ' ')
 if [ "$count" = "0" ]; then
   echo
-  echo "Nothing in kits/downloads/ yet — add a link to kits/sources.txt, or"
-  echo "drop a .schem/.schematic/.nbt straight into that folder, and re-run."
+  echo "No builds under kits/ yet — drop a .schem, .schematic or .nbt"
+  echo "anywhere in that folder and run this again."
   exit 0
 fi
 
@@ -27,7 +30,7 @@ echo "==> importing $count build(s)"
 # WORLD_NBT_ALL=1: take everything in the folder rather than the curated
 # WANTED list, which only applies to the big datapack import.
 WORLD_NBT_ALL=1 \
-WORLD_NBT_DIR="$WORLD/kits/downloads" \
+WORLD_NBT_DIR="$WORLD/kits" \
 WORLD_NBT_OUT="$WORLD/game/src/structures_imported.gd" \
 WORLD_NBT_MANIFEST="$WORLD/kits/manifest.json" \
 WORLD_NBT_BY="unknown" \
