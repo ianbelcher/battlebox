@@ -8,6 +8,12 @@ extends RefCounted
 ## a few lakes. Scatter (trees, flowers, crit-treats) is hash-based so the
 ## same seed always builds the same world.
 
+## THE list of built-in maps. Three copies of this had drifted apart,
+## which is how "space" ended up in the picker while the server's
+## _known_map() silently refused it — clicking Space did nothing at all.
+## Anything that needs to know the maps asks here.
+const THEMES := ["classic", "desert", "isles", "castles", "city", "sky", "space"]
+
 const CHUNK_SIZE := 16
 const CHUNK_H := 80
 const SEA_LEVEL := 24

@@ -207,8 +207,7 @@ var current_map_key := ""
 
 func _apply_map(map_name: String, new_seed: int) -> void:
 	if map_name.is_empty():
-		var themes := ["classic", "desert", "isles", "castles", "city", "sky", "space"]
-		map_name = themes[randi() % themes.size()]
+		map_name = WorldGen.THEMES[randi() % WorldGen.THEMES.size()]
 	current_map_key = map_name
 	if map_name == "mca" or map_name.begins_with("mca:"):
 		source = "mca"

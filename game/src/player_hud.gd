@@ -86,6 +86,7 @@ var _autopicked := false
 var _autopick_checked := false
 var _crosshair: Label
 var _storm_arrow: Label
+var _revive_ring: ReviveRing
 
 func _us(n: int) -> int:
 	return int(n * clampf(DisplayServer.window_get_size().x / 1100.0, 1.15, 3.0))
@@ -304,6 +305,13 @@ func _ready() -> void:
 	radar_timer.timeout.connect(_update_radar)
 	add_child(radar_timer)
 	radar_timer.start()
+	# Revive ring: fills while you stand over a downed team-mate, so it's
+	# obvious that holding still is doing something.
+	_revive_ring = ReviveRing.new()
+	_revive_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_revive_ring.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_revive_ring.visible = false
+	add_child(_revive_ring)
 	_storm_arrow = Label.new()
 	_storm_arrow.add_theme_font_size_override("font_size", _us(30))
 	_storm_arrow.add_theme_color_override("font_color", Color("ff5a4a"))
@@ -1016,6 +1024,29 @@ func _refresh_preview() -> void:
 
 ## Personal radar: terrain around YOU, plus blips — crates gold, other
 ## players team-colored, yourself white. One per player, centered on them.
+## Show the ring over the nearest downed team-mate being picked up.
+func _update_revive_ring(player: Player) -> void:
+	if _revive_ring == null or world == null or player == null:
+		return
+	var best := 0.0
+	var found := false
+	for rid: String in world.revive_progress.keys():
+		var mate: Player = null
+		for child in world.players.get_children():
+			if child is Player and child.player_id == rid:
+				mate = child
+				break
+		if mate == null or mate.position.distance_to(player.position) > 12.0:
+			continue
+		var frac := float(world.revive_progress[rid])
+		if frac > best:
+			best = frac
+			found = true
+	_revive_ring.visible = found and not _menu.visible
+	if found:
+		_revive_ring.progress = best
+		_revive_ring.queue_redraw()
+
 func _update_radar() -> void:
 	var player := _player()
 	if player == null or world == null or world.chunks == null or world.players == null:
@@ -1720,6 +1751,7 @@ func _process(_delta: float) -> void:
 			_ride_hint.text = "🐉  A dragon! Walk up to it to climb on"
 		else:
 			_ride_hint.visible = false
+	_update_revive_ring(player)
 	if _center_note != null and world != null:
 		var secs := int(ceil(world.match_seconds))
 		if world.match_phase == "LOBBY" and not _menu.visible:
@@ -1764,31 +1796,29 @@ func _process(_delta: float) -> void:
 		if in_battle:
 			var me_id := Game.player_id(multiplayer.get_unique_id(), slot)
 			var team := int(Game.roster.get(me_id, {}).get("team", -1))
-			# Someone lying there waiting to be picked up is NOT still in
-			# the fight: alive_ids only drops you when you're eliminated,
-			# so a downed team-mate used to keep the count at 4/4.
+			# "alive out of still in the game". Downed players ARE still in
+			# the game — someone can pick them up — so they count in the
+			# total but not as alive. Anyone eliminated or gone is dropped
+			# from both, so a team of four that loses one reads 2/3, not
+			# 2/4: the number tells you how many you'd have to drop to
+			# finish the team off.
 			var mates_alive := 0
 			var mates_total := 0
-			var mates_down := 0
 			for rid: String in Game.roster.keys():
-				if int(Game.roster[rid].get("team", -2)) == team:
-					mates_total += 1
-					if not world.alive_ids.has(rid):
-						continue
-					if world.client_downed.has(rid):
-						mates_down += 1
-					else:
-						mates_alive += 1
+				if int(Game.roster[rid].get("team", -2)) != team:
+					continue
+				if not world.alive_ids.has(rid):
+					continue          # eliminated, or left — as if never there
+				mates_total += 1
+				if not world.client_downed.has(rid):
+					mates_alive += 1
 			var team_name := "?"
 			if team >= 0 and team < world.client_team_names.size():
 				team_name = str(world.client_team_names[team])
-			var still_up := 0
-			for rid: String in world.alive_ids.keys():
-				if not world.client_downed.has(rid):
-					still_up += 1
-			var down_note := "  (%d down)" % mates_down if mates_down > 0 else ""
-			_score_label.text = "🚩 %s  %d/%d up%s   ·   %d players left" % [
-				team_name, mates_alive, mates_total, down_note, still_up]
+			# Players left = everyone still IN the match, downed included:
+			# they can be revived and start shooting again.
+			_score_label.text = "🚩 %s  %d/%d alive   ·   %d players left" % [
+				team_name, mates_alive, mates_total, world.alive_ids.size()]
 	if _vignette != null and world != null:
 		# The hurt vignette: strongest when hearts are low, eases back as
 		# regen tops you up.

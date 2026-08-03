@@ -1482,7 +1482,14 @@ func _server_tick_bots(delta: float) -> void:
 				if int(bot.weapon) != 13:
 					bot.shoot_cd = 1.1
 					cl_orb.rpc(id, pos + Vector3(0, 1.4, 0), (epos - pos).normalized(), int(bot.weapon))
-					if randf() < clampf(1.0 - dist / 22.0, 0.12, 0.7):
+					# The shot has to be able to REACH you. This used to
+					# land damage the instant the orb was launched, with no
+					# line of sight and up to 20 blocks away — which is how
+					# players were being dispatched by someone nowhere near
+					# them, often straight through a wall.
+					if dist < 14.0 and _clear_shot(pos + Vector3(0, 1.4, 0),
+							epos + Vector3(0, 1.0, 0)) \
+							and randf() < clampf(1.0 - dist / 22.0, 0.12, 0.7):
 						_match_hurt(enemy, 1, pos, id)
 				elif dist < 2.6:
 					bot.shoot_cd = 0.8
@@ -1669,7 +1676,7 @@ func cl_world_sel(map_name: String) -> void:
 		map_list_changed.emit()
 
 func _known_map(map_name: String) -> bool:
-	if map_name in ["classic", "desert", "isles", "castles", "city", "sky"]:
+	if map_name in WorldGen.THEMES:
 		return true
 	for entry in ChunkStore.list_maps():
 		if str(entry.key) == map_name:
@@ -1714,7 +1721,7 @@ func _server_tick_match(delta: float) -> void:
 			_tick_fire()
 			if int(_match_timer) % 2 == 0 and _match_timer - floorf(_match_timer) < 0.02:
 				_tick_crate_gravity()
-			_tick_revives()
+			_tick_revives(delta)
 			_check_match_win()
 		"END":
 			if _match_timer <= 0.0:
@@ -1963,13 +1970,20 @@ func _tick_regen() -> void:
 		state.hp = int(state.get("hp", MATCH_HP)) + 1
 		cl_hearts.rpc(id, state.hp)
 
-func _tick_revives() -> void:
+## How long a team-mate must stand next to you to pick you up, and how
+## many hearts you come back with.
+const REVIVE_SECONDS := 3.0
+const REVIVE_HP := 1
+
+func _tick_revives(delta: float) -> void:
 	var now := Time.get_ticks_msec()
 	for id: String in _downed_ids.keys().duplicate():
 		# Bleed out after 45s down.
 		if now - int(_downed_ids[id]) > 45_000:
 			_downed_ids.erase(id)
+			_revive_progress.erase(id)
 			_match_alive.erase(id)
+			cl_revive_progress.rpc(id, 0.0)
 			cl_eliminated.rpc(id)
 			_check_match_win()
 			continue
@@ -1983,20 +1997,29 @@ func _tick_revives() -> void:
 					and Vector3(_player_state.get(other, {}).get("pos", Vector3.INF)).distance_to(pos) < 3.0:
 				mate_close = true
 		if mate_close:
-			_revive_progress[id] = float(_revive_progress.get(id, 0.0)) + 0.35
+			# REVIVE_SECONDS of standing there, measured in real time. This
+			# used to add a fixed amount per server tick, so it finished in
+			# about a third of a second — you barely had to touch them.
+			_revive_progress[id] = float(_revive_progress.get(id, 0.0)) + delta
+			var frac := clampf(float(_revive_progress[id]) / REVIVE_SECONDS, 0.0, 1.0)
+			cl_revive_progress.rpc(id, frac)
 			# Reviving is LOUD — everyone nearby hears the alarm.
 			cl_revive_noise.rpc(pos)
-			if _revive_progress[id] >= 6.0:
+			if float(_revive_progress[id]) >= REVIVE_SECONDS:
 				_downed_ids.erase(id)
 				_revive_progress.erase(id)
 				var state: Dictionary = _player_state.get(id, {})
 				if not state.is_empty():
-					state.hp = 3
-				cl_hearts.rpc(id, 2)
+					state.hp = REVIVE_HP
+				# You come back on ONE heart and heal from there, so a
+				# pick-up in the open is still a risk worth taking.
+				cl_hearts.rpc(id, REVIVE_HP)
+				cl_revive_progress.rpc(id, 0.0)
 				cl_downed_state.rpc(id, false)
 				Sfx.play("collect")
-		else:
+		elif _revive_progress.has(id):
 			_revive_progress.erase(id)
+			cl_revive_progress.rpc(id, 0.0)
 
 func _check_match_win() -> void:
 	var teams_alive: Dictionary = {}
@@ -2046,6 +2069,28 @@ func _match_hurt(id: String, amount: int, from_pos: Vector3, attacker := "") -> 
 	if state.hp <= 0:
 		_match_eliminate(id, attacker)
 
+## Can a shot get from `from` to `to` without a block in the way? Walked
+## in short steps rather than a proper DDA — plenty for deciding whether
+## a computer player can see you, and cheap enough to run per shot.
+func _clear_shot(from: Vector3, to: Vector3) -> bool:
+	if store == null:
+		return true
+	var span := to - from
+	var dist := span.length()
+	if dist < 0.001:
+		return true
+	var steps := int(dist * 2.0)
+	var step := span / float(maxi(steps, 1))
+	var at := from
+	for i in range(1, steps):
+		at += step
+		var cell := Vector3i(floori(at.x), floori(at.y), floori(at.z))
+		var block := store.get_block(cell)
+		if block != Blocks.AIR and not Blocks.is_liquid(block) \
+				and not Blocks.is_cross(block):
+			return false
+	return true
+
 func _teams_differ(a: String, b: String) -> bool:
 	if not (Game.roster.has(a) and Game.roster.has(b)):
 		return true
@@ -2055,6 +2100,10 @@ signal match_score_changed
 signal knockout(attacker: String, attacker_team: int, victim: String, victim_team: int)
 var ghost_ids: Dictionary = {}
 var client_downed: Dictionary = {}
+## id -> 0..1 while a team-mate is picking that player up, so everyone can
+## see the ring fill rather than guessing whether it's working.
+var revive_progress: Dictionary = {}
+signal revive_changed
 var alive_ids: Dictionary = {}
 
 @rpc("authority", "reliable")
@@ -2064,19 +2113,29 @@ func cl_match(phase: String, seconds: float) -> void:
 	if phase == "DROP":
 		ghost_ids.clear()
 		client_downed.clear()
+		revive_progress.clear()
 		alive_ids.clear()
 		for rid: String in Game.roster.keys():
 			alive_ids[rid] = true
 		for child in players.get_children():
 			if child is Player:
 				child.visible = true
+				# A fresh match means everyone is UP. Without this, anyone
+				# downed when the last battle ended dropped out of the sky
+				# still playing their death animation.
+				child.downed = false
+				child.set_ghost(false)
 		match_score_changed.emit()
 		_refresh_overheads()
 	elif phase == "IDLE" or phase == "LOBBY":
 		ghost_ids.clear()
+		client_downed.clear()
+		revive_progress.clear()
 		for child in players.get_children():
 			if child is Player:
 				child.visible = true
+				child.downed = false
+				child.set_ghost(false)
 	if chunks != null:
 		chunks.match_mode = phase != "IDLE"
 	match_changed.emit()
@@ -2118,6 +2177,14 @@ func cl_downed_state(id: String, is_down: bool) -> void:
 			if child.is_local and is_down:
 				Sfx.play("drop", -4.0)
 	_refresh_overheads()
+
+@rpc("authority", "unreliable_ordered")
+func cl_revive_progress(id: String, frac: float) -> void:
+	if frac <= 0.0:
+		revive_progress.erase(id)
+	else:
+		revive_progress[id] = frac
+	revive_changed.emit()
 
 @rpc("authority", "unreliable")
 func cl_revive_noise(pos: Vector3) -> void:
