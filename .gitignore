@@ -4,3 +4,8 @@
 # the README that explains it stays in.
 source-art/*
 !source-art/README.md
+
+# kits/downloads/ is NOT ignored: those files are the source of truth the
+# kits are generated from, and they're small. Only the fetcher's scratch
+# is ignored.
+kits/downloads/*.part

@@ -101,6 +101,17 @@ func _initialize() -> void:
 		push_error("WORLD_NBT_DIR and WORLD_NBT_OUT are required")
 		quit(1)
 		return
+	# kits/manifest.json: per-build name and builder, written by
+	# tools/fetch_kits.py from the links in kits/sources.txt. These sites
+	# rarely state a licence, so naming the builder is the least we can do
+	# — and Credits reads it straight off the generated file.
+	var manifest: Dictionary = {}
+	var manifest_path := OS.get_environment("WORLD_NBT_MANIFEST")
+	if not manifest_path.is_empty() and FileAccess.file_exists(manifest_path):
+		var text := FileAccess.get_file_as_string(manifest_path)
+		var parsed = JSON.parse_string(text)
+		if parsed is Dictionary:
+			manifest = parsed
 	var files := _find_nbt(dir)
 	print("found %d schematics under %s" % [files.size(), dir])
 	var entries: Array = []
@@ -116,9 +127,14 @@ func _initialize() -> void:
 		if built.is_empty():
 			skipped.append(rel)
 			continue
-		built["by"] = by
+		# A manifest entry overrides the run-wide defaults, so a folder of
+		# builds from different people credits each of them properly.
+		var entry: Dictionary = manifest.get(path.get_file(), {})
+		if not str(entry.get("name", "")).is_empty():
+			built["name"] = str(entry["name"])
+		built["by"] = str(entry.get("by", "")) if not str(entry.get("by", "")).is_empty() else by
 		built["license"] = license
-		built["source"] = source
+		built["source"] = str(entry.get("url", "")) if not str(entry.get("url", "")).is_empty() else source
 		entries.append(built)
 		print("  %-40s %s  %d cells" % [rel, built.size_v, built.count])
 	entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
@@ -465,7 +481,7 @@ const KITS := [
 """ % [source, by, license]
 	for entry: Dictionary in entries:
 		text += '\t{"id": "%s", "name": "%s", "by": "%s", "license": "%s",\n' % [
-			entry.id, entry.name, by, license]
+			entry.id, entry.name, entry.get("by", by), license]
 		text += '\t\t"size": Vector3i%s, "cells": %d, "top": %d, "roof": %d,\n' % [
 			str(entry.size_v), entry.count, entry.top, entry.roof]
 		text += '\t\t"thumb": "%s",\n' % entry.thumb

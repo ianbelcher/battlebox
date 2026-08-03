@@ -42,6 +42,13 @@ any tool) can pick the work up cold.
 
 ## Adding more kits
 
+**Where things live: `deployments/world/kits/`.** Paste links into
+`kits/sources.txt`, run `./tools/import_kits.sh`, commit. The builds
+themselves live in `kits/downloads/` and are COMMITTED — they're the
+source of truth the game's kits are generated from, so re-running the
+importer rebuilds every kit from that folder. `kits/README.md` has the
+whole workflow.
+
 Ian wants real **WorldEdit-style schematics** — builds actually made in
 Minecraft — pasted in as Kits, not MagicaVoxel colour art. `.schem`/`.nbt`
 carry real Minecraft block types (oak planks, cobble, stairs, glass) which

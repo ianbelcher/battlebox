@@ -35,6 +35,88 @@ static func _cyl(top: float, bottom: float, height: float, color: Color, pos: Ve
 	return instance
 
 ## An item model, roughly 0.5-0.8 units long, origin at the grip.
+## The markings that tell one full block from another in your hand. A
+## held bookshelf should read as a bookshelf, not as a brown cube — the
+## picker icons have always drawn this detail, the thing in your hand
+## didn't. Thin plates sit just proud of each face; anything not listed
+## keeps its plain cube, which is right for stone and wool.
+## Bookshelf has no Blocks constant — it lives in the Minecraft-style
+## range mapped by mca.gd, which calls it 132.
+const BOOKSHELF := 132
+
+static func _block_detail(root: Node3D, id: int, color: Color) -> void:
+	const S := 0.3          # the cube's side
+	const OUT := 0.152      # just outside the face, so it never z-fights
+	var dark := color.darkened(0.34)
+	var lite := color.lightened(0.22)
+	# Shelves of books: three bands on all four sides.
+	if id == BOOKSHELF:
+		for i in 3:
+			var y := 0.1 - S * 0.33 + S * 0.33 * i
+			for spec in [[Vector3(0, y, OUT), Vector3(S, 0.055, 0.005)],
+					[Vector3(0, y, -OUT), Vector3(S, 0.055, 0.005)],
+					[Vector3(OUT, y, 0), Vector3(0.005, 0.055, S)],
+					[Vector3(-OUT, y, 0), Vector3(0.005, 0.055, S)]]:
+				root.add_child(_box(spec[1], [Color("c96b4a"), Color("8a5fb0"),
+					Color("4a9df8")][i], spec[0]))
+		return
+	# Planks: horizontal seams.
+	if id in [Blocks.PLANKS, Blocks.BIRCH_PLANKS, Blocks.DARK_PLANKS,
+			Blocks.CHERRY_PLANKS, Blocks.WARPED_PLANKS, Blocks.CRIMSON_PLANKS,
+			Blocks.MANGROVE_PLANKS]:
+		for i in 2:
+			var y := 0.1 - S * 0.2 + S * 0.4 * i
+			root.add_child(_box(Vector3(S, 0.012, 0.005), dark, Vector3(0, y, OUT)))
+			root.add_child(_box(Vector3(S, 0.012, 0.005), dark, Vector3(0, y, -OUT)))
+		return
+	# Logs: bark ridges round the sides, rings on the cut ends.
+	if id in [Blocks.LOG, Blocks.WARPED_STEM, Blocks.BAMBOO_BLOCK]:
+		for i in 3:
+			var x := -S * 0.3 + S * 0.3 * i
+			root.add_child(_box(Vector3(0.012, S, 0.005), dark, Vector3(x, 0.1, OUT)))
+			root.add_child(_box(Vector3(0.012, S, 0.005), dark, Vector3(x, 0.1, -OUT)))
+		root.add_child(_box(Vector3(0.12, 0.005, 0.12), dark, Vector3(0, 0.1 + OUT, 0)))
+		return
+	# Bricks: courses with staggered joints.
+	if id == Blocks.BRICK:
+		for i in 3:
+			var y := 0.1 - S * 0.34 + S * 0.34 * i
+			root.add_child(_box(Vector3(S, 0.01, 0.005), lite, Vector3(0, y, OUT)))
+			root.add_child(_box(Vector3(S, 0.01, 0.005), lite, Vector3(0, y, -OUT)))
+			var off: float = 0.06 if i % 2 == 0 else -0.06
+			root.add_child(_box(Vector3(0.01, S * 0.34, 0.005), lite,
+				Vector3(off, y + S * 0.17, OUT)))
+		return
+	# Crafting table: a gridded work surface and tools on the side.
+	if id == Blocks.CRAFTING_TABLE:
+		root.add_child(_box(Vector3(0.3, 0.006, 0.012), dark, Vector3(0, 0.1 + OUT, 0)))
+		root.add_child(_box(Vector3(0.012, 0.006, 0.3), dark, Vector3(0, 0.1 + OUT, 0)))
+		root.add_child(_box(Vector3(0.09, 0.09, 0.005), dark, Vector3(0, 0.13, OUT)))
+		return
+	# Furnace: a dark mouth with a lit fire in it.
+	if id == Blocks.FURNACE:
+		root.add_child(_box(Vector3(0.16, 0.12, 0.005), Color("2a2a30"),
+			Vector3(0, 0.06, -OUT)))
+		root.add_child(_box(Vector3(0.1, 0.04, 0.008), Color("ff8a3d"),
+			Vector3(0, 0.03, -OUT), true))
+		return
+	# Chest: lid seam and a latch on the front.
+	if id == Blocks.CHEST:
+		root.add_child(_box(Vector3(S, 0.014, 0.006), dark, Vector3(0, 0.17, -OUT)))
+		root.add_child(_box(Vector3(S, 0.014, 0.006), dark, Vector3(0, 0.17, OUT)))
+		root.add_child(_box(Vector3(0.05, 0.06, 0.01), Color("d8c37a"),
+			Vector3(0, 0.15, -OUT)))
+		return
+	# Pumpkin and melon: carved ribs.
+	if id == Blocks.PUMPKIN:
+		for i in 3:
+			var x := -S * 0.3 + S * 0.3 * i
+			root.add_child(_box(Vector3(0.01, S, 0.005), dark, Vector3(x, 0.1, -OUT)))
+			root.add_child(_box(Vector3(0.01, S, 0.005), dark, Vector3(x, 0.1, OUT)))
+		root.add_child(_box(Vector3(0.05, 0.05, 0.01), Color("4a7a2a"),
+			Vector3(0, 0.1 + OUT, 0)))
+		return
+
 static func build(kind: String, id: int) -> Node3D:
 	var root := Node3D.new()
 	if kind == "block":
@@ -77,6 +159,7 @@ static func build(kind: String, id: int) -> Node3D:
 				var top := Blocks.top_color_of(id)
 				if top != color:
 					root.add_child(_box(Vector3(0.31, 0.02, 0.31), top, Vector3(0, 0.26, 0)))
+				_block_detail(root, id, color)
 		return root
 	if kind == "dragon_head":
 		# The neck-and-head you see while riding: gray-purple, crest, eyes.
