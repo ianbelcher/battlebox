@@ -103,6 +103,14 @@ also drops all block states, so stairs import flat; use raw `.nbt`/`.schem`.
   `WORLD_AUTOTEST_WHO=p13,p29` to pin each seat's character (what you
   usually want), `WORLD_AUTOTEST_PICK=<char>` to drive the picker UI
   instead (only works when the character page is already on screen).
+- **`WORLD_FAKE_PADS=<n>` pretends n gamepads are plugged in**, each
+  holding A, and drives the REAL gamepad code through the real join path.
+  Use it for anything touching controls: `WORLD_AUTOTEST` bots are
+  `BotSlot`, which overrides every button, so bot runs prove nothing about
+  controllers — that gap is how the LB-jump regression shipped.
+  `WORLD_FAKE_PAD_HOLD=lb|rb` holds a shoulder button.
+  Note a fake pad won't join while bots are in the roster: `BotSlot` is
+  GAMEPAD-kind, so the twin-pad divergence check treats them as mirrors.
 - Contact sheets that need no server — rig poses, map generators — and the
   art/kit regeneration commands are in `README.md` under **Local
   development**.

@@ -53,6 +53,11 @@ func is_place_pressed() -> bool:
 func cycle_direction() -> int:
 	return 1 if fmod(_t() * 0.11 + bot_index, 1.0) < 0.02 else 0
 
+## Bots have no real pad behind their device id, so don't let the base
+## class poll one when a bot happens to have a menu open.
+func tab_cycle_direction() -> int:
+	return 0
+
 func rotate_direction() -> int:
 	# A quarter spin roughly every 12s, staggered per bot.
 	return 1 if fmod(_t() * 0.08 + bot_index * 0.5, 1.0) < 0.015 else 0

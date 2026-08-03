@@ -1612,7 +1612,7 @@ func _process(_delta: float) -> void:
 				_slots_dirty = true
 				Sfx.play("tick", -10.0)
 			_prev_slot_pick_menu = pick
-			var tab_cycle := input.cycle_direction()
+			var tab_cycle := input.tab_cycle_direction()
 			if tab_cycle != 0 and not _menu_tab_latch:
 				var next_tab := _current_page()
 				for attempt in _PAGES.size() - 1:

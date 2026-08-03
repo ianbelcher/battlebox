@@ -107,11 +107,26 @@ func is_place_pressed() -> bool:
 		_:
 			return Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > 0.5
 
-## Cycle the hotbar selection. Returns -1, 0 or +1.
-## Step BOTH ways: the bumpers walk the picker's tabs (which is why the
-## character page is a tab now and LB no longer owns it), and in-world the
-## same buttons cycle what you're holding.
+## Cycle the hotbar selection IN THE WORLD. Returns 0 or +1.
+##
+## RB only, deliberately: LB is JUMP on a pad (see is_jump_pressed), so a
+## backwards bumper here means every jump also changes what you're holding.
+## Stepping backwards belongs to tab_cycle_direction, which only runs with
+## a menu open — and an open menu sets ui_locked, so LB isn't jumping then.
 func cycle_direction() -> int:
+	match kind:
+		Kind.KEYBOARD_WASD:
+			if Input.is_physical_key_pressed(KEY_TAB):
+				return 1
+		Kind.GAMEPAD:
+			if Input.is_joy_button_pressed(device, JOY_BUTTON_RIGHT_SHOULDER):
+				return 1
+	return 0
+
+## Step through the PICKER'S TABS, both ways: LB/RB on a pad, Tab and
+## Shift+Tab on the keyboard. Only polled while the menu is open, which is
+## exactly when the bumpers are free of their in-world jobs.
+func tab_cycle_direction() -> int:
 	match kind:
 		Kind.KEYBOARD_WASD:
 			if Input.is_physical_key_pressed(KEY_TAB):
@@ -286,6 +301,18 @@ func _key_axis(neg: Key, pos: Key) -> float:
 		v += 1.0
 	return v
 
+## WORLD_FAKE_PADS=<n>: pretend n gamepads are plugged in, each holding A.
+## Controller regressions are invisible to the bot-driven smoke tests —
+## BotSlot overrides every button — so this drives the REAL gamepad code
+## through the real join path with no hardware attached.
+static var fake_pads: int = -1
+
+static func _fake_pad_count() -> int:
+	if fake_pads < 0:
+		var env := OS.get_environment("WORLD_FAKE_PADS")
+		fake_pads = env.to_int() if env.is_valid_int() else 0
+	return fake_pads
+
 ## All slots that could join right now (used by the drop-in poller).
 ## One keyboard player only — the arrows layout confused everyone.
 static func candidate_slots() -> Array[InputSlot]:
@@ -293,4 +320,6 @@ static func candidate_slots() -> Array[InputSlot]:
 	slots.append(InputSlot.new(Kind.KEYBOARD_WASD))
 	for device_id in Input.get_connected_joypads():
 		slots.append(InputSlot.new(Kind.GAMEPAD, device_id))
+	for i in _fake_pad_count():
+		slots.append(FakePad.new(i))
 	return slots
