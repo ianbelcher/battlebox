@@ -30,6 +30,8 @@ static func _weapon_texture(id: int) -> Texture2D:
 	return tex
 
 func _draw() -> void:
+	# Kit thumbnails are 16x16 — keep them pixel-crisp, never smeared.
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	if kind == "empty":
 		draw_circle(size * 0.5, size.x * 0.06, Color(1, 1, 1, 0.2))
 		return
@@ -198,17 +200,20 @@ func _draw() -> void:
 				draw_line(Vector2(w * 0.14, h * 0.78), Vector2(w * 0.86, h * 0.3), c, w * 0.12)
 				draw_line(Vector2(w * 0.14, h * 0.3), Vector2(w * 0.86, h * 0.78), c, w * 0.12)
 			_:
-				# Imported Minecraft builds: a little house silhouette in
-				# whatever the build is mostly made of, so 28 of them don't
-				# all look like the same tan square.
-				var roof := _dim(Structures.spec(block_id).get("roof", c))
-				draw_colored_polygon(PackedVector2Array([Vector2(w * 0.5, h * 0.12),
-					Vector2(w * 0.9, h * 0.42), Vector2(w * 0.1, h * 0.42)]), roof)
-				draw_rect(Rect2(w * 0.18, h * 0.42, w * 0.64, h * 0.46), c)
-				draw_rect(Rect2(w * 0.44, h * 0.62, w * 0.14, h * 0.26),
-					Color(0.08, 0.08, 0.12, 0.85))
-				draw_rect(Rect2(w * 0.24, h * 0.5, w * 0.12, h * 0.12), dark)
-				draw_rect(Rect2(w * 0.64, h * 0.5, w * 0.12, h * 0.12), dark)
+				# Imported Minecraft builds draw a front elevation of the
+				# ACTUAL build, baked at import — a library looks like a
+				# library, not like every other kit.
+				var shot := Structures.thumbnail(block_id)
+				if shot != null:
+					var side := minf(w, h) * 0.92
+					var at := Vector2((w - side) * 0.5, (h - side) * 0.5)
+					draw_texture_rect(shot, Rect2(at, Vector2(side, side)), false)
+				else:
+					var roof := _dim(Structures.spec(block_id).get("roof", c))
+					draw_colored_polygon(PackedVector2Array([
+						Vector2(w * 0.5, h * 0.12), Vector2(w * 0.9, h * 0.42),
+						Vector2(w * 0.1, h * 0.42)]), roof)
+					draw_rect(Rect2(w * 0.18, h * 0.42, w * 0.64, h * 0.46), c)
 		return
 	# Blocks with their own recognizable glyphs (Minecraft-style).
 	match block_id:

@@ -3,9 +3,18 @@ extends Control
 ## The WORLD menu: everything that belongs to the whole table rather than
 ## to one player — the map, the battle setup, who's playing, and the video
 ## options. Escape opens it, it covers the entire screen (not one split
-## cell), and it is KEYBOARD AND MOUSE ONLY: controllers keep driving their
-## own players, so a grown-up can sort the game out while the kids run
-## around. Per-player things (blocks, characters) live in PlayerHud.
+## cell), and it is KEYBOARD AND MOUSE ONLY — both of them:
+##
+##   mouse     click anything, as always
+##   keyboard  Tab / arrows move the highlight, Enter presses, Left/Right
+##             on the tab strip changes tab, Escape closes
+##   pads      cannot reach it at all: _input() swallows joypad EVENTS
+##             while it is open. Players are driven by POLLING
+##             (Input.is_joy_button_pressed), so the kids keep running
+##             around on their controllers while a grown-up sorts the
+##             game out — which is the whole point of this menu.
+##
+## Per-player things (blocks, characters) live in PlayerHud.
 
 var world: Node = null
 
@@ -77,11 +86,11 @@ func _ready() -> void:
 	_tabs = TabContainer.new()
 	_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_tabs.add_theme_font_size_override("font_size", _s(21))
-	# Controllers must not reach into this menu at all: focus is how a
-	# gamepad drives Godot's UI (ui_left/ui_right/ui_accept walk the focus
-	# chain), so nothing in here is focusable except by clicking it.
-	_tabs.focus_mode = Control.FOCUS_NONE
-	_tabs.get_tab_bar().focus_mode = Control.FOCUS_NONE
+	# Focusable: that is how the KEYBOARD drives this menu. Controllers are
+	# kept out by swallowing their events in _input(), not by making the
+	# whole menu unfocusable (which locked the keyboard out too).
+	_tabs.focus_mode = Control.FOCUS_ALL
+	_tabs.get_tab_bar().focus_mode = Control.FOCUS_ALL
 	outer.add_child(_tabs)
 	_build_map_tab()
 	_build_battle_tab()
@@ -91,12 +100,37 @@ func _ready() -> void:
 	_build_credits_tab()
 	Game.roster_changed.connect(_refresh)
 
+## Controllers are locked out here, but their PLAYERS are not: player
+## movement is polled every frame, never event-driven, so swallowing these
+## events stops pads walking the focus chain without freezing the kids.
+func _input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+		get_viewport().set_input_as_handled()
+		return
+	# A focused name/address box would otherwise eat Escape, trapping a
+	# grown-up in the menu. Drop focus and let main.gd close it as usual.
+	if event is InputEventKey and event.pressed \
+			and (event as InputEventKey).keycode == KEY_ESCAPE:
+		var focused := get_viewport().gui_get_focus_owner()
+		if focused is LineEdit:
+			focused.release_focus()
+
 func open() -> void:
 	visible = true
 	_refresh()
+	# Land the highlight on the tab strip so Tab/arrows/Enter work the
+	# moment it opens — with nothing focused the keyboard does nothing.
+	_tabs.get_tab_bar().grab_focus.call_deferred()
 
 func close() -> void:
 	visible = false
+	# Don't leave the highlight parked on a hidden button — the next
+	# Enter in the game world would press it.
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused != null and is_ancestor_of(focused):
+		focused.release_focus()
 
 func toggle() -> void:
 	if visible:
@@ -124,7 +158,7 @@ func _heading(parent: Control, text: String) -> void:
 
 func _button(text: String, on_press: Callable) -> Button:
 	var btn := Button.new()
-	btn.focus_mode = Control.FOCUS_NONE
+	btn.focus_mode = Control.FOCUS_ALL
 	btn.text = text
 	btn.add_theme_font_size_override("font_size", _s(18))
 	btn.pressed.connect(func() -> void:
@@ -348,7 +382,7 @@ func _refresh_players() -> void:
 		var team := int(entry.get("team", -1))
 		for t in team_count:
 			var cell := Button.new()
-			cell.focus_mode = Control.FOCUS_NONE
+			cell.focus_mode = Control.FOCUS_ALL
 			cell.custom_minimum_size = Vector2(_s(56), _s(28))
 			cell.text = WorldNode.TEAM_NAMES[t] if t < WorldNode.TEAM_NAMES.size() else str(t)
 			cell.add_theme_font_size_override("font_size", _s(15))
@@ -375,7 +409,7 @@ func _refresh_players() -> void:
 			row.add_child(cell)
 		# X at the end of the row: done playing, out you go.
 		var kick := Button.new()
-		kick.focus_mode = Control.FOCUS_NONE
+		kick.focus_mode = Control.FOCUS_ALL
 		kick.text = "✕"
 		kick.tooltip_text = "Remove this player"
 		kick.custom_minimum_size = Vector2(_s(34), _s(28))
@@ -402,7 +436,7 @@ func _build_video_tab() -> void:
 		var key := str(spec[0])
 		var label := str(spec[1])
 		var btn := Button.new()
-		btn.focus_mode = Control.FOCUS_NONE
+		btn.focus_mode = Control.FOCUS_ALL
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.add_theme_font_size_override("font_size", _s(19))
@@ -419,7 +453,7 @@ func _build_video_tab() -> void:
 		Game.relaunch_with_renderer(not is_lite)))
 	if not OS.has_feature("editor") and (OS.has_feature("windows") or OS.has_feature("linux")):
 		var upd := Button.new()
-		upd.focus_mode = Control.FOCUS_NONE
+		upd.focus_mode = Control.FOCUS_ALL
 		upd.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		upd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		upd.add_theme_font_size_override("font_size", _s(19))
@@ -438,7 +472,7 @@ func _slider(parent: Control, label: String, key: String, low: int, high: int,
 	name_label.add_theme_font_size_override("font_size", _s(19))
 	row.add_child(name_label)
 	var slider := HSlider.new()
-	slider.focus_mode = Control.FOCUS_NONE
+	slider.focus_mode = Control.FOCUS_ALL
 	slider.min_value = low
 	slider.max_value = high
 	slider.step = step

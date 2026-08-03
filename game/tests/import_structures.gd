@@ -18,6 +18,10 @@ extends SceneTree
 const MAX_W := 26
 const MAX_H := 30
 const MAX_CELLS := 9000
+## Picker thumbnail resolution. Every kit gets a front-on elevation of
+## ITSELF rather than a generic house glyph, so a child can tell the
+## library from the stable at a glance.
+const THUMB := 16
 
 ## Hand-picked from the pack: a spread of ideas a child would want to
 ## stamp down — houses, a stable, a library, wells, ponds, shrines and
@@ -225,8 +229,42 @@ func _import_one(path: String, rel: String) -> Dictionary:
 		"count": count,
 		"top": top,
 		"roof": roof,
+		"thumb": Marshalls.raw_to_base64(_thumbnail(raw_cells, min_y, max_y)),
 		"data": Marshalls.raw_to_base64(cells),
 	}
+
+## Front elevation: look down +z and keep the NEAREST block in each
+## column, exactly like standing in front of the build. Returns THUMB*THUMB
+## block ids, row 0 at the top; 0 (air) means transparent.
+static func _thumbnail(cells: Array, min_y: int, max_y: int) -> PackedByteArray:
+	var lo_x := 1 << 30
+	var hi_x := -(1 << 30)
+	for c: Array in cells:
+		lo_x = mini(lo_x, int(c[0]))
+		hi_x = maxi(hi_x, int(c[0]))
+	var w := maxi(hi_x - lo_x + 1, 1)
+	var h := maxi(max_y - min_y + 1, 1)
+	# One scale for both axes so nothing is stretched; centre what's left.
+	var scale := maxf(float(w) / float(THUMB), float(h) / float(THUMB))
+	var pad_x := int((THUMB - float(w) / scale) * 0.5)
+	var pad_y := int((THUMB - float(h) / scale) * 0.5)
+	var best_z := {}
+	var out := PackedByteArray()
+	out.resize(THUMB * THUMB)
+	out.fill(0)
+	for c: Array in cells:
+		var tx := int(float(int(c[0]) - lo_x) / scale) + pad_x
+		# Rows run top-down, so the roof lands at row 0.
+		var ty := THUMB - 1 - (int(float(int(c[1]) - min_y) / scale) + pad_y)
+		if tx < 0 or tx >= THUMB or ty < 0 or ty >= THUMB:
+			continue
+		var key := ty * THUMB + tx
+		var z := int(c[2])
+		if best_z.has(key) and int(best_z[key]) <= z:
+			continue
+		best_z[key] = z
+		out[key] = int(c[3])
+	return out
 
 static func _most_common(tally: Dictionary, fallback: int) -> int:
 	var best := 0
@@ -272,6 +310,7 @@ const KITS := [
 			entry.id, entry.name, by, license]
 		text += '\t\t"size": Vector3i%s, "cells": %d, "top": %d, "roof": %d,\n' % [
 			str(entry.size_v), entry.count, entry.top, entry.roof]
+		text += '\t\t"thumb": "%s",\n' % entry.thumb
 		text += '\t\t"data": "%s"},\n' % entry.data
 	text += "]\n"
 	var file := FileAccess.open(out, FileAccess.WRITE)

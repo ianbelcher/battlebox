@@ -23,7 +23,9 @@ func _init(p_category := "blocks") -> void:
 	if category == "tools":
 		COLUMNS = 7
 	elif category == "kits":
-		COLUMNS = 4  # big preview chips
+		# 43 kits and counting — 4 columns meant endless scrolling for a
+		# child. The chips stay big because fit() sizes them to the space.
+		COLUMNS = 8
 	visible = false
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0, 0, 0, 0)

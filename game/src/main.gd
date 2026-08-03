@@ -103,6 +103,9 @@ func _ready() -> void:
 		auto_url = Game.server_url()
 	_address_edit.text = auto_url
 	_on_connect_pressed()
+	# WORLD_MENU_PROBE=1: drive the world menu with synthetic input.
+	if OS.get_environment("WORLD_MENU_PROBE") == "1":
+		add_child(load("res://tests/menu_probe.gd").new())
 	# WORLD_SHOTS=<dir>: save a screenshot every 1.5s (visual debugging).
 	var shots_dir := OS.get_environment("WORLD_SHOTS")
 	if not shots_dir.is_empty():

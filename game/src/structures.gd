@@ -37,7 +37,7 @@ static func all() -> Array:
 			_all.append({"id": str(kit.id), "name": str(kit.name),
 				"color": Blocks.color_of(int(kit.get("top", Blocks.PLANKS))),
 				"roof": Blocks.color_of(int(kit.get("roof", Blocks.PLANKS))),
-				"imported": true})
+				"thumb": str(kit.get("thumb", "")), "imported": true})
 	return _all
 
 static func count() -> int:
@@ -228,6 +228,30 @@ static func _barricade() -> Array:
 		if absi(x) < 3:
 			_put(list, x, 1, 0, Blocks.SAND)
 	return list
+
+## The picker tile's picture: a front elevation of the build itself,
+## baked at import time (see tests/import_structures.gd). Cached as a
+## texture per kit — 43 of them get drawn every time the picker opens.
+const THUMB := 16
+static var _thumbs: Dictionary = {}
+
+static func thumbnail(index: int) -> Texture2D:
+	if _thumbs.has(index):
+		return _thumbs[index]
+	var packed := str(spec(index).get("thumb", ""))
+	var tex: Texture2D = null
+	if not packed.is_empty():
+		var bytes := Marshalls.base64_to_raw(packed)
+		if bytes.size() >= THUMB * THUMB:
+			var img := Image.create(THUMB, THUMB, false, Image.FORMAT_RGBA8)
+			for y in THUMB:
+				for x in THUMB:
+					var block := bytes[y * THUMB + x]
+					img.set_pixel(x, y, Color(0, 0, 0, 0) if block == Blocks.AIR \
+						else Blocks.color_of(block))
+			tex = ImageTexture.create_from_image(img)
+	_thumbs[index] = tex
+	return tex
 
 ## Unpack an imported kit: 4 bytes per block — x+128, y, z+128, block.
 static var _decoded: Dictionary = {}

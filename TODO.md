@@ -29,12 +29,21 @@ any tool) can pick the work up cold.
       only seen while connecting or reconnecting.)
 - [ ] **3D held tool models** "kind of suck" — improve them. The icons
       are fine.
+- [ ] **Sponge `.schem` support** — THE unlock for kit variety. Ian wants
+      to pull builds from minecraft-schematics.com and the like, and
+      almost everything there is `.schem`/`.schematic`, not the `.nbt` the
+      importer currently reads. Only the container differs: `.schem` wraps
+      the same palette + block data in a gzipped NBT with a
+      **varint-encoded, YZX-ordered** `BlockData` array (and old
+      `.schematic` uses flat numeric block ids needing a 1.12 id→name
+      table). `Mca._read_compound` already parses the NBT; this is a
+      decode loop and a reorder, not new infrastructure. Those sites have
+      no bulk API and per-build licensing is usually unstated, so keep
+      downloading manual and record the author/URL per build in the
+      import manifest (`credits.gd` reads it automatically).
 - [ ] **More kits.** 28 of the 143 builds in the MoreChineseStructures
       pack ship; the rest are village street fragments or too big to
       stamp. Adding more is one line each in `WANTED` — see below.
-- [ ] **Sponge `.schem` support** in the kit importer (adds a
-      varint-decoded, YZX-ordered block array on top of the `.nbt` path).
-      Nothing needs it yet.
 - [ ] Remaining vanilla stand-ins, accepted unless Ian's builds say
       otherwise: per-species door colours (doors are thin panels; generic
       wood/iron), glazed terracotta (imports as wool colours), tinted
@@ -111,6 +120,10 @@ also drops all block states, so stairs import flat; use raw `.nbt`/`.schem`.
   `WORLD_FAKE_PAD_HOLD=lb|rb` holds a shoulder button.
   Note a fake pad won't join while bots are in the roster: `BotSlot` is
   GAMEPAD-kind, so the twin-pad divergence check treats them as mirrors.
+- `WORLD_MENU_PROBE=1` drives the Escape menu with synthetic input and
+  reports what responded: Escape opens it, mouse clicks land on tabs and
+  buttons, Tab moves the keyboard highlight, joypad buttons are ignored.
+  Screenshots only prove a menu RENDERS — this proves it responds.
 - Contact sheets that need no server — rig poses, map generators — and the
   art/kit regeneration commands are in `README.md` under **Local
   development**.
