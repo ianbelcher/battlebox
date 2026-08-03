@@ -226,6 +226,25 @@ func _find_player(slot: int) -> Player:
 			return child
 	return null
 
+## Somewhere worth pointing the idle camera: a real player (humans first,
+## then computer players), else the spawn point.
+func _someone_to_watch() -> Vector3:
+	if world == null:
+		return Vector3.ZERO
+	var fallback := Vector3(world.spawn_pos)
+	if world.players == null:
+		return fallback
+	var bot_seen := Vector3.INF
+	for child in world.players.get_children():
+		var p := child as Player
+		if p == null:
+			continue
+		if bool(Game.roster.get(p.player_id, {}).get("bot", false)):
+			bot_seen = p.position
+			continue
+		return p.position
+	return bot_seen if bot_seen != Vector3.INF else fallback
+
 func _process(delta: float) -> void:
 	_orbit_angle += delta * 0.12
 	for cell: Dictionary in _cells:
@@ -234,10 +253,13 @@ func _process(delta: float) -> void:
 		var rig: Node3D = cell.rig
 		var cam: Camera3D = cell.cam
 		if cell.slot < 0:
-			# Spectator: slow orbit around the spawn.
-			var spawn := Vector3(world.spawn_pos) if world != null else Vector3.ZERO
-			var offset := Vector3(cos(_orbit_angle), 0, sin(_orbit_angle)) * 34.0 + Vector3(0, 30, 0)
-			cam.look_at_from_position(spawn + offset, spawn, Vector3.UP)
+			# Spectator: orbit somebody who is actually PLAYING if anyone
+			# is, and only fall back to spawn when the world is empty.
+			# Orbiting bare terrain at 0,0 made a busy server look dead.
+			var focus := _someone_to_watch()
+			var offset := Vector3(cos(_orbit_angle), 0, sin(_orbit_angle)) * 34.0 \
+				+ Vector3(0, 30, 0)
+			cam.look_at_from_position(focus + offset, focus, Vector3.UP)
 			cam.size = 22.0
 			continue
 		var player := _find_player(cell.slot)

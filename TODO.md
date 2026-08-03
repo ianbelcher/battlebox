@@ -25,27 +25,13 @@ any tool) can pick the work up cold.
       needs — more ship variety, interiors, something to find.
 
 
-- [ ] **Startup camera** — the title screen orbits empty space at 0,0. If
-      players are already on the server, follow one of them around
-      instead. (Lower stakes now: with auto-connect the title screen is
-      only seen while connecting or reconnecting.)
 - [ ] **3D held tool models** "kind of suck" — improve them. The icons
       are fine.
-- [ ] **Sponge `.schem` support** — THE unlock for kit variety. Ian wants
-      to pull builds from minecraft-schematics.com and the like, and
-      almost everything there is `.schem`/`.schematic`, not the `.nbt` the
-      importer currently reads. Only the container differs: `.schem` wraps
-      the same palette + block data in a gzipped NBT with a
-      **varint-encoded, YZX-ordered** `BlockData` array (and old
-      `.schematic` uses flat numeric block ids needing a 1.12 id→name
-      table). `Mca._read_compound` already parses the NBT; this is a
-      decode loop and a reorder, not new infrastructure. Those sites have
-      no bulk API and per-build licensing is usually unstated, so keep
-      downloading manual and record the author/URL per build in the
-      import manifest (`credits.gd` reads it automatically).
-- [ ] **More kits.** 28 of the 143 builds in the MoreChineseStructures
-      pack ship; the rest are village street fragments or too big to
-      stamp. Adding more is one line each in `WANTED` — see below.
+- [ ] **More kits — needs Ian to pick.** The importer now reads all three
+      formats those sites hand out (see "Adding more kits"), so this is
+      pure sourcing: download the builds you want, drop them in a folder,
+      run the importer. 28 of the 143 MoreChineseStructures builds ship;
+      the rest are street fragments or too big to stamp.
 - [ ] Remaining vanilla stand-ins, accepted unless Ian's builds say
       otherwise: per-species door colours (doors are thin panels; generic
       wood/iron), glazed terracotta (imports as wool colours), tinted
@@ -68,6 +54,19 @@ An earlier session worried some files might be Mojang-derived vanilla
 jigsaw pieces — checked, they are not: all 143 `.nbt` live in the author's
 own `data/mcs/` namespace, and `data/minecraft/` holds three JSON config
 files and no structures. The whole pack is fine to ship.
+
+**Formats: all three are supported.** `tests/import_structures.gd` sniffs
+the file and reads whichever it is —
+- `.nbt` — Minecraft structure block (datapacks). `{state, pos}` list.
+- `.schem` — Sponge v1/v2/v3. Varint block stream, YZX order, name
+  palette. This is what minecraft-schematics.com and Planet Minecraft
+  serve today.
+- `.schematic` — MCEdit/WorldEdit legacy. Flat 1.12 numeric ids plus a
+  metadata nibble; `LEGACY_IDS` maps them to modern names, and stair
+  facing comes out of the nibble so stairs don't import flat.
+
+`tools/make_schem.py` writes fixtures in all of them, so the decoders can
+be tested without downloading anything.
 
 ```bash
 git clone --depth 1 https://github.com/Silicon23/MoreChineseStructures.git

@@ -102,11 +102,13 @@ func _initialize() -> void:
 		quit(1)
 		return
 	var files := _find_nbt(dir)
-	print("found %d .nbt under %s" % [files.size(), dir])
+	print("found %d schematics under %s" % [files.size(), dir])
 	var entries: Array = []
 	var skipped: Array = []
 	for path: String in files:
-		var rel := path.trim_prefix(dir).trim_prefix("/").trim_suffix(".nbt")
+		var rel := path.trim_prefix(dir).trim_prefix("/")
+		for ext in [".schematic", ".schem", ".nbt"]:
+			rel = rel.trim_suffix(ext)
 		if OS.get_environment("WORLD_NBT_ALL") != "1" \
 				and not WANTED.is_empty() and not WANTED.has(rel):
 			continue
@@ -137,48 +139,127 @@ func _find_nbt(dir: String) -> Array:
 		var path := dir.path_join(name)
 		if da.current_is_dir():
 			out.append_array(_find_nbt(path))
-		elif name.ends_with(".nbt"):
+		elif name.ends_with(".nbt") or name.ends_with(".schem") \
+				or name.ends_with(".schematic"):
 			out.append(path)
 		name = da.get_next()
 	da.list_dir_end()
 	out.sort()
 	return out
 
-## Structure-block .nbt: gzipped NBT holding `size` (3 ints), a `palette`
-## of block states and `blocks` as {state, pos} — no bit-packing to undo,
-## unlike the chunk sections McaWorld normally reads.
-func _import_one(path: String, rel: String) -> Dictionary:
+## Reads whichever of the three formats this file actually is and returns
+## a flat list of [x, y, z, block] rows, plus the structure's size:
+##
+##   .nbt      Minecraft structure block. A list of {state, pos} against a
+##             palette of block states — nothing packed.
+##   .schem    Sponge (v1/v2/v3). Same idea, but the blocks are a VARINT
+##             stream in YZX order against a name->index palette.
+##   .schematic  MCEdit/WorldEdit legacy. Flat 1.12 NUMERIC block ids, so
+##             it needs an id->name table (LEGACY_IDS) to reach our blocks.
+##
+## Sponge and MCEdit are what minecraft-schematics.com and friends hand
+## out; .nbt only comes from datapacks.
+func _read_any(path: String) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return {}
 	var raw := file.get_buffer(file.get_length())
+	# Nearly all of these are gzipped; a few .schem are stored plain.
 	var plain := raw.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
 	if plain.is_empty():
-		return {}
+		plain = raw
 	var stream := StreamPeerBuffer.new()
 	stream.data_array = plain
 	stream.big_endian = true
-	# Root is an unnamed TAG_Compound wrapper.
 	if stream.get_u8() != McaWorld.TAG_COMPOUND:
 		return {}
 	var _root_name := _read_string(stream)
 	var root: Dictionary = _nbt._read_compound(stream)
+	# Sponge wraps everything in a named "Schematic" compound.
+	if root.has("Schematic") and root["Schematic"] is Dictionary:
+		root = root["Schematic"]
+	if root.has("size") and root.has("palette") and root.has("blocks"):
+		return _read_structure_nbt(root)
+	# Sponge has a Palette (v1/v2) or a Blocks compound (v3). MCEdit's
+	# older .schematic has a flat Blocks BYTE ARRAY and no palette at all.
+	if root.has("Palette") or root.has("BlockData") \
+			or (root.has("Blocks") and root["Blocks"] is Dictionary):
+		return _read_sponge(root)
+	if root.has("Blocks"):
+		return _read_mcedit(root)
+	return {}
+
+## 1.12 numeric block id -> modern name. MCEdit/WorldEdit .schematic files
+## predate the flattening, so they store ids like 5 rather than
+## "oak_planks". Only the ids worth building with are listed; anything
+## else falls through to stone, which is what an unknown solid already
+## becomes everywhere else in the importer.
+const LEGACY_IDS := {
+	1: "stone", 2: "grass_block", 3: "dirt", 4: "cobblestone", 5: "oak_planks",
+	7: "bedrock", 12: "sand", 13: "gravel", 17: "oak_log", 18: "oak_leaves",
+	20: "glass", 22: "lapis_block", 24: "sandstone", 35: "white_wool",
+	41: "gold_block", 42: "iron_block", 43: "smooth_stone", 44: "stone_slab",
+	45: "bricks", 47: "bookshelf", 48: "mossy_cobblestone", 49: "obsidian",
+	50: "torch", 53: "oak_stairs", 54: "chest", 57: "diamond_block",
+	58: "crafting_table", 61: "furnace", 64: "oak_door", 65: "ladder",
+	67: "cobblestone_stairs", 79: "ice", 80: "snow_block", 82: "clay",
+	85: "oak_fence", 87: "netherrack", 89: "glowstone", 98: "stone_bricks",
+	102: "glass_pane", 103: "melon", 108: "brick_stairs",
+	109: "stone_brick_stairs", 112: "nether_bricks", 121: "end_stone",
+	126: "oak_slab", 128: "sandstone_stairs", 133: "emerald_block",
+	134: "spruce_stairs", 135: "birch_stairs", 139: "cobblestone_wall",
+	155: "quartz_block", 156: "quartz_stairs", 159: "white_terracotta",
+	162: "acacia_log", 163: "acacia_stairs", 164: "dark_oak_stairs",
+	179: "red_sandstone", 180: "red_sandstone_stairs", 251: "white_concrete",
+}
+## Stair facing is packed into the low two bits of the metadata nibble,
+## in MCEdit's own order.
+const LEGACY_STAIR_FACING := ["east", "west", "south", "north"]
+
+## MCEdit / classic WorldEdit .schematic: flat numeric ids plus a nibble
+## of metadata each, indexed YZX like Sponge.
+func _read_mcedit(root: Dictionary) -> Dictionary:
+	var w := int(root.get("Width", 0))
+	var h := int(root.get("Height", 0))
+	var l := int(root.get("Length", 0))
+	var ids: PackedByteArray = root.get("Blocks", PackedByteArray())
+	var meta: PackedByteArray = root.get("Data", PackedByteArray())
+	if w <= 0 or h <= 0 or l <= 0 or ids.is_empty():
+		return {}
+	var cache: Dictionary = {}
+	var rows: Array = []
+	for n in mini(ids.size(), w * h * l):
+		var id := ids[n]
+		if id == 0:
+			continue
+		var nibble: int = meta[n] if n < meta.size() else 0
+		var key := id * 16 + nibble
+		if not cache.has(key):
+			var name: String = LEGACY_IDS.get(id, "stone")
+			var props: Dictionary = {}
+			if name.ends_with("_stairs"):
+				props["facing"] = LEGACY_STAIR_FACING[nibble & 3]
+				props["half"] = "top" if (nibble & 4) != 0 else "bottom"
+			elif name.ends_with("_slab"):
+				props["type"] = "top" if (nibble & 8) != 0 else "bottom"
+			cache[key] = McaWorld.map_entry({"Name": name, "Properties": props})
+		var block: int = cache[key]
+		if block == Blocks.AIR:
+			continue
+		rows.append([n % w, n / (w * l), (n / w) % l, block])
+	return {"w": w, "h": h, "l": l, "rows": rows}
+
+## Minecraft structure block: {state, pos} against a state palette.
+func _read_structure_nbt(root: Dictionary) -> Dictionary:
 	var size: Array = root.get("size", [])
 	var palette: Array = root.get("palette", [])
 	var blocks: Array = root.get("blocks", [])
 	if size.size() != 3 or palette.is_empty() or blocks.is_empty():
 		return {}
-	var sx := int(size[0])
-	var sy := int(size[1])
-	var sz := int(size[2])
-	if sx > MAX_W or sz > MAX_W or sy > MAX_H or sx < 2 or sz < 2:
-		return {}
-	# Map the palette once, then every block is a lookup.
 	var mapped: Array = []
 	for entry in palette:
 		mapped.append(McaWorld.map_entry(entry as Dictionary))
-	var raw_cells: Array = []
-	var min_y := 1 << 30
+	var rows: Array = []
 	for b in blocks:
 		var pos: Array = (b as Dictionary).get("pos", [])
 		if pos.size() != 3:
@@ -186,10 +267,84 @@ func _import_one(path: String, rel: String) -> Dictionary:
 		var block: int = mapped[int((b as Dictionary).get("state", 0))]
 		if block == Blocks.AIR:
 			continue
+		rows.append([int(pos[0]), int(pos[1]), int(pos[2]), block])
+	return {"w": int(size[0]), "h": int(size[1]), "l": int(size[2]), "rows": rows}
+
+## Sponge .schem, all three versions. v3 moved the palette and data into a
+## "Blocks" compound; v1/v2 keep them at the top level. Either way the
+## block array is VARINT-encoded and indexed YZX.
+func _read_sponge(root: Dictionary) -> Dictionary:
+	var w := int(root.get("Width", 0))
+	var h := int(root.get("Height", 0))
+	var l := int(root.get("Length", 0))
+	var palette_src: Dictionary = root.get("Palette", {})
+	var data = root.get("BlockData", null)
+	var container = root.get("Blocks", null)
+	if container is Dictionary:
+		palette_src = (container as Dictionary).get("Palette", palette_src)
+		data = (container as Dictionary).get("Data", data)
+	if w <= 0 or h <= 0 or l <= 0 or palette_src.is_empty() or data == null:
+		return {}
+	# Palette is name -> index; invert it, then map each name once.
+	var by_index: Dictionary = {}
+	for name: String in palette_src.keys():
+		by_index[int(palette_src[name])] = _map_state_string(str(name))
+	var bytes: PackedByteArray = data
+	var rows: Array = []
+	var i := 0
+	var n := 0
+	var total := w * h * l
+	while i < bytes.size() and n < total:
+		# LEB128: seven bits a byte, top bit means "another byte follows".
+		var value := 0
+		var shift := 0
+		while i < bytes.size():
+			var byte := bytes[i]
+			i += 1
+			value |= (byte & 0x7F) << shift
+			if byte & 0x80 == 0:
+				break
+			shift += 7
+		var block: int = by_index.get(value, Blocks.AIR)
+		if block != Blocks.AIR:
+			# YZX: index = (y * Length + z) * Width + x
+			var x := n % w
+			var z := (n / w) % l
+			var y := n / (w * l)
+			rows.append([x, y, z, block])
+		n += 1
+	return {"w": w, "h": h, "l": l, "rows": rows}
+
+## "minecraft:oak_stairs[facing=north,half=bottom]" -> our block id. The
+## properties matter: without them every stair imports flat.
+func _map_state_string(name: String) -> int:
+	var props: Dictionary = {}
+	var bracket := name.find("[")
+	if bracket >= 0:
+		var inner := name.substr(bracket + 1).trim_suffix("]")
+		for pair in inner.split(","):
+			var kv := pair.split("=")
+			if kv.size() == 2:
+				props[kv[0].strip_edges()] = kv[1].strip_edges()
+		name = name.substr(0, bracket)
+	return McaWorld.map_entry({"Name": name, "Properties": props})
+
+func _import_one(path: String, rel: String) -> Dictionary:
+	var parsed := _read_any(path)
+	if parsed.is_empty():
+		return {}
+	var sx := int(parsed.w)
+	var sy := int(parsed.h)
+	var sz := int(parsed.l)
+	if sx > MAX_W or sz > MAX_W or sy > MAX_H or sx < 2 or sz < 2:
+		return {}
+	var raw_cells: Array = []
+	var min_y := 1 << 30
+	for r: Array in parsed.rows:
 		# Centre on x/z so a kit stamps around the player's target.
-		raw_cells.append([int(pos[0]) - sx / 2, int(pos[1]),
-			int(pos[2]) - sz / 2, block])
-		min_y = mini(min_y, int(pos[1]))
+		raw_cells.append([int(r[0]) - sx / 2, int(r[1]),
+			int(r[2]) - sz / 2, int(r[3])])
+		min_y = mini(min_y, int(r[1]))
 		if raw_cells.size() > MAX_CELLS:
 			return {}
 	if raw_cells.size() < 30:
