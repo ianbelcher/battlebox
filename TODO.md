@@ -118,6 +118,11 @@ also drops all block states, so stairs import flat; use raw `.nbt`/`.schem`.
   the text box being typed in and the button being clicked. (2) Never read
   `size` in `_ready()` — it is 0 there, so fonts bake at minimum scale and
   never grow. Both are documented at the top of `world_menu.gd`.
+- Battle test hooks: `WORLD_BOT_WEAPON=<id>` arms every computer player at
+  the drop (they otherwise start with a sword and must find a crate), and
+  `WORLD_ORB_DEBUG=1` logs every bot shot — fired, hit, or stopped by a
+  wall. Bots drop 16-30% of the world's size from the centre, so shrink
+  the arena (battle.cfg `size=60`) if you want them to meet quickly.
 - Test hooks: `WORLD_DINOS_NOW=1`, `WORLD_DRAGON_NOW=1`,
   `WORLD_MENU_TEST=1` (+ `WORLD_MENU_TAB=<n>` to land on a world-menu
   tab), `WORLD_VIDEO_DEBUG=1`, `WORLD_FLIER_DEBUG=1`,

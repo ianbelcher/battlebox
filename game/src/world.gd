@@ -1475,23 +1475,36 @@ func _server_tick_bots(delta: float) -> void:
 			state.pos = pos
 		# Fight whatever is in range.
 		if match_phase == "BATTLE" and _match_alive.has(id) and not downed:
-			var enemy := _bot_nearest_enemy(id, pos, 20.0)
+			var enemy := _bot_nearest_enemy(id, pos, 48.0)
 			if enemy != "" and bot.shoot_cd <= 0.0:
 				var epos: Vector3 = _player_state[enemy].pos
-				var dist := pos.distance_to(epos)
-				if int(bot.weapon) != 13:
+				var muzzle := pos + Vector3(0, 1.4, 0)
+				var aim := epos + Vector3(0, 1.0, 0)
+				# Only take the shot if there's something to shoot at —
+				# firing into a wall is just noise.
+				if int(bot.weapon) != 13 and _clear_shot(muzzle, aim):
 					bot.shoot_cd = 1.1
-					cl_orb.rpc(id, pos + Vector3(0, 1.4, 0), (epos - pos).normalized(), int(bot.weapon))
-					# The shot has to be able to REACH you. This used to
-					# land damage the instant the orb was launched, with no
-					# line of sight and up to 20 blocks away — which is how
-					# players were being dispatched by someone nowhere near
-					# them, often straight through a wall.
-					if dist < 14.0 and _clear_shot(pos + Vector3(0, 1.4, 0),
-							epos + Vector3(0, 1.0, 0)) \
-							and randf() < clampf(1.0 - dist / 22.0, 0.12, 0.7):
-						_match_hurt(enemy, 1, pos, id)
-				elif dist < 2.6:
+					var dir := (aim - muzzle).normalized()
+					# Aim is imperfect, so a moving target is a harder one.
+					dir = (dir + Vector3(randf_range(-0.03, 0.03), 
+						randf_range(-0.02, 0.02),
+						randf_range(-0.03, 0.03))).normalized()
+					cl_orb.rpc(id, muzzle, dir, int(bot.weapon))
+					# ...and the orb this fires is REAL: the server flies it
+					# at the weapon's own speed and it only hurts what it
+					# actually reaches. It used to deal damage the instant
+					# it was fired, with the flying orb a mere decoration —
+					# which is why people were dropping with nothing near
+					# them, often through a wall. Now a computer player's
+					# shot is the same shot yours is: it takes time to
+					# arrive, walls stop it, and you can step out of the
+					# way of the slow ones.
+					if OS.get_environment("WORLD_ORB_DEBUG") == "1":
+						print("BOTORB fired at %s, %.1f blocks away"
+							% [enemy, pos.distance_to(epos)])
+					_spawn_bot_orb(id, muzzle, dir, int(bot.weapon))
+				elif int(bot.weapon) == 13 and pos.distance_to(epos) < 2.6:
+					# Sword range: close enough to actually swing at you.
 					bot.shoot_cd = 0.8
 					cl_pos.rpc(id, pos, bot.yaw, 9)
 					_match_hurt(enemy, 1, pos, id)
@@ -1721,6 +1734,7 @@ func _server_tick_match(delta: float) -> void:
 			_tick_fire()
 			if int(_match_timer) % 2 == 0 and _match_timer - floorf(_match_timer) < 0.02:
 				_tick_crate_gravity()
+			_tick_bot_orbs(delta)
 			_tick_revives(delta)
 			_check_match_win()
 		"END":
@@ -1749,6 +1763,7 @@ func _server_match_drop() -> void:
 	_match_alive.clear()
 	_downed_ids.clear()
 	_revive_progress.clear()
+	_bot_orbs.clear()
 	_team_drop_angle.clear()
 	var counts: Array[int] = []
 	counts.resize(team_count)
@@ -1786,7 +1801,11 @@ func _server_match_drop() -> void:
 		cl_drop.rpc(id, drop, loot_only)
 		if _bots.has(id):
 			_bots[id].pos = drop
-			_bots[id].weapon = 13
+			# WORLD_BOT_WEAPON=<id>: hand every computer player that weapon
+			# at the drop, so the shooting can be tested without waiting
+			# for them to find a crate.
+			var forced_weapon := OS.get_environment("WORLD_BOT_WEAPON")
+			_bots[id].weapon = forced_weapon.to_int() if forced_weapon.is_valid_int() else 13
 			_player_state[id].pos = drop
 		i += 1
 	# Fresh loot everywhere so late matches aren't scavenged dry — the
@@ -1974,6 +1993,61 @@ func _tick_regen() -> void:
 ## many hearts you come back with.
 const REVIVE_SECONDS := 3.0
 const REVIVE_HP := 1
+
+## Bot shots in flight. They travel exactly like a player's orb — straight
+## line at the weapon's speed, stopped by solid blocks, hitting whatever
+## they actually touch — because a player's orb is simulated by the
+## shooter's client, and a bot has no client to do it.
+var _bot_orbs: Array = []
+
+func _spawn_bot_orb(shooter: String, from: Vector3, dir: Vector3, kind: int) -> void:
+	var speed := float(Weapons.spec(kind).get("speed", 34.0))
+	if speed <= 1.0:
+		return                      # melee and utility weapons don't fly
+	_bot_orbs.append({"pos": from, "vel": dir * speed, "shooter": shooter,
+		"kind": kind, "age": 0.0})
+
+func _tick_bot_orbs(delta: float) -> void:
+	if _bot_orbs.is_empty():
+		return
+	for i in range(_bot_orbs.size() - 1, -1, -1):
+		var orb: Dictionary = _bot_orbs[i]
+		orb.age = float(orb.age) + delta
+		var vel: Vector3 = orb.vel
+		# These move up to 70 blocks a second, so step along the path in
+		# short hops — a single jump per frame would tunnel through walls
+		# and players alike.
+		var travel := vel.length() * delta
+		var hops := maxi(int(travel / 0.4), 1)
+		var step := vel * (delta / float(hops))
+		var dead := false
+		for _h in hops:
+			orb.pos = (orb.pos as Vector3) + step
+			var at: Vector3 = orb.pos
+			if at.y < -4.0 or at.y > WorldGen.CHUNK_H + 40.0:
+				dead = true
+				break
+			if Blocks.is_solid(store.get_block(Vector3i(floori(at.x),
+					floori(at.y), floori(at.z)))):
+				if OS.get_environment("WORLD_ORB_DEBUG") == "1":
+					print("BOTORB stopped by a block after %.2fs" % orb.age)
+				dead = true
+				break
+			for pid: String in _match_alive.keys():
+				if pid == orb.shooter or _downed_ids.has(pid) \
+						or not _teams_differ(orb.shooter, pid):
+					continue
+				var target: Vector3 = _player_state.get(pid, {}).get("pos", Vector3.INF)
+				if target.distance_to(at - Vector3(0, 0.8, 0)) < 1.1:
+					if OS.get_environment("WORLD_ORB_DEBUG") == "1":
+						print("BOTORB hit %s after %.2fs in flight" % [pid, orb.age])
+					_match_hurt(pid, 1, at, orb.shooter)
+					dead = true
+					break
+			if dead:
+				break
+		if dead or float(orb.age) > 6.0:
+			_bot_orbs.remove_at(i)
 
 func _tick_revives(delta: float) -> void:
 	var now := Time.get_ticks_msec()
