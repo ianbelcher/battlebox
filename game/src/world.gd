@@ -309,7 +309,7 @@ func sv_hello() -> void:
 	cl_map_list.rpc_id(peer, ChunkStore.list_maps())
 	cl_overview.rpc_id(peer, overview)
 	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only,
-		battle_fly)
+		battle_fly, team_count)
 	cl_teams.rpc_id(peer, team_names)
 	cl_mode.rpc_id(peer, game_mode)
 	cl_world_sel.rpc_id(peer, selected_map if not selected_map.is_empty() \
@@ -1331,6 +1331,9 @@ func cl_teams(names: Array) -> void:
 	client_team_names = names
 	if multiplayer.is_server():
 		return
+	# The COUNT lives here too. It used to be server-only, so removing a
+	# team emptied it everywhere but left the column on screen forever.
+	team_count = maxi(names.size(), 1)
 	battle_config_changed.emit()
 
 func _redistribute_bots() -> void:
@@ -1497,7 +1500,7 @@ func _save_battle_setup() -> void:
 	cfg.set_value("battle", "minutes", storm_minutes)
 	cfg.set_value("battle", "size", battle_size)
 	cfg.set_value("battle", "loot", loot_only)
-	cfg.set_value("battle", "fly", battle_fly)
+	cfg.set_value("battle", "world_fly", battle_fly)
 	cfg.set_value("battle", "team_names", team_names)
 	cfg.set_value("battle", "bots", _bots.size())
 	cfg.set_value("battle", "world", selected_map)
@@ -1511,7 +1514,7 @@ func _load_battle_setup() -> void:
 	storm_minutes = float(cfg.get_value("battle", "minutes", storm_minutes))
 	battle_size = float(cfg.get_value("battle", "size", battle_size))
 	loot_only = bool(cfg.get_value("battle", "loot", loot_only))
-	battle_fly = bool(cfg.get_value("battle", "fly", battle_fly))
+	battle_fly = bool(cfg.get_value("battle", "world_fly", battle_fly))
 	var names: Array = cfg.get_value("battle", "team_names", team_names)
 	if names.size() >= 2:
 		team_names = names
@@ -1546,7 +1549,11 @@ func _storm_start() -> float:
 const STORM_END := 20.0
 var storm_minutes := 5.0
 var loot_only := false
-var battle_fly := false  # humans may fly in battles (kids get lost on foot)
+## Flying allowed at all, in EVERY mode — it describes how play works in
+## this world, not how a battle works. Stored under its own key ("world_fly")
+## because the old battle-only setting defaulted to false, and reusing it
+## would have silently turned flying off in creative.
+var battle_fly := true
 
 var _match_timer := 0.0
 var _match_alive: Dictionary = {}   # id -> true while still fighting
@@ -1577,7 +1584,8 @@ func sv_match_config(minutes: int, loot: int, size: int = -1, fly: int = -1) -> 
 		battle_size = clampf(float(size), 25.0, 400.0)
 	if fly >= 0:
 		battle_fly = fly == 1
-	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only, battle_fly)
+	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only,
+		battle_fly, team_count)
 	_save_battle_setup()
 
 @rpc("any_peer", "reliable")
@@ -2726,11 +2734,16 @@ func cl_overview(bytes: PackedByteArray) -> void:
 	overview = bytes
 
 @rpc("authority", "reliable")
-func cl_battle_config(minutes: int, size: int, loot: bool, fly := false) -> void:
+func cl_battle_config(minutes: int, size: int, loot: bool, fly := false,
+		teams := -1) -> void:
 	client_minutes = minutes
 	client_size = size
 	client_loot = loot
 	client_fly = fly
+	# team_count used to live only on the server, so "Remove a team" left
+	# the client drawing a column that no longer existed.
+	if teams > 0:
+		team_count = teams
 	battle_config_changed.emit()
 
 @rpc("authority", "reliable")

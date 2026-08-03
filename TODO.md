@@ -19,6 +19,12 @@ any tool) can pick the work up cold.
 
 ## Open work
 
+- [ ] **World size is a soft edge, not a wall.** Picking a size on the Map
+      tab now eases players back at the boundary in both modes, but the
+      terrain still generates past it and blocks can still be placed
+      out there. A real border (visible edge, generation limit) is the
+      proper job.
+
 - [ ] **Space map** — floating spaceships built from glow blocks, barren
       grey rolling hills, biosphere domes, underground bunkers. A `space`
       entry already appears in the map list; the generator doesn't exist,
@@ -105,6 +111,11 @@ also drops all block states, so stairs import flat; use raw `.nbt`/`.schem`.
 - **Test before shipping.** Headless server + client with `WORLD_DATA_DIR`,
   `WORLD_AUTOTEST` and `WORLD_SHOTS` screenshots; check BOTH split-screen
   seats for anything UI-related.
+- **The world menu has two rules; breaking either makes it unusable.**
+  (1) Never rebuild it on a timer — rebuilding rows every frame destroys
+  the text box being typed in and the button being clicked. (2) Never read
+  `size` in `_ready()` — it is 0 there, so fonts bake at minimum scale and
+  never grow. Both are documented at the top of `world_menu.gd`.
 - Test hooks: `WORLD_DINOS_NOW=1`, `WORLD_DRAGON_NOW=1`,
   `WORLD_MENU_TEST=1` (+ `WORLD_MENU_TAB=<n>` to land on a world-menu
   tab), `WORLD_VIDEO_DEBUG=1`, `WORLD_FLIER_DEBUG=1`,

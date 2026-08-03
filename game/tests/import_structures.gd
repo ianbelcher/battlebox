@@ -244,8 +244,11 @@ static func _thumbnail(cells: Array, min_y: int, max_y: int) -> PackedByteArray:
 		hi_x = maxi(hi_x, int(c[0]))
 	var w := maxi(hi_x - lo_x + 1, 1)
 	var h := maxi(max_y - min_y + 1, 1)
-	# One scale for both axes so nothing is stretched; centre what's left.
-	var scale := maxf(float(w) / float(THUMB), float(h) / float(THUMB))
+	# One scale for both axes so nothing is stretched, and NEVER below 1:
+	# upscaling with a forward nearest-neighbour mapping skips whole
+	# output rows and columns, which drew blank lines through every small
+	# build. Anything smaller than THUMB just renders 1:1 and is centred.
+	var scale := maxf(maxf(float(w) / float(THUMB), float(h) / float(THUMB)), 1.0)
 	var pad_x := int((THUMB - float(w) / scale) * 0.5)
 	var pad_y := int((THUMB - float(h) / scale) * 0.5)
 	var best_z := {}

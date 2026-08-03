@@ -368,6 +368,21 @@ func _physics_process(delta: float) -> void:
 		if velocity.length_squared() > 60.0 * 60.0 and grapple_time <= 0.0:
 			push_warning("Speed clamp: %s at %.0f m/s" % [player_id, velocity.length()])
 			velocity = velocity.limit_length(60.0)
+		# "Size of the world" is a real edge in EVERY mode, not just a
+		# storm radius during battles — it used to be read only by the
+		# battle code, so changing it while building did nothing at all.
+		# Walk into it and you're eased back rather than stopped dead.
+		if world != null and not fly_mode and grapple_time <= 0.0 \
+				and world.match_phase != "DROP":
+			var edge := float(world.client_size) * 0.5
+			if edge > 8.0:
+				var flat := Vector2(position.x, position.z)
+				if flat.length() > edge:
+					var back := flat.normalized() * edge
+					position.x = lerpf(position.x, back.x, 0.35)
+					position.z = lerpf(position.z, back.y, 0.35)
+					velocity.x *= 0.4
+					velocity.z *= 0.4
 		if absf(position.x) > 900.0 or absf(position.z) > 900.0 \
 				or position.y < -40.0 or position.y > WorldGen.CHUNK_H + 120.0:
 			push_warning("Bounds clamp: %s at %v" % [player_id, position])
@@ -473,8 +488,8 @@ func _local_move(delta: float) -> void:
 	var jump_now := input.is_jump_pressed()
 	if jump_now and not _prev_jump:
 		var now := Time.get_ticks_msec()
-		var fly_allowed: bool = world.match_phase == "IDLE" \
-			or (world.client_fly and world.match_phase == "BATTLE")
+		# One rule in every mode: the world says whether anyone may fly.
+		var fly_allowed: bool = world.client_fly
 		if now - _last_jump_ms < 480 and not world.survival_active \
 				and fly_allowed and riding < 0:
 			fly_mode = not fly_mode
@@ -568,8 +583,7 @@ func _local_move(delta: float) -> void:
 		heading = dir.normalized()
 
 	var is_out: bool = world.ghost_ids.has(player_id)
-	var fly_ok: bool = world.match_phase == "IDLE" \
-		or (world.client_fly and world.match_phase == "BATTLE")
+	var fly_ok: bool = world.client_fly
 	if fly_mode and (world.survival_active or not fly_ok) and not is_out:
 		fly_mode = false  # no flying away from raids or matches (ghosts may)
 	if world != null and world.match_phase == "DROP":
