@@ -1764,18 +1764,31 @@ func _process(_delta: float) -> void:
 		if in_battle:
 			var me_id := Game.player_id(multiplayer.get_unique_id(), slot)
 			var team := int(Game.roster.get(me_id, {}).get("team", -1))
+			# Someone lying there waiting to be picked up is NOT still in
+			# the fight: alive_ids only drops you when you're eliminated,
+			# so a downed team-mate used to keep the count at 4/4.
 			var mates_alive := 0
 			var mates_total := 0
+			var mates_down := 0
 			for rid: String in Game.roster.keys():
 				if int(Game.roster[rid].get("team", -2)) == team:
 					mates_total += 1
-					if world.alive_ids.has(rid):
+					if not world.alive_ids.has(rid):
+						continue
+					if world.client_downed.has(rid):
+						mates_down += 1
+					else:
 						mates_alive += 1
 			var team_name := "?"
 			if team >= 0 and team < world.client_team_names.size():
 				team_name = str(world.client_team_names[team])
-			_score_label.text = "🚩 %s  %d/%d alive   ·   %d players left" % [
-				team_name, mates_alive, mates_total, world.alive_ids.size()]
+			var still_up := 0
+			for rid: String in world.alive_ids.keys():
+				if not world.client_downed.has(rid):
+					still_up += 1
+			var down_note := "  (%d down)" % mates_down if mates_down > 0 else ""
+			_score_label.text = "🚩 %s  %d/%d up%s   ·   %d players left" % [
+				team_name, mates_alive, mates_total, down_note, still_up]
 	if _vignette != null and world != null:
 		# The hurt vignette: strongest when hearts are low, eases back as
 		# regen tops you up.

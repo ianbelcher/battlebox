@@ -1023,6 +1023,20 @@ func _animate(delta: float) -> void:
 		_animate_kenney(delta)
 		return
 	_bob_time += delta
+	if downed:
+		# The hand-built rig has no death clip, so it tips over and holds:
+		# flat on its back, limbs still.
+		_avatar.rotation.x = lerp_angle(_avatar.rotation.x, -PI * 0.5,
+			minf(1.0, delta * 6.0))
+		_avatar.position.y = lerpf(_avatar.position.y, 0.25, minf(1.0, delta * 6.0))
+		for limb in ["LegL", "LegR", "ArmL", "ArmR"]:
+			var pivot: Node3D = _avatar.get_node_or_null(limb)
+			if pivot != null:
+				pivot.rotation.x = lerp_angle(pivot.rotation.x, 0.0,
+					minf(1.0, delta * 6.0))
+				pivot.rotation.z = lerp_angle(pivot.rotation.z, 0.0,
+					minf(1.0, delta * 6.0))
+		return
 	var swing := 0.0
 	var arms_up := 0.0
 	match anim:
@@ -1099,10 +1113,15 @@ func _animate_kenney(_delta: float) -> void:
 		return
 	var want := "idle"
 	var ground_speed := Vector2(velocity.x, velocity.z).length()
+	if downed:
+		# Down and staying down: start the fall once, then leave it be.
+		ap.get_animation("die").loop_mode = Animation.LOOP_NONE \
+			if ap.has_animation("die") else 0
+		if ap.current_animation != "die":
+			ap.play("die", 0.15)
+		return
 	if swing_time > 0.0:
 		want = "attack-melee-right"
-	elif downed:
-		want = "die"
 	elif anim == Anim.SNEAK:
 		want = "sit"
 	elif ground_speed > 5.2:

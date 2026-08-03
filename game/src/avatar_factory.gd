@@ -203,9 +203,15 @@ static func build_character(style: Dictionary) -> Node3D:
 				var ap := inst.find_child("AnimationPlayer", true, false) as AnimationPlayer
 				if ap != null:
 					for anim_name in ["idle", "walk", "sprint", "holding-right",
-							"die", "sit"]:
+							"sit"]:
 						if ap.has_animation(anim_name):
 							ap.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
+					# "die" must NOT loop. Looping made a downed player fall
+					# over, snap upright and fall over again forever — the
+					# thing the kids ended up watching instead of the game.
+					# Once through, then hold the last frame: down and still.
+					if ap.has_animation("die"):
+						ap.get_animation("die").loop_mode = Animation.LOOP_NONE
 					ap.play("idle")
 					root.set_meta("ap", ap)
 				root.set_meta("style", str(style))

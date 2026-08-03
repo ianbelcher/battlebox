@@ -2148,8 +2148,13 @@ func cl_eliminated(id: String) -> void:
 				child.fly_mode = true
 				Sfx.play("drop", -6.0)
 			else:
-				# The fallen are invisible to everyone still playing.
+				# The fallen are invisible to everyone still playing, and
+				# must drop the downed pose with it — otherwise they were
+				# still running the death animation while hidden, and came
+				# back mid-fall if anything made them visible again.
 				child.visible = false
+			child.downed = false
+			child.set_ghost(false)
 
 signal match_won(winner: int)
 
