@@ -23,12 +23,108 @@ any tool) can pick the work up cold.
 
 ## Open work
 
+Everything below came from Ian in one go on 4/8/2026, in priority order
+as agreed: bugs that spoil a game first, then the things that make it a
+better game. Tick them off here as they ship.
+
+### Bounds — things leaving the play area
+
+- [ ] **Nothing may be placed outside the world size.** Crates, kits,
+      structures, animals and decoration are all placed without checking
+      `battle_size`, so on a small world they land off the grid. Every
+      placement goes through one bounds check.
+- [ ] **No player may be dropped outside the grid** either — same check
+      on the drop path.
+
+### Roster and teams
+
+- [ ] **Name computer players from the phonetic alphabet** — Alpha,
+      Bravo, Charlie, Delta … Zulu. Humans keep animal names (newt, duck,
+      bee, bear), so the two are told apart at a glance. The current
+      names sort alphanumerically, so "Bot 10" lands between "Bot 1" and
+      "Bot 2" and the roster reads as nonsense. 24 bots max, 26 letters —
+      it fits. Computers always sort AFTER humans.
+- [ ] **Make bot team assignment legible.** Right now you cannot tell
+      what team a bot landed on or why.
+- [ ] **A counts row at the top of the team grid**: how many players are
+      on each team.
+- [ ] **The world menu runs off the right edge** once there are enough
+      teams — the swatch row does not wrap or scroll.
+
+### Creatures
+
+- [ ] **Far fewer animals, scaled to the world.** A 50×50 world is
+      swamped with them.
+- [ ] **Drop snakes.** They cannot move around properly.
+
+### Weapons
+
+- [ ] **Medium shooter is far too destructive** — roughly halve the
+      blast.
+- [ ] **No explosion may leave a 2-block height differential.** Getting
+      stuck in a crater you cannot walk out of is not fun. Craters should
+      come out walkable — no step taller than one block anywhere around
+      the rim. (Digging down under your own feet is still your problem.)
+- [ ] **Remove** the bridge gun, the party popper and the world wand —
+      none of them are useful.
+- [ ] **Starting loadout: sword, paint sprayer, flare gun.**
+- [ ] **New — paint sprayer.** Works like the paint bomb but sprays in
+      YOUR TEAM's colour, so you can draw lines and mark things.
+- [ ] **Flare gun fires your team's colour.**
+- [ ] **New — smoke bomb.** A team-coloured marker you throw to say
+      "we're taking that building". Not for hiding. **Only ever one in
+      the world at a time** — throwing a new one clears the previous.
+- [ ] **Weapon order**: flare gun, paint bomb, paint sprayer together;
+      then wings; napalm rocket moves to just after the big shooter.
+
+### Loot
+
+- [ ] **The lights over loot flicker** — they switch off and back on.
+- [ ] **Ration loot to the world's size and, partly, to how many are
+      playing.** Two players on a huge map should not be hunting ten
+      crates between them.
+
+### Drops
+
+- [ ] **Drop teams TOGETHER** — a team of four (or seventeen) lands as a
+      group with about one block between them, so they start together and
+      can fly out from there. **Spread the groups well across the map** so
+      every team gets its own space.
+
+### Space map
+
+- [ ] **Biodomes must sit on the ground.** Sample every block under the
+      dome's circular footprint and set it at the LOWEST of them, instead
+      of leaving it hanging in the air.
+- [ ] **Weapons/loot still spawn floating high in the air** on this map.
+- [ ] **More than one cavern.** A large space world currently gets one.
+- [ ] **An angled archway leading down into a cavern**, rather than the
+      bare hole it is now.
+- [ ] **Better spaceships.** They are meant to be the floating-island
+      feature of this map and they look terrible.
+
+### Scoreboard
+
+- [ ] **Track games won per team.** The end of a match announces "Team
+      Blue wins", and there is a leaderboard.
+- [ ] **The board has two sides**: teams by games won on one, players by
+      TOTAL frags on the other — with each player's team, their running
+      total, and what they got in the game just finished.
+- [ ] **Resets when the map changes.** Players coming and going does not
+      reset it.
+
+### Bots
+
+- [ ] **Better bot play, with a spread of skill** — some genuinely good
+      players, some genuinely bad ones.
+
+### Older items
+
 - [ ] **Space map, second pass.** The generator exists now (grey ground,
       glass biosphere domes with grass inside, steel bunkers with lit
-      shafts, glowing ships parked in the sky). Ian should say what it
-      needs — more ship variety, interiors, something to find.
-
-
+      shafts, glowing ships parked in the sky). Beyond the fixes listed
+      above, Ian should say what else it needs — interiors, something to
+      find.
 - [ ] **3D held tool models** "kind of suck" — improve them. The icons
       are fine.
 - [ ] **More kits — needs Ian to pick.** The importer now reads all three
