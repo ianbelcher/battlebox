@@ -576,9 +576,18 @@ func _build_players_tab() -> void:
 
 	var roster_card := _section(box, "Everyone playing",
 		"Click a name to type a new one. Click a colour to change team.")
+	# Horizontal scroll is the backstop: the swatches shrink as teams are
+	# added, but at 24 teams on a small window they still have to go
+	# somewhere. Before this the row simply ran off the right of the panel
+	# and out of the window.
+	var roster_scroll := ScrollContainer.new()
+	roster_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	roster_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	roster_card.add_child(roster_scroll)
 	_players_box = VBoxContainer.new()
+	_players_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_players_box.add_theme_constant_override("separation", _s(6))
-	roster_card.add_child(_players_box)
+	roster_scroll.add_child(_players_box)
 
 ## Rows are rebuilt ONLY when this changes — never on a timer. Rebuilding
 ## every frame destroyed the text box you were typing into.
@@ -610,30 +619,93 @@ func _refresh_players() -> void:
 		_add_bot_btn.disabled = Game.roster.size() >= 24
 	var team_count: int = world.team_count if world != null else 4
 	var ids: Array = Game.roster.keys()
+	# People first, then computers, each block in name order. Computers are
+	# named from the phonetic alphabet, so name order IS the order they
+	# were added — Alpha, Bravo, Charlie down the page.
 	ids.sort_custom(func(a: String, b: String) -> bool:
 		var a_bot: bool = bool(Game.roster[a].get("bot", false))
 		var b_bot: bool = bool(Game.roster[b].get("bot", false))
 		if a_bot != b_bot:
 			return b_bot  # humans first
 		return str(Game.roster[a].name) < str(Game.roster[b].name))
-	for i in ids.size():
-		if i > 0:
-			_players_box.add_child(HSeparator.new())
-		_players_box.add_child(_player_row(str(ids[i]), team_count))
 
-func _player_row(id: String, team_count: int) -> HBoxContainer:
+	# ONE grid, so the counts along the top sit exactly over the column
+	# they are counting. As separate rows they drifted apart the moment a
+	# name was a different length.
+	var grid := GridContainer.new()
+	grid.columns = team_count + 2
+	grid.add_theme_constant_override("h_separation", _s(6))
+	grid.add_theme_constant_override("v_separation", _s(6))
+	_players_box.add_child(grid)
+
+	var cell_w := int(clampf(480.0 / float(team_count), 30.0, 76.0))
+	var counts := _team_counts(team_count)
+	grid.add_child(_min(Control.new(), 210, 0))
+	for t in team_count:
+		grid.add_child(_team_header(t, counts[t], cell_w))
+	grid.add_child(Control.new())
+	for id_v in ids:
+		_add_player_row(grid, str(id_v), team_count, cell_w)
+
+## Whatever the team is actually CALLED — teams can be renamed, and the
+## header used to show the hard-coded colour list instead.
+func _team_name(t: int) -> String:
+	if world != null and t < world.client_team_names.size():
+		return str(world.client_team_names[t])
+	if t < WorldNode.TEAM_NAMES.size():
+		return WorldNode.TEAM_NAMES[t]
+	return str(t + 1)
+
+## How many players are sitting on each team right now.
+func _team_counts(team_count: int) -> Array:
+	var counts: Array[int] = []
+	counts.resize(team_count)
+	for id: String in Game.roster.keys():
+		var team := int(Game.roster[id].get("team", -1))
+		if team >= 0 and team < team_count:
+			counts[team] += 1
+	return counts
+
+## Column header: the team's name over how many are on it. With the count
+## up here, the swatches below can be pure colour — which is what lets
+## them shrink far enough for 24 teams to fit on screen at all.
+func _team_header(t: int, count: int, cell_w: int) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 0)
+	_min(box, cell_w, 0)
+	var name_label := Label.new()
+	name_label.text = _team_name(t)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.clip_text = true
+	name_label.add_theme_color_override("font_color", WorldNode.TEAM_COLORS[t])
+	# The name shrinks with the column so "Orange" doesn't come out as
+	# "Orang" once there are a dozen teams sharing the width.
+	box.add_child(_font(name_label,
+		int(clampf(cell_w * 0.28, 9.0, float(UiTheme.T_NOTE)))))
+	var count_label := Label.new()
+	count_label.text = str(count)
+	count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	count_label.add_theme_color_override("font_color",
+		UiTheme.INK if count > 0 else UiTheme.INK_FAINT)
+	box.add_child(_font(count_label, UiTheme.T_BODY))
+	return box
+
+func _add_player_row(grid: GridContainer, id: String, team_count: int,
+		cell_w: int) -> void:
 	var entry: Dictionary = Game.roster[id]
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", _s(10))
+	var who := HBoxContainer.new()
+	who.add_theme_constant_override("separation", _s(8))
+	_min(who, 210, 0)
 	var tag := Label.new()
 	tag.text = "🤖" if bool(entry.get("bot", false)) else "🙂"
 	tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(_font(tag, UiTheme.T_BODY + 4))
+	who.add_child(_font(tag, UiTheme.T_BODY + 4))
 	var name_edit := LineEdit.new()
 	name_edit.text = str(entry.name)
 	name_edit.max_length = 12
 	name_edit.focus_mode = Control.FOCUS_ALL
-	_min(name_edit, 200, 46)
+	name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_min(name_edit, 150, 44)
 	_font(name_edit, UiTheme.T_BODY)
 	name_edit.text_submitted.connect(func(text: String) -> void:
 		Game.sv_rename_any.rpc_id(1, id, text)
@@ -642,33 +714,28 @@ func _player_row(id: String, team_count: int) -> HBoxContainer:
 	name_edit.focus_exited.connect(func() -> void:
 		if name_edit.text != str(Game.roster.get(id, {}).get("name", "")):
 			Game.sv_rename_any.rpc_id(1, id, name_edit.text))
-	row.add_child(name_edit)
-	var teams := HBoxContainer.new()
-	teams.add_theme_constant_override("separation", _s(6))
-	teams.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(teams)
+	who.add_child(name_edit)
+	grid.add_child(who)
 	var team := int(entry.get("team", -1))
 	for t in team_count:
-		teams.add_child(_team_cell(id, t, team))
+		grid.add_child(_team_cell(id, t, team, cell_w))
 	var kick := _button("✕", func() -> void:
 		Game.sv_kick_player.rpc_id(1, id)
 		Sfx.play("pop", -6.0), UiTheme.T_BODY)
 	kick.tooltip_text = "Remove this player"
 	kick.add_theme_color_override("font_color", UiTheme.DANGER)
 	kick.add_theme_color_override("font_hover_color", Color.WHITE)
-	_min(kick, 48, 46)
-	row.add_child(kick)
-	return row
+	_min(kick, 46, 44)
+	grid.add_child(kick)
 
-func _team_cell(id: String, t: int, current: int) -> Button:
+func _team_cell(id: String, t: int, current: int, cell_w: int) -> Button:
 	var entry: Dictionary = Game.roster[id]
 	var cell := Button.new()
 	cell.focus_mode = Control.FOCUS_ALL
-	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cell.clip_text = true
-	_min(cell, 70, 46)
-	cell.text = WorldNode.TEAM_NAMES[t] if t < WorldNode.TEAM_NAMES.size() else str(t)
-	_font(cell, UiTheme.T_NOTE + 1)
+	# Pure colour, no text: the name is in the header above it, and text
+	# is what stopped these shrinking when the teams piled up.
+	cell.tooltip_text = _team_name(t)
+	_min(cell, cell_w, 44)
 	# The team a player is ON is fully saturated with a white ring; the
 	# others are the same hue knocked right back, so one glance down the
 	# column tells you who is where.
@@ -684,10 +751,6 @@ func _team_cell(id: String, t: int, current: int) -> Button:
 	cell.add_theme_stylebox_override("normal", cell_style)
 	cell.add_theme_stylebox_override("pressed", cell_style)
 	cell.add_theme_stylebox_override("hover", hover_style)
-	cell.add_theme_color_override("font_color",
-		Color(0.08, 0.08, 0.11) if chosen else Color(1, 1, 1, 0.55))
-	cell.add_theme_color_override("font_hover_color",
-		Color(0.08, 0.08, 0.11) if chosen else Color.WHITE)
 	var slot := int(entry.slot)
 	var mine: bool = int(entry.peer) == multiplayer.get_unique_id() \
 		and Game.local_inputs.has(slot)

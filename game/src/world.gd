@@ -1191,16 +1191,25 @@ func _dragon_exists() -> bool:
 			return true
 	return false
 
+## The first phonetic name nobody is using. Taking the FIRST free one
+## rather than the next in sequence means removing Bravo and adding a
+## computer back gives you Bravo again, not Zulu.
+func _next_bot_name() -> String:
+	var taken := {}
+	for entry: Dictionary in Game.roster.values():
+		taken[str(entry.get("name", ""))] = true
+	for candidate: String in Game.BOT_NAMES:
+		if not taken.has(candidate):
+			return candidate
+	return "Robot %d" % (Game.roster.size() + 1)
+
 func _spawn_bot() -> void:
 	if Game.roster.size() >= 24:
 		return
 	var slot := _next_bot_slot
 	_next_bot_slot += 1
 	var id := Game.player_id(1, slot)
-	var number := 0
-	for other: String in _bots.keys():
-		number = maxi(number, int(str(Game.roster.get(other, {}).get("name", "0"))))
-	Game.roster[id] = {"peer": 1, "slot": slot, "name": str(number + 1),
+	Game.roster[id] = {"peer": 1, "slot": slot, "name": _next_bot_name(),
 		"style": AvatarFactory.random_style(), "team": -1, "bot": true}
 	var start := Vector3(spawn_pos) + Vector3(randf_range(-8, 8), 2, randf_range(-8, 8))
 	_bots[id] = {"slot": slot, "pos": start, "yaw": 0.0, "think": 0.0,
@@ -1283,7 +1292,8 @@ func auto_team(id: String) -> void:
 		if counts[t] < counts[best]:
 			best = t
 	Game.roster[id].team = best
-	Game.cl_roster.rpc(Game.roster)
+	# The computers even out around whoever just arrived.
+	_redistribute_bots()
 
 ## Teams are managed from the Players view: add/remove columns, rename.
 ## Computer players redistribute into contiguous, even groups (1,2,3 on
@@ -1297,6 +1307,7 @@ func sv_add_team() -> void:
 		return
 	team_count += 1
 	team_names.append(TEAM_NAMES[(team_count - 1) % TEAM_NAMES.size()])
+	_unpin_bots()
 	_redistribute_bots()
 	cl_teams.rpc(team_names)
 	_save_battle_setup()
@@ -1316,6 +1327,7 @@ func sv_remove_team(index: int = -1) -> void:
 			Game.roster[id].team = -1
 		elif team > gone:
 			Game.roster[id].team = team - 1
+	_unpin_bots()
 	_redistribute_bots()
 	cl_teams.rpc(team_names)
 	_save_battle_setup()
@@ -1339,13 +1351,50 @@ func cl_teams(names: Array) -> void:
 	team_count = maxi(names.size(), 1)
 	battle_config_changed.emit()
 
+## Computer players fill up the emptiest team, in name order.
+##
+## This used to slice them into contiguous blocks of the same size and
+## ignore the humans completely, so a team with three people on it got
+## just as many computers as an empty one, and 10 computers over 4 teams
+## came out 3/3/3/1. Now each one in turn joins whichever team has the
+## fewest PLAYERS of any kind, ties going to the leftmost team — so the
+## counts along the top of the team grid always explain what happened.
+func _unpin_bots() -> void:
+	for id: String in _bots.keys():
+		if Game.roster.has(id):
+			Game.roster[id].erase("fixed")
+
 func _redistribute_bots() -> void:
 	var ids: Array = _bots.keys()
 	ids.sort_custom(func(a: String, b: String) -> bool:
-		return int(Game.roster[a].slot) < int(Game.roster[b].slot))
-	var group := ceili(float(ids.size()) / float(team_count))
-	for i in ids.size():
-		Game.roster[ids[i]].team = mini(i / maxi(group, 1), team_count - 1)
+		return str(Game.roster[a].name) < str(Game.roster[b].name))
+	var counts: Array[int] = []
+	counts.resize(team_count)
+	# Humans are placed already and are never moved; they set the starting
+	# imbalance the computers have to even out.
+	for id: String in Game.roster.keys():
+		if _bots.has(id):
+			continue
+		var team := int(Game.roster[id].get("team", -1))
+		if team >= 0 and team < team_count:
+			counts[team] += 1
+	# A computer somebody put on a team BY HAND stays there. It still
+	# counts against that team, so the rest balance around it.
+	var free_ids: Array = []
+	for id: String in ids:
+		if bool(Game.roster[id].get("fixed", false)):
+			var team := int(Game.roster[id].get("team", -1))
+			if team >= 0 and team < team_count:
+				counts[team] += 1
+				continue
+		free_ids.append(id)
+	for id: String in free_ids:
+		var best := 0
+		for t in team_count:
+			if counts[t] < counts[best]:
+				best = t
+		Game.roster[id].team = best
+		counts[best] += 1
 	Game.cl_roster.rpc(Game.roster)
 
 func _bot_nearest_enemy(id: String, pos: Vector3, radius: float) -> String:
@@ -1595,6 +1644,11 @@ func sv_set_bot_team(target_id: String, team: int) -> void:
 	if Game.roster.has(target_id):
 		# Anyone can set ANY player's team — grown-ups sort the kids out.
 		Game.roster[target_id].team = clampi(team, -1, team_count - 1)
+		# Pinned: the auto-balancer leaves a computer alone once someone
+		# has put it somewhere on purpose. Adding or removing a team
+		# clears every pin, because the layout it was chosen for is gone.
+		if _bots.has(target_id):
+			Game.roster[target_id].fixed = true
 		Game.cl_roster.rpc(Game.roster)
 
 @rpc("any_peer", "reliable")

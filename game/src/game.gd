@@ -8,9 +8,24 @@ extends Node
 const MAX_PLAYERS := 24
 const MAX_LOCAL := 4
 
+## People get animals, computers get the phonetic alphabet. Two name
+## pools, so you can tell at a glance who is real without reading the
+## little robot face.
 const AUTO_NAMES: Array[String] = [
 	"Fox", "Bear", "Frog", "Owl", "Cat", "Bee", "Wolf", "Duck",
 	"Crab", "Lion", "Moth", "Seal", "Newt", "Hen", "Pug", "Elk",
+]
+
+## The phonetic alphabet, in order — and because every word starts with
+## the letter it stands for, sorting the roster by NAME puts the
+## computers in that same order for free. The old names were "1", "2",
+## … "10", which sorted as 1, 10, 2 and made the roster unreadable.
+## 26 words against a 24-player cap, so the pool can never run dry.
+const BOT_NAMES: Array[String] = [
+	"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
+	"Hotel", "India", "Juliet", "Kilo", "Lima", "Mike", "November",
+	"Oscar", "Papa", "Quebec", "Romeo", "Sierra", "Tango", "Uniform",
+	"Victor", "Whiskey", "Xray", "Yankee", "Zulu",
 ]
 
 signal roster_changed
@@ -237,7 +252,12 @@ func sv_set_team(slot: int, team: int) -> void:
 	var id := player_id(_sender_id(), slot)
 	if roster.has(id):
 		roster[id].team = clampi(team, -1, 23)
-		_broadcast_roster()
+		# A person moving teams re-balances the computers around them, so
+		# picking a side never leaves one team three-up on the other.
+		if world != null and world.has_method("_redistribute_bots"):
+			world._redistribute_bots()
+		else:
+			_broadcast_roster()
 
 ## Kick anyone from the world menu: a kid who's done playing, or a
 ## computer player nobody wants. Humans can rejoin by pressing start.
