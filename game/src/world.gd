@@ -79,18 +79,40 @@ func _build_overview() -> void:
 		for ox in 192:
 			var wx := (ox - 96) * 4
 			var wz := (oz - 96) * 4
+			# OUTSIDE THE WORLD IS NOTHING. The generator is a pure
+			# function and will happily invent terrain forever, so
+			# without this the radar drew a full island — grass, beaches,
+			# snow — all round a 50-block world, and on the space map it
+			# drew grass and ice over what should be black. Air reads as
+			# the radar's background, which is what "off the map" should
+			# look like.
+			if not store.gen.in_bounds(wx, wz):
+				overview[oz * 192 + ox] = Blocks.AIR
+				continue
 			var h: int = store.gen.height_at(wx, wz)
 			h -= store.gen.lake_depth_at(wx, wz, h)
-			var block := Blocks.GRASS
-			if h <= WorldGen.SEA_LEVEL:
-				block = Blocks.WATER
-			elif h <= WorldGen.SEA_LEVEL + 2:
-				block = Blocks.SAND
-			elif h > WorldGen.SEA_LEVEL + 22:
-				block = Blocks.SNOW
-			if store.theme == "desert":
-				block = Blocks.SAND if h > WorldGen.SEA_LEVEL else Blocks.WATER
-			overview[oz * 192 + ox] = block
+			overview[oz * 192 + ox] = _overview_block_for(h)
+## What a column of this height reads as on the radar. Per THEME: the
+## space map has no grass and no snow on it, and painting it with the
+## classic island palette is why it came out looking like Earth.
+func _overview_block_for(h: int) -> int:
+	match store.theme:
+		"desert":
+			return Blocks.SAND if h > WorldGen.SEA_LEVEL else Blocks.WATER
+		"space":
+			# Grey regolith, and the "sea" is the void between craters.
+			return Blocks.STONE if h > WorldGen.SEA_LEVEL else Blocks.AIR
+		"sky":
+			return Blocks.GRASS if h > WorldGen.SEA_LEVEL else Blocks.AIR
+	var block := Blocks.GRASS
+	if h <= WorldGen.SEA_LEVEL:
+		block = Blocks.WATER
+	elif h <= WorldGen.SEA_LEVEL + 2:
+		block = Blocks.SAND
+	elif h > WorldGen.SEA_LEVEL + 22:
+		block = Blocks.SNOW
+	return block
+
 signal reset_vote_started
 signal reset_result(happened: bool)
 
@@ -369,6 +391,12 @@ func sv_where(slot: int) -> void:
 		count = saved.treasures
 	else:
 		pos = _far_spawn()
+	# Never place anyone OUTSIDE the world. A saved position is from
+	# whatever world was loaded when it was written, so after the map is
+	# shrunk it can sit far beyond the new edge — where there is no
+	# terrain at all, and the player falls to bedrock. This is what
+	# stranded everyone when the size was changed to 50.
+	pos = store.clamp_inside(pos, 4)
 	# Never place anyone inside terrain, wherever the position came from.
 	var ground := store.surface_y(int(pos.x), int(pos.z))
 	if pos.y < float(ground) + 1.0 or store.get_block(Vector3i(int(pos.x),
@@ -393,7 +421,9 @@ func _far_spawn() -> Vector3:
 		var dist := randf_range(85.0, 125.0)
 		var wx := int(anchor.x + cos(angle) * dist)
 		var wz := int(anchor.z + sin(angle) * dist)
-		if Vector2(wx, wz).length() > WorldGen.ISLAND_RADIUS - 20.0:
+		# The WORLD's edge, not a hard-coded island radius — that
+		# constant has nothing to do with how big this map actually is.
+		if not store.inside_world(wx, wz, 8):
 			continue
 		var y := store.surface_y(wx, wz)
 		if y <= WorldGen.SEA_LEVEL or y >= WorldGen.CHUNK_H - 8:
@@ -566,8 +596,10 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 			# a firework.
 			cl_flare.rpc(Vector3(cell), _team_of(id))
 			return
-		15:  # Big Shooter: one huge crater.
-			_blast(cell, 5.6, [], cell)
+		15:  # Big Shooter: one big crater — 4.0, down from 5.6, which is
+			# a bit over a third of the volume. It should be the loudest
+			# thing on the field, not a terraforming tool.
+			_blast(cell, 4.0, [], cell)
 			if match_phase == "BATTLE":
 				for pid: String in _match_alive.keys():
 					if pid != id and _teams_differ(id, pid) \
@@ -578,8 +610,9 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 		1:  # Medium Shooter. 2.6, not 3.4: at the old radius a couple of
 			# shots flattened whatever ground a player was standing on,
 			# and this is the weapon everyone has most of the time.
-			# Halving the VOLUME is what "half" means for a sphere.
-			_blast(cell, 2.6, [], cell)
+			# Halving the VOLUME is what "half" means for a sphere, and
+			# this has now been halved twice: 3.4 -> 2.6 -> 2.1.
+			_blast(cell, 2.1, [], cell)
 			if match_phase == "BATTLE":
 				for pid: String in _match_alive.keys():
 					if pid != id and _teams_differ(id, pid) \
@@ -884,9 +917,9 @@ func _paintable(pos: Vector3i) -> bool:
 ## feet is still your own business — this only touches the footprint of
 ## an explosion.
 func _walk_out(origin: Vector3i, radius: float) -> void:
-	var shaved := store.shave_walkable(origin, radius)
-	if not shaved.is_empty():
-		cl_batch.rpc(shaved, Blocks.AIR)
+	var cut := store.carve_exit_ramp(origin, radius)
+	if not cut.is_empty():
+		cl_batch.rpc(cut, Blocks.AIR)
 
 func _blast(origin: Vector3i, radius: float, pre_cleared: Array, impact := Vector3i(0, -999, 0)) -> void:
 	var cleared: Array = pre_cleared.duplicate()
@@ -1209,6 +1242,11 @@ func _do_world_reset(map_name := "", new_size := 0) -> void:
 	_bombs.clear()
 	_saplings.clear()
 	_critters.clear()
+	# Loot belongs to the world that was just thrown away. Left behind,
+	# crates from a 250-block map hang in the void of a 50-block one —
+	# which is exactly the "loot way out there" Ian was looking at.
+	_crates.clear()
+	_broadcast_crates()
 	for state: Dictionary in _player_state.values():
 		state.pos = Vector3.ZERO  # everyone gets a fresh far spawn
 	_player_state.clear()
@@ -2122,6 +2160,13 @@ func _tick_crate_gravity() -> void:
 		if cpos.y > rest + 0.5:
 			_crates[crate_id].pos.y = maxf(cpos.y - 6.0, rest)
 			moved = true
+		elif cpos.y < rest - 0.05:
+			# ...and UP. This only ever fell, so any crate the ground
+			# rose under — or that was placed a block low to begin with —
+			# stayed half-buried for the rest of the match. Terrain moves
+			# under loot all the time now that blasts leave ramps.
+			_crates[crate_id].pos.y = rest
+			moved = true
 	if moved:
 		_broadcast_crates()
 
@@ -2654,6 +2699,8 @@ func _server_tick_crates() -> void:
 		positions.append(state.pos)
 	if positions.is_empty():
 		return
+	# Loot settles onto the ground in creative too, not only mid-battle.
+	_tick_crate_gravity()
 	# Top back up to the SAME ration the battle started with. This used to
 	# stop at 14 for the whole world, so once the opening loot had been
 	# picked up — and the computer players are quick about it — a big map

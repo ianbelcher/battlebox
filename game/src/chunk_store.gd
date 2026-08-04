@@ -107,75 +107,81 @@ func clamp_inside(pos: Vector3, margin := 3) -> Vector3:
 	return Vector3(clampf(pos.x, -limit, limit), pos.y,
 		clampf(pos.z, -limit, limit))
 
-## Shave a crater's lip until you can walk out of it.
+## Cut ONE way out of a crater — a narrow ramp, nothing more.
 ##
-## A blast carves a SPHERE, and a sphere meets the ground almost
-## vertically at its rim — so the outer ring of every crater was a wall
-## one to three blocks high. Land in one mid-fight and you were simply
-## stuck in a pit while somebody shot down at you, which is not a game.
+## The job is to stop a blast trapping somebody, and that is all. An
+## earlier version of this relaxed the whole heightmap around the crater
+## until no column stood more than a block above its neighbour, which
+## does guarantee escape — by flattening a bowl two radii wide. A big
+## shooter round ate hundreds of blocks and left a smooth circular arena.
+## That is far more destructive than the explosion it was meant to be
+## cleaning up after, and it is not what a crater should look like.
 ##
-## Measure the surface height of every column in and just around the
-## crater, then relax it until no column stands more than ONE block above
-## its lowest neighbour: a shallow bowl with a walkable slope all the way
-## round. Digging a shaft straight down under your own feet is still your
-## own business — this only ever touches the footprint of an explosion.
+## So instead: find the crater floor, pick the direction where the
+## surrounding ground sits LOWEST, and cut a three-wide furrow out that
+## way, rising one block per step until it meets ground level. Escape is
+## guaranteed by construction — every step of the ramp is exactly one
+## block above the last — and the cost is a few dozen blocks in one
+## direction rather than everything in a circle.
 ##
-## It lives HERE, on the store, rather than on WorldNode: it is a pure
-## terrain operation with no node, network or scene tree in it, which is
-## what lets tests/blast_walkout.gd check it against real generated
-## terrain without standing up a server.
-##
-## Clears the blocks it decides on and returns them for broadcasting.
-func shave_walkable(origin: Vector3i, radius: float) -> Array:
-	# Wide enough to actually reach ground level, and no wider. A crater
-	# is at most `radius` deep, and a slope of one block per block needs
-	# `radius` blocks of run to climb out of it — so the footprint has to
-	# be about twice the radius. At radius + 3 the relaxation ran out of
-	# room and simply left the step at the edge of its own footprint,
-	# which is the very thing it exists to remove. Still bounded, because
-	# without a hard edge one crater beside a cliff would relax its way
-	# up the whole cliff face.
-	var reach := int(ceil(radius * 2.0)) + 2
-	# The floor of the crater — never shave below this, or a blast would
-	# keep eating downwards instead of just opening a way out.
-	var floor_y := origin.y - int(ceil(radius)) - 1
-	var tops: Dictionary = {}      # Vector2i -> surface y
-	for dz in range(-reach, reach + 1):
-		for dx in range(-reach, reach + 1):
-			var key := Vector2i(origin.x + dx, origin.z + dz)
-			# surface_y, NOT a hand-rolled scan over a band around the
-			# blast: a column whose ground sits above that band read as
-			# lower than it really was, and the lip stayed put.
-			tops[key] = surface_y(key.x, key.y)
-	# Relax: nobody may stand more than one block above their lowest
-	# neighbour. Each pass only ever takes a column DOWN, so it settles;
-	# reach + 4 passes is enough to carry the deepest rim outwards.
-	var shaved: Array = []
-	for _pass in reach + 4:
-		var changed := false
-		for key: Vector2i in tops.keys():
-			var here: int = tops[key]
-			var lowest := here
-			for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var next: Vector2i = key + off
-				if tops.has(next):
-					lowest = mini(lowest, int(tops[next]))
-			var want := maxi(lowest + 1, floor_y)
-			while here > want:
-				var pos := Vector3i(key.x, here, key.y)
-				var block := get_block(pos)
-				# Steel and diamond survive anything; so does whatever is
-				# not breakable at all. Stop rather than punch through.
-				if not Blocks.is_breakable(block) or Blocks.hardness(block) >= 3:
-					break
-				set_block(pos, Blocks.AIR)
-				shaved.append(pos)
-				here -= 1
-				changed = true
-			tops[key] = here
-		if not changed:
+## Returns what it cleared, for broadcasting.
+func carve_exit_ramp(origin: Vector3i, radius: float) -> Array:
+	var cleared: Array = []
+	# The crater floor: fall down the origin column through the hole the
+	# blast just made.
+	var floor_y := origin.y
+	while floor_y > 2 and get_block(Vector3i(origin.x, floor_y - 1, origin.z)) == Blocks.AIR:
+		floor_y -= 1
+	var reach := int(ceil(radius)) + 2
+	# Out towards the lowest ground: the shortest ramp, and the one that
+	# looks most like the blast simply threw the dirt that way.
+	var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+	var best_dir: Vector2i = dirs[0]
+	var best_h := 1 << 30
+	for d: Vector2i in dirs:
+		var h := surface_y(origin.x + d.x * reach, origin.z + d.y * reach)
+		if h < best_h:
+			best_h = h
+			best_dir = d
+	var perp := Vector2i(-best_dir.y, best_dir.x)
+	# Walk outwards keeping a promise: each column along the way is at
+	# most ONE block higher than the one before it. Following the real
+	# height of the previous column is the whole trick — an earlier
+	# version compared against an idealised "floor + step" line instead,
+	# which rises even while the crater floor is flat, so by the time it
+	# reached the rim the budget was already generous enough to accept a
+	# two-block wall and it cut nothing at all.
+	var prev := surface_y(origin.x, origin.z)
+	for step in range(1, reach + int(ceil(radius)) + 6):
+		var cx := origin.x + best_dir.x * step
+		var cz := origin.z + best_dir.y * step
+		var ground := surface_y(cx, cz)
+		var want := prev + 1
+		if ground > want:
+			for w: int in [-1, 0, 1]:
+				var px: int = cx + perp.x * w
+				var pz: int = cz + perp.y * w
+				var col_top := surface_y(px, pz)
+				for y in range(want + 1, col_top + 1):
+					var pos := Vector3i(px, y, pz)
+					var block := get_block(pos)
+					if block == Blocks.AIR:
+						continue
+					# Steel and diamond stop the ramp dead, same as they
+					# stop the blast. Better a short ramp than a hole
+					# through a vault door.
+					if not Blocks.is_breakable(block) or Blocks.hardness(block) >= 3:
+						break
+					set_block(pos, Blocks.AIR)
+					cleared.append(pos)
+			ground = mini(ground, want)
+		prev = ground
+		# Past the rim and standing on ground that needed no help: the
+		# way out is complete.
+		if float(step) > radius and ground <= want:
 			break
-	return shaved
+	return cleared
 
 func get_chunk(cpos: Vector2i) -> PackedByteArray:
 	if _cache.has(cpos):

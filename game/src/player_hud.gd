@@ -1174,15 +1174,25 @@ func _update_radar() -> void:
 	var center := player.position
 	# Radar convention: whatever you're facing is UP on the map.
 	var yaw: float = player.camera_yaw
+	# The client has a ChunkView, not the server's store, so the world's
+	# extent comes from the battle config it was told about.
+	var half_world: int = int(world.client_size) / 2
 	var image := Image.create(128, 128, false, Image.FORMAT_RGB8)
 	for py in 128:
 		for px in 128:
 			var off := Vector2(px - 64, py - 64).rotated(-yaw) * 1.5
 			var wx := int(center.x + off.x)
 			var wz := int(center.z + off.y)
-			var block: int = world.chunks.top_block(wx, wz)
-			if block <= 0:
-				block = world.overview_block(wx, wz)
+			# Off the edge of the world is BLACK. Both sources will
+			# happily answer for a column that does not exist — the
+			# chunk store hands back border filler, the overview is a
+			# pure function of noise — so the radar drew a whole island
+			# around a 50-block map. Ask the world how big it is first.
+			var block := 0
+			if absi(wx) <= half_world and absi(wz) <= half_world:
+				block = world.chunks.top_block(wx, wz)
+				if block <= 0:
+					block = world.overview_block(wx, wz)
 			var color := Color(0.06, 0.07, 0.1)
 			if block > 0:
 				color = Blocks.top_color_of(block).darkened(

@@ -32,46 +32,34 @@ func update_crates(payload: Array) -> void:
 		gem.scale = Vector3(1.6, 1.6, 1.6)
 		gem.position = Vector3(0, 1.25, 0)
 		node.add_child(gem)
-		# A real light AND an emissive beam, on purpose.
+		# ONE light per crate, and it does not flicker.
 		#
-		# The light alone used to switch itself off and on again as you
-		# moved: the renderer only lets so many omni lights affect one
-		# object, so with a field full of crates they fought each other
-		# for the slots and popped in and out. Now the light fades out
-		# smoothly with distance instead of popping (so only the few
-		# nearby ones ever compete), and the thing you actually spot a
-		# crate BY is the beam, which is emissive geometry and cannot
-		# flicker at all — it does not depend on a light slot, or even on
-		# dynamic lights being switched on in the video settings.
+		# It used to switch itself off and on as you moved: the renderer
+		# only lets so many omni lights affect a given object, so a field
+		# full of crates fought each other for the slots. The fix is to
+		# make sure only a handful are ever live at once — the light
+		# fades out smoothly with distance well before that limit can
+		# bite — NOT to replace it with a glowing pole, which is what the
+		# last attempt did and which Ian quite reasonably hated.
+		#
+		# The crate itself is emissive in its weapon's colour, so it
+		# still reads as loot from further out than the light reaches,
+		# and still reads with dynamic lights switched off entirely.
 		var light := OmniLight3D.new()
-		light.light_color = color.lightened(0.35)
-		light.light_energy = 1.6
-		light.omni_range = 5.0
+		light.light_color = color.lightened(0.3)
+		light.light_energy = 2.2
+		light.omni_range = 6.5
 		light.shadow_enabled = false
 		light.distance_fade_enabled = true
-		light.distance_fade_begin = 18.0
+		light.distance_fade_begin = 22.0
 		light.distance_fade_length = 10.0
-		light.position = Vector3(0, 1.2, 0)
+		light.position = Vector3(0, 1.1, 0)
 		node.add_child(light)
-		var beam := MeshInstance3D.new()
-		var beam_mesh := BoxMesh.new()
-		beam_mesh.size = Vector3(0.16, 6.0, 0.16)
-		beam.mesh = beam_mesh
-		var beam_mat := StandardMaterial3D.new()
-		beam_mat.albedo_color = Color(color.r, color.g, color.b, 0.42)
-		beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		beam_mat.emission_enabled = true
-		beam_mat.emission = color
-		beam_mat.emission_energy_multiplier = 2.4
-		beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		beam_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-		beam.material_override = beam_mat
-		beam.position = Vector3(0, 3.4, 0)
-		node.add_child(beam)
+		mat.emission_enabled = true
+		mat.emission = color
+		mat.emission_energy_multiplier = 0.55
 		for part in node.find_children("*", "GeometryInstance3D", true, false):
 			(part as GeometryInstance3D).visibility_range_end = 140.0
-		# ...except the beam, which is the long-range marker.
-		beam.visibility_range_end = 0.0
 		add_child(node)
 		_nodes[id] = {"node": node, "weapon": weapon}
 	for id: int in _nodes.keys().duplicate():
