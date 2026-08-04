@@ -16,6 +16,10 @@ any tool) can pick the work up cold.
 - [ ] **Rename / team / kick** in the world menu's Players tab. The rows,
       team swatches and ✕ all render and the cursor is free, but nobody
       has clicked them on a real machine.
+- [ ] **Both menus were restyled** (see "The look of the menus" below).
+      Every tab was checked in the screenshot harness at 1080p and in a
+      two-way split, but nobody has looked at them on the TV. Watch for
+      text that is too small across a living room.
 
 ## Open work
 
@@ -94,6 +98,35 @@ CC-BY-**NC**. A HuggingFace dataset of 85 builds is MIT only on its
 packaging, has no per-build author, and 18 carry "all rights reserved" —
 usable for testing the importer, not for shipping. Its pre-parsed JSON
 also drops all block states, so stairs import flat; use raw `.nbt`/`.schem`.
+
+---
+
+## The look of the menus
+
+**`game/src/ui_theme.gd` is the single source of truth.** Both menus — X
+(`player_hud.gd`, the picker) and Escape (`world_menu.gd`) — build a
+`Theme` from it and hang it on their panel; everything underneath
+inherits. A call site says WHAT a control is and never how to paint it.
+If you find yourself typing a colour, a corner radius or a font size
+anywhere else, that is the bug.
+
+- **Design pixels.** Sizes in `UiTheme` are at scale 1.0;
+  `UiTheme.px(n, sc)` scales them. Scale comes from the VIEWPORT
+  (`UiTheme.scale_for`), never from a control's own `size`.
+- **Rescaling** = rebuild the Theme and re-assign it. A Theme is a plain
+  resource, so this repaints without touching a single node — which is
+  what keeps the world menu's "never rebuild rows" rule intact.
+- **TabContainer styleboxes must be set on `"TabContainer"`, not on its
+  inner TabBar.** TabContainer pushes its own theme values onto that
+  TabBar on every theme change, so direct TabBar overrides are silently
+  thrown away. That is why the world menu's gold tabs never appeared for
+  months — it looked like unstyled Godot because it *was*.
+- **Scrollbar width comes from its stylebox's minimum size.** A stylebox
+  with no content margins is a scrollbar zero pixels wide, and content
+  runs off the bottom of a tab with nothing on screen to say so.
+- Eight tabs only just fit a half-width split-screen cell. If you add a
+  picker tab, re-check a two-seat run or "Tools" disappears behind scroll
+  arrows no child will ever find.
 
 ---
 

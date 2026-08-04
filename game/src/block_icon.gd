@@ -41,10 +41,16 @@ func _draw() -> void:
 	if kind == "weapon":
 		var spec := Weapons.spec(block_id)
 		var c := _dim(spec.color)
-		# Soft tinted plate + the ACTUAL weapon rendered in profile.
-		draw_rect(Rect2(w * 0.05, h * 0.05, w * 0.9, h * 0.9), Color(c.r, c.g, c.b, 0.16))
-		draw_rect(Rect2(w * 0.05, h * 0.05, w * 0.9, h * 0.9),
-			Color(c.r, c.g, c.b, 0.85), false, w * 0.035)
+		# Soft tinted plate + the ACTUAL weapon rendered in profile. The
+		# plate is ROUNDED to match the chip it sits inside — a square
+		# plate in a rounded chip reads as a mistake at any size.
+		var plate := StyleBoxFlat.new()
+		plate.bg_color = Color(c.r, c.g, c.b, 0.16)
+		plate.border_color = Color(c.r, c.g, c.b, 0.85)
+		plate.set_border_width_all(maxi(1, int(w * 0.035)))
+		plate.set_corner_radius_all(maxi(3, int(w * 0.14)))
+		plate.corner_detail = 8
+		draw_style_box(plate, Rect2(w * 0.05, h * 0.05, w * 0.9, h * 0.9))
 		var wtex := _weapon_texture(block_id)
 		if wtex != null:
 			draw_texture_rect(wtex, Rect2(w * 0.08, h * 0.08, w * 0.84, h * 0.84),

@@ -44,6 +44,9 @@ var _char_cursor := 0
 var _name_chip: Label
 var _menu: PanelContainer
 var _menu_dim: ColorRect
+var _menu_shell: VBoxContainer
+var _menu_who: Label
+var _menu_scale := 1.0
 # One flat row of tabs, LB/RB steps along it: Tools, Building, Natural,
 # Colored, Functional, Special, Kits — and then your Character, which is
 # a tab like any other (it used to hang off LB, which stole the button
@@ -73,6 +76,8 @@ var _prev_slot_pick_menu := -1
 var _menu_tab_latch := false
 var _preview_viewport: SubViewport
 var _preview_avatar: Node3D
+var _preview_name: Label
+var _preview_count: Label
 var _preview_angle := PI
 var _last_tab := 1
 var _tab_guard := false
@@ -194,7 +199,7 @@ func _ready() -> void:
 	# Tabbed menu (Esc / Start), also home of the block picker (E jumps
 	# straight to the Blocks tab). Minecraft brains expected this.
 	_menu_dim = ColorRect.new()
-	_menu_dim.color = Color(0, 0, 0, 0.38)
+	_menu_dim.color = UiTheme.SCRIM
 	_menu_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_menu_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_menu_dim.visible = false
@@ -205,48 +210,10 @@ func _ready() -> void:
 	_menu.set_anchors_preset(Control.PRESET_CENTER)
 	_menu.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_menu.grow_vertical = Control.GROW_DIRECTION_BOTH
-	var menu_style := StyleBoxFlat.new()
-	menu_style.bg_color = Color(0.05, 0.06, 0.1, 0.94)
-	menu_style.set_corner_radius_all(14)
-	menu_style.set_content_margin_all(12)
-	menu_style.border_color = Color(1, 1, 1, 0.08)
-	menu_style.set_border_width_all(1)
-	_menu.add_theme_stylebox_override("panel", menu_style)
-	var btn_normal := StyleBoxFlat.new()
-	btn_normal.bg_color = Color(0.14, 0.16, 0.23)
-	btn_normal.set_corner_radius_all(9)
-	btn_normal.content_margin_left = _us(14)
-	btn_normal.content_margin_right = _us(14)
-	btn_normal.content_margin_top = _us(7)
-	btn_normal.content_margin_bottom = _us(7)
-	var btn_hover: StyleBoxFlat = btn_normal.duplicate()
-	btn_hover.bg_color = Color(0.22, 0.25, 0.35)
-	var btn_pressed: StyleBoxFlat = btn_normal.duplicate()
-	btn_pressed.bg_color = Color(0.55, 0.44, 0.15)
-	var menu_theme := Theme.new()
-	menu_theme.set_stylebox("normal", "Button", btn_normal)
-	menu_theme.set_stylebox("hover", "Button", btn_hover)
-	menu_theme.set_stylebox("pressed", "Button", btn_pressed)
-	menu_theme.set_stylebox("focus", "Button", StyleBoxEmpty.new())
-	var tab_sel := StyleBoxFlat.new()
-	tab_sel.bg_color = Color(0.2, 0.23, 0.33)
-	tab_sel.set_corner_radius_all(8)
-	tab_sel.corner_radius_bottom_left = 0
-	tab_sel.corner_radius_bottom_right = 0
-	tab_sel.content_margin_left = _us(16)
-	tab_sel.content_margin_right = _us(16)
-	tab_sel.content_margin_top = _us(8)
-	tab_sel.content_margin_bottom = _us(8)
-	tab_sel.border_width_bottom = 3
-	tab_sel.border_color = Color("ffd166")
-	var tab_un: StyleBoxFlat = tab_sel.duplicate()
-	tab_un.bg_color = Color(0.09, 0.1, 0.15)
-	tab_un.border_width_bottom = 0
-	menu_theme.set_stylebox("tab_selected", "TabContainer", tab_sel)
-	menu_theme.set_stylebox("tab_unselected", "TabContainer", tab_un)
-	menu_theme.set_stylebox("tab_hovered", "TabContainer", tab_sel.duplicate())
-	menu_theme.set_color("font_selected_color", "TabContainer", Color("ffd166"))
-	_menu.theme = menu_theme
+	# Same theme as the Escape menu — one game, one look. See ui_theme.gd.
+	_menu_scale = UiTheme.scale_for(Vector2(DisplayServer.window_get_size()))
+	_menu.theme = UiTheme.build(_menu_scale)
+	_menu.add_theme_stylebox_override("panel", UiTheme.panel_box(_menu_scale))
 	# Fill ~90% of this player's cell whatever its size — quarter-screen
 	# split or a huge fullscreen window alike.
 	_menu.anchor_left = 0.1
@@ -258,8 +225,13 @@ func _ready() -> void:
 	add_child(_menu)
 	_groups = TabContainer.new()
 	_groups.get_tab_bar().focus_mode = Control.FOCUS_NONE
-	_groups.add_theme_font_size_override("font_size", _us(21))
-	_menu.add_child(_groups)
+	_groups.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_menu_shell = VBoxContainer.new()
+	_menu_shell.add_theme_constant_override("separation",
+		UiTheme.px(12, _menu_scale))
+	_menu.add_child(_menu_shell)
+	_menu_shell.add_child(_build_menu_header())
+	_menu_shell.add_child(_groups)
 	_build_tabs = TabContainer.new()
 	_build_tabs.name = "Build"
 	_game_tabs = TabContainer.new()
@@ -273,7 +245,8 @@ func _ready() -> void:
 		if not _tab_guard:
 			_last_tab = _current_page()
 	_build_tabs.get_tab_bar().focus_mode = Control.FOCUS_NONE
-	_build_tabs.add_theme_font_size_override("font_size", _us(17))
+	# Font size comes from the shared theme — see ui_theme.gd. Overriding
+	# it here is what made the two menus' tab strips different sizes.
 	_groups.add_child(_build_tabs)
 	_build_tabs.tab_changed.connect(on_page_change)
 	_groups.tab_changed.connect(on_page_change)
@@ -476,18 +449,14 @@ func _ready() -> void:
 		_pickers.append(picker)
 	_picker = _pickers[0]
 	_build_character_tab()
+	# The controls line, the same shape the Escape menu uses.
+	_menu_shell.add_child(UiTheme.hint_row(["Ⓐ / Click", "Choose",
+		"LB  RB", "Tabs", "Ⓧ", "Close"], _menu_scale))
 	# The 8 slots live inside the menu too: click a slot, then click items.
 	_menu_slots_row = HBoxContainer.new()
 	_menu_slots_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	_menu_slots_row.add_theme_constant_override("separation", int(6 * _uscale()))
-	var menu_box := _menu.get_child(0)
-	_menu.remove_child(menu_box)
-	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", int(8 * _uscale()))
-	_menu.add_child(outer)
-	outer.add_child(menu_box)
-	menu_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	outer.add_child(_menu_slots_row)
+	_menu_shell.add_child(_menu_slots_row)
 	_menu_slots_row.visible = false  # the bottom hotbar is the real one
 	for i in 8:
 		var slot_btn := Button.new()
@@ -559,6 +528,46 @@ func _ready() -> void:
 
 func is_ui_open() -> bool:
 	return _menu != null and _menu.visible
+
+## The picker's title block: whose menu this is on the left, how to leave
+## on the right, and a rule under both. Deliberately the same shape as the
+## Escape menu's header so the two read as one game.
+func _build_menu_header() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", UiTheme.px(10, _menu_scale))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", UiTheme.px(12, _menu_scale))
+	box.add_child(row)
+
+	var mark := Label.new()
+	mark.text = "🎒"
+	mark.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_TITLE, _menu_scale))
+	mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(mark)
+
+	var titles := VBoxContainer.new()
+	titles.add_theme_constant_override("separation", 0)
+	titles.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(titles)
+	var title := Label.new()
+	title.text = "YOUR STUFF"
+	title.add_theme_font_size_override("font_size",
+		UiTheme.px(UiTheme.T_TITLE, _menu_scale))
+	title.add_theme_color_override("font_color", UiTheme.ACCENT)
+	titles.add_child(title)
+	_menu_who = Label.new()
+	_menu_who.text = "Blocks, kits and who you are"
+	_menu_who.add_theme_font_size_override("font_size",
+		UiTheme.px(UiTheme.T_NOTE, _menu_scale))
+	_menu_who.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+	titles.add_child(_menu_who)
+
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(spacer)
+	row.add_child(UiTheme.hint_row(["Ⓧ", "Close"], _menu_scale))
+	box.add_child(HSeparator.new())
+	return box
 
 # ---- Controller navigation over regular menu pages (not the pickers,
 # they have their own grid cursor): left stick moves a highlight between
@@ -709,8 +718,15 @@ func _toggle_menu(player: Player, open_tab: int) -> void:
 	# the pickers open FIRST and the real tab is set after, guarded so the
 	# churn doesn't pollute _last_tab.
 	_tab_guard = true
+	# Size the chips from the PANEL, not from the whole cell: the panel is
+	# 80% of a full-screen cell but 96% of a split one, so measuring the
+	# cell left half-screen players with chips a third smaller than they
+	# had room for.
+	var span := Vector2(size.x * 0.75, size.y * 0.6)
+	if _menu.size.x > 100.0:
+		span = Vector2(_menu.size.x * 0.9, _menu.size.y * 0.6)
 	for picker: BlockPicker in _pickers:
-		picker.fit(size * Vector2(0.75, 0.6))
+		picker.fit(span)
 		picker.open()
 	if open_tab == 0:
 		_set_page(1)  # the blocks button always lands on Building
@@ -722,42 +738,61 @@ func _toggle_menu(player: Player, open_tab: int) -> void:
 		_name_edit.text = str(entry.name)
 	Sfx.play("tick", -8.0)
 
-## "Character" tab: big friendly buttons for name, skin, shirt and hat.
-func _build_character_tab() -> void:
-	## Just the characters: a scrolling grid on the left, a big spinning
-	## preview on the right. Moving the cursor IS choosing — kids don't
-	## get "highlight then confirm" — and the right stick spins the model.
-	var char_scroll := ScrollContainer.new()
-	char_scroll.name = "You"
-	char_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_opt_tabs.add_child(char_scroll)
-	var split := HBoxContainer.new()
-	split.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	split.add_theme_constant_override("separation", _us(20))
-	char_scroll.add_child(split)
+## Menu-scale pixels: the shared design unit the whole menu is drawn in.
+func _ms(n: int) -> int:
+	return UiTheme.px(n, _menu_scale)
 
+## A raised surface for a group of controls, matching the Escape menu.
+func _menu_card() -> PanelContainer:
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", UiTheme.card_box(_menu_scale))
+	return card
+
+## The character page: a roster on the left, the model on the right —
+## the shape every character-select screen uses, because it works.
+##
+## Moving the cursor IS choosing. Kids don't get "highlight, then confirm",
+## so whatever you land on is who you are, and the right stick spins the
+## model so they can look at the back of their own head.
+func _build_character_tab() -> void:
+	var page := MarginContainer.new()
+	page.name = "You"
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		page.add_theme_constant_override(side, _ms(14))
+	_opt_tabs.add_child(page)
+	var split := HBoxContainer.new()
+	split.add_theme_constant_override("separation", _ms(14))
+	page.add_child(split)
+
+	# ---- left: the roster
+	var left := _menu_card()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.size_flags_stretch_ratio = 1.35
+	split.add_child(left)
 	var grid_holder := VBoxContainer.new()
-	grid_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	split.add_child(grid_holder)
+	grid_holder.add_theme_constant_override("separation", _ms(10))
+	left.add_child(grid_holder)
 	var pick_label := Label.new()
-	pick_label.text = "Move to choose your character"
-	pick_label.add_theme_font_size_override("font_size", _us(20))
+	pick_label.text = "CHOOSE A CHARACTER"
+	pick_label.add_theme_font_size_override("font_size",
+		UiTheme.px(UiTheme.T_HEADING, _menu_scale))
+	pick_label.add_theme_color_override("font_color", UiTheme.INK_DIM)
 	grid_holder.add_child(pick_label)
 	var grid_scroll := ScrollContainer.new()
 	grid_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	grid_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	grid_scroll.custom_minimum_size = Vector2(0, _us(300))
 	grid_holder.add_child(grid_scroll)
 	_char_grid = GridContainer.new()
 	_char_grid.columns = 6
-	_char_grid.add_theme_constant_override("h_separation", _us(6))
-	_char_grid.add_theme_constant_override("v_separation", _us(6))
+	_char_grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_char_grid.add_theme_constant_override("h_separation", _ms(8))
+	_char_grid.add_theme_constant_override("v_separation", _ms(8))
 	grid_scroll.add_child(_char_grid)
 	_char_scroll = grid_scroll
 	for who in AvatarFactory.characters():
 		var cbtn := Button.new()
 		cbtn.focus_mode = Control.FOCUS_NONE
-		cbtn.custom_minimum_size = Vector2(_us(64), _us(64))
+		cbtn.custom_minimum_size = Vector2(_ms(86), _ms(86))
 		var icon := TextureRect.new()
 		var icon_path: String = AvatarFactory.portrait_of(str(who))
 		if ResourceLoader.exists(icon_path):
@@ -765,6 +800,10 @@ func _build_character_tab() -> void:
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		icon.offset_left = _ms(5)
+		icon.offset_top = _ms(5)
+		icon.offset_right = -_ms(5)
+		icon.offset_bottom = -_ms(5)
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cbtn.add_child(icon)
 		var pick_who := str(who)
@@ -774,15 +813,29 @@ func _build_character_tab() -> void:
 		_char_grid.add_child(cbtn)
 		_char_buttons[pick_who] = cbtn
 
+	# ---- right: the model, on its own plinth
+	var right := _menu_card()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.size_flags_stretch_ratio = 1.0
+	right.custom_minimum_size = Vector2(_ms(240), 0)
+	split.add_child(right)
 	var char_right := VBoxContainer.new()
-	char_right.add_theme_constant_override("separation", _us(8))
-	split.add_child(char_right)
+	char_right.add_theme_constant_override("separation", _ms(8))
+	right.add_child(char_right)
+	_preview_name = Label.new()
+	_preview_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_preview_name.add_theme_font_size_override("font_size",
+		UiTheme.px(UiTheme.T_BODY + 4, _menu_scale))
+	_preview_name.add_theme_color_override("font_color", UiTheme.ACCENT)
+	char_right.add_child(_preview_name)
 	_preview_viewport = SubViewport.new()
 	_preview_viewport.own_world_3d = true
 	_preview_viewport.transparent_bg = true
-	_preview_viewport.size = Vector2i(_us(260), _us(340))
+	_preview_viewport.size = Vector2i(_ms(300), _ms(400))
 	var holder := SubViewportContainer.new()
 	holder.stretch = false
+	holder.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	holder.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_SHRINK_CENTER
 	holder.add_child(_preview_viewport)
 	holder.mouse_filter = Control.MOUSE_FILTER_STOP
 	holder.gui_input.connect(func(event: InputEvent) -> void:
@@ -792,12 +845,60 @@ func _build_character_tab() -> void:
 			if _preview_avatar != null and is_instance_valid(_preview_avatar):
 				_preview_avatar.rotation.y = _preview_angle)
 	char_right.add_child(holder)
+	_preview_count = Label.new()
+	_preview_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_preview_count.add_theme_font_size_override("font_size",
+		UiTheme.px(UiTheme.T_NOTE, _menu_scale))
+	_preview_count.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+	char_right.add_child(_preview_count)
+	var spin_hint := Label.new()
+	spin_hint.text = "Drag, or push the right stick, to spin"
+	spin_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	spin_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	spin_hint.add_theme_font_size_override("font_size",
+		UiTheme.px(UiTheme.T_NOTE, _menu_scale))
+	spin_hint.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+	char_right.add_child(spin_hint)
 	var cam := Camera3D.new()
-	cam.position = Vector3(0, 0.9, 2.6)
+	cam.position = Vector3(0, 0.95, 2.25)
 	_preview_viewport.add_child(cam)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-40, 30, 0)
 	_preview_viewport.add_child(sun)
+	var fill := DirectionalLight3D.new()
+	fill.rotation_degrees = Vector3(-20, -140, 0)
+	fill.light_energy = 0.35
+	_preview_viewport.add_child(fill)
+
+## The chosen character gets a gold RING, not a gold fill — a fill behind
+## a portrait reads as "this square is a button", not "this is you".
+func _mark_character(btn: Button, on: bool) -> void:
+	if not is_instance_valid(btn):
+		return
+	if on:
+		var sel := UiTheme.flat(UiTheme.SURFACE_3, UiTheme.R_CONTROL,
+			_menu_scale, 3.0, UiTheme.ACCENT)
+		sel.shadow_color = Color(UiTheme.ACCENT.r, UiTheme.ACCENT.g,
+			UiTheme.ACCENT.b, 0.30)
+		sel.shadow_size = _ms(10)
+		for state in ["normal", "hover", "pressed"]:
+			btn.add_theme_stylebox_override(state, sel)
+	else:
+		for state in ["normal", "hover", "pressed"]:
+			btn.remove_theme_stylebox_override(state)
+
+## Scrolls the roster to whoever you already are. Called when the page
+## appears, not when the roster changes: ensure_control_visible on a
+## hidden ScrollContainer does nothing, which is why opening the menu
+## used to land at character 1 with your own face 30 rows down.
+func _scroll_to_character() -> void:
+	if _char_scroll == null:
+		return
+	var who := str(AvatarFactory.normalize_style(
+		_entry().get("style")).get("who", ""))
+	var btn: Button = _char_buttons.get(who)
+	if btn != null:
+		_char_scroll.ensure_control_visible(btn)
 
 func _build_game_tab() -> void:
 	var tab := _scrolled_tab("Mode", _game_tabs)
@@ -995,6 +1096,8 @@ func _set_page(page: int) -> void:
 	var spec: Array = _PAGES[clampi(page, 0, _PAGES.size() - 1)]
 	_groups.current_tab = spec[0]
 	_inner_tabs(spec[0]).current_tab = spec[1]
+	if page == PAGE_CHARACTER:
+		_scroll_to_character.call_deferred()
 
 func _page_disabled(page: int) -> bool:
 	var spec: Array = _PAGES[clampi(page, 0, _PAGES.size() - 1)]
@@ -1014,13 +1117,23 @@ func _refresh_preview() -> void:
 	if _preview_avatar != null:
 		_preview_avatar.queue_free()
 	var entry := _entry()
-	_preview_viewport.size = Vector2i(
-		maxi(150, mini(_us(520), int(size.x * 0.42))),
-		maxi(200, mini(_us(660), int(size.y * 0.72))))
+	# Design units, NOT a fraction of the screen. A viewport sized off the
+	# window is a minimum size the SubViewportContainer forces on its
+	# parents, and on a 1080p screen that pushed the whole menu panel
+	# taller than the screen it was anchored inside.
+	_preview_viewport.size = Vector2i(_ms(300), _ms(400))
 	_preview_avatar = AvatarFactory.build_character(entry.get("style", {}))
 	_preview_avatar.position = Vector3(0, 0, 0)
 	_preview_avatar.rotation.y = _preview_angle
 	_preview_viewport.add_child(_preview_avatar)
+	if _preview_name != null and not entry.is_empty():
+		_preview_name.text = str(entry.name)
+	if _preview_count != null:
+		var all: Array = AvatarFactory.characters()
+		var who := str(AvatarFactory.normalize_style(entry.get("style")).get("who", ""))
+		var at := all.find(who)
+		_preview_count.text = "Character %d of %d" % [at + 1, all.size()] \
+			if at >= 0 else ""
 
 ## Personal radar: terrain around YOU, plus blips — crates gold, other
 ## players team-colored, yourself white. One per player, centered on them.
@@ -1574,7 +1687,9 @@ func _refresh_identity() -> void:
 			WorldNode.TEAM_COLORS[chip_team] if chip_team >= 0 else Color.WHITE)
 	var my_who := str(AvatarFactory.normalize_style(entry.get("style")).get("who", ""))
 	for who_key: String in _char_buttons:
-		_mark_selected(_char_buttons[who_key] as Button, who_key == my_who)
+		_mark_character(_char_buttons[who_key] as Button, who_key == my_who)
+	if _menu_who != null:
+		_menu_who.text = "%s — blocks, kits and who you are" % str(entry.name)
 	if _menu != null and _menu.visible and _current_page() == PAGE_CHARACTER:
 		_refresh_preview()
 	var team := int(entry.get("team", -1))
@@ -1847,6 +1962,15 @@ func _process(_delta: float) -> void:
 	_crosshair.add_theme_font_size_override("font_size", _us(int(30 * (1.0 + player.fp_zoom * 0.8))))
 	if size != _last_size:
 		_last_size = size
+		# Going fullscreen (or dragging the window) changes what a design
+		# pixel is worth. A Theme is a plain resource, so re-hanging a
+		# freshly built one repaints the whole menu without disturbing a
+		# single node.
+		var want_scale := UiTheme.scale_for(Vector2(DisplayServer.window_get_size()))
+		if not is_equal_approx(want_scale, _menu_scale):
+			_menu_scale = want_scale
+			_menu.theme = UiTheme.build(_menu_scale)
+			_menu.add_theme_stylebox_override("panel", UiTheme.panel_box(_menu_scale))
 		var map_px := clampf(size.y * 0.24, 110.0, 380.0)
 		# Hotbar chips scale with the cell so small screens aren't swamped.
 		var chip_px := clampf(size.y * 0.045, 30.0, 64.0)

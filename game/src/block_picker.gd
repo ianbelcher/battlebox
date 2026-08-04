@@ -12,11 +12,24 @@ signal picked(entry: Dictionary)
 var entries: Array = []      # {kind: "block"/"structure", id, name, color}
 var focus_index := 0
 var _title: Label
+var _subtitle: Label
 var _chips: Array = []
 var _scroll: ScrollContainer
 var _nav_cooldown := 0.0
 
 var category := "blocks"
+
+## One line under the big name saying what this whole tab is for — the
+## difference between "a wall of squares" and a shop page.
+const CATEGORY_BLURB := {
+	"tools": "Weapons and gadgets",
+	"building": "Planks, bricks, stone and glass",
+	"nature": "Dirt, grass, sand, water and plants",
+	"colors": "Wool and concrete in every colour",
+	"lights": "Lamps, torches and anything that glows",
+	"special": "Rare and one-of-a-kind blocks",
+	"kits": "Whole buildings — place one and it appears",
+}
 
 func _init(p_category := "blocks") -> void:
 	category = p_category
@@ -55,23 +68,45 @@ func _init(p_category := "blocks") -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
 	add_child(box)
+	# What you are pointing at, in big letters, with what it is underneath.
+	var head := VBoxContainer.new()
+	head.add_theme_constant_override("separation", 0)
+	box.add_child(head)
 	_title = Label.new()
 	_title.add_theme_font_size_override("font_size", 22)
-	_title.add_theme_color_override("font_color", Color("ffd166"))
+	_title.add_theme_color_override("font_color", UiTheme.ACCENT)
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(_title)
+	head.add_child(_title)
+	_subtitle = Label.new()
+	_subtitle.text = CATEGORY_BLURB.get(category, "")
+	_subtitle.add_theme_font_size_override("font_size", 14)
+	_subtitle.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+	_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	head.add_child(_subtitle)
 	# Chips keep their size on small screens; the grid scrolls instead of
 	# squashing everything to fit.
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(_scroll)
+	# A short category (Tools has two rows) used to sit at the top of a
+	# tall black void. Centring it means every tab looks composed.
+	var centre := CenterContainer.new()
+	centre.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	centre.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_scroll.add_child(centre)
+	# Breathing room, so the selected chip's ring is never sliced off by
+	# the edge of the scrolling area.
+	var pad := MarginContainer.new()
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		pad.add_theme_constant_override(side, 8)
+	centre.add_child(pad)
 	var grid := GridContainer.new()
 	grid.size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_SHRINK_CENTER
 	grid.columns = COLUMNS
-	grid.add_theme_constant_override("h_separation", 5)
-	grid.add_theme_constant_override("v_separation", 5)
-	_scroll.add_child(grid)
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	pad.add_child(grid)
 	for i in entries.size():
 		var entry: Dictionary = entries[i]
 		var chip := Panel.new()
@@ -79,10 +114,10 @@ func _init(p_category := "blocks") -> void:
 		chip.mouse_filter = Control.MOUSE_FILTER_STOP
 		var icon := BlockIcon.new(int(entry.id), entry.kind)
 		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		icon.offset_left = 4
-		icon.offset_top = 4
-		icon.offset_right = -4
-		icon.offset_bottom = -4
+		icon.offset_left = 6
+		icon.offset_top = 6
+		icon.offset_right = -6
+		icon.offset_bottom = -6
 		chip.add_child(icon)
 		var index := i
 		chip.gui_input.connect(func(event: InputEvent) -> void:
@@ -100,16 +135,22 @@ func _init(p_category := "blocks") -> void:
 
 ## Scale chips and text so the grid uses the space it's given — tiny
 ## quarter-screen cells and huge fullscreen windows both read well.
+var _chip_px := 44.0
+
 func fit(avail: Vector2) -> void:
 	# Width decides the chip size (the columns must fit); running out of
 	# HEIGHT just means the grid scrolls, so chips never shrink for it.
-	var chip := clampf((avail.x * 0.92 - 50.0) / COLUMNS - 5.0, 44.0, 130.0)
+	var chip := clampf((avail.x * 0.92 - 50.0) / COLUMNS - 6.0, 44.0, 130.0)
+	_chip_px = chip
 	for panel: Panel in _chips:
 		panel.custom_minimum_size = Vector2(chip, chip)
 		for child in panel.get_children():
 			if child is Label:
 				child.add_theme_font_size_override("font_size", int(chip * 0.55))
-	_title.add_theme_font_size_override("font_size", int(clampf(chip * 0.75, 22.0, 48.0)))
+	_title.add_theme_font_size_override("font_size", int(clampf(chip * 0.72, 24.0, 46.0)))
+	_subtitle.add_theme_font_size_override("font_size", int(clampf(chip * 0.26, 13.0, 22.0)))
+	if visible:
+		_refresh()
 
 var _slot_label := 1
 func set_slot_label(n: int) -> void:
@@ -157,17 +198,35 @@ func _select() -> void:
 	picked.emit(entries[focus_index])
 
 func _refresh() -> void:
+	if entries.is_empty():
+		return
 	_title.text = str(entries[focus_index].name)
+	# Deferred: fit() resizes every chip in the same frame the menu opens,
+	# so scrolling now would aim at last frame's layout and leave the
+	# selected chip sliced in half by the top edge.
 	if _scroll != null and focus_index < _chips.size():
-		_scroll.ensure_control_visible(_chips[focus_index])
+		if focus_index < COLUMNS:
+			# Top row: scroll all the way up rather than just far enough to
+			# expose the chip, which parks its ring flush against the edge.
+			_scroll.set_deferred("scroll_vertical", 0)
+		else:
+			_scroll.ensure_control_visible.call_deferred(_chips[focus_index])
 	for i in _chips.size():
 		var chip: Panel = _chips[i]
-		var entry: Dictionary = _chips[i].get_meta("entry", entries[i])
+		# One chip look, two states. The ring is drawn INSIDE the chip so
+		# the selected one never grows and never shunts its neighbours.
 		var style := StyleBoxFlat.new()
-		var color: Color = entries[i].color
-		style.bg_color = Color(0.1, 0.11, 0.16)
-		style.set_corner_radius_all(6)
+		style.corner_detail = 8
 		if i == focus_index:
-			style.border_color = Color.WHITE
-			style.set_border_width_all(3)
+			style.bg_color = UiTheme.SURFACE_3
+			style.border_color = UiTheme.ACCENT
+			# The ring is INSIDE the chip and there is no outer glow: the
+			# grid auto-scrolls the selected chip flush against its own
+			# edge, and anything drawn outside the chip is sliced off there.
+			style.set_border_width_all(maxi(3, int(_chip_px * 0.055)))
+		else:
+			style.bg_color = UiTheme.SURFACE_2
+			style.border_color = UiTheme.LINE
+			style.set_border_width_all(1)
+		style.set_corner_radius_all(maxi(6, int(_chip_px * 0.14)))
 		chip.add_theme_stylebox_override("panel", style)
