@@ -29,64 +29,64 @@ better game. Tick them off here as they ship.
 
 ### Bounds — things leaving the play area
 
-- [ ] **Nothing may be placed outside the world size.** Crates, kits,
+- [x] **Nothing may be placed outside the world size.** Crates, kits,
       structures, animals and decoration are all placed without checking
       `battle_size`, so on a small world they land off the grid. Every
       placement goes through one bounds check.
-- [ ] **No player may be dropped outside the grid** either — same check
+- [x] **No player may be dropped outside the grid** either — same check
       on the drop path.
 
 ### Roster and teams
 
-- [ ] **Name computer players from the phonetic alphabet** — Alpha,
+- [x] **Name computer players from the phonetic alphabet** — Alpha,
       Bravo, Charlie, Delta … Zulu. Humans keep animal names (newt, duck,
       bee, bear), so the two are told apart at a glance. The current
       names sort alphanumerically, so "Bot 10" lands between "Bot 1" and
       "Bot 2" and the roster reads as nonsense. 24 bots max, 26 letters —
       it fits. Computers always sort AFTER humans.
-- [ ] **Make bot team assignment legible.** Right now you cannot tell
+- [x] **Make bot team assignment legible.** Right now you cannot tell
       what team a bot landed on or why.
-- [ ] **A counts row at the top of the team grid**: how many players are
+- [x] **A counts row at the top of the team grid**: how many players are
       on each team.
-- [ ] **The world menu runs off the right edge** once there are enough
+- [x] **The world menu runs off the right edge** once there are enough
       teams — the swatch row does not wrap or scroll.
 
 ### Creatures
 
-- [ ] **Far fewer animals, scaled to the world.** A 50×50 world is
+- [x] **Far fewer animals, scaled to the world.** A 50×50 world is
       swamped with them.
-- [ ] **Drop snakes.** They cannot move around properly.
+- [x] **Drop snakes.** They cannot move around properly.
 
 ### Weapons
 
-- [ ] **Medium shooter is far too destructive** — roughly halve the
+- [x] **Medium shooter is far too destructive** — roughly halve the
       blast.
-- [ ] **No explosion may leave a 2-block height differential.** Getting
+- [x] **No explosion may leave a 2-block height differential.** Getting
       stuck in a crater you cannot walk out of is not fun. Craters should
       come out walkable — no step taller than one block anywhere around
       the rim. (Digging down under your own feet is still your problem.)
-- [ ] **Remove** the bridge gun, the party popper and the world wand —
+- [x] **Remove** the bridge gun, the party popper and the world wand —
       none of them are useful.
-- [ ] **Starting loadout: sword, paint sprayer, flare gun.**
-- [ ] **New — paint sprayer.** Works like the paint bomb but sprays in
+- [x] **Starting loadout: sword, paint sprayer, flare gun.**
+- [x] **New — paint sprayer.** Works like the paint bomb but sprays in
       YOUR TEAM's colour, so you can draw lines and mark things.
-- [ ] **Flare gun fires your team's colour.**
-- [ ] **New — smoke bomb.** A team-coloured marker you throw to say
+- [x] **Flare gun fires your team's colour.**
+- [x] **New — smoke bomb.** A team-coloured marker you throw to say
       "we're taking that building". Not for hiding. **Only ever one in
       the world at a time** — throwing a new one clears the previous.
-- [ ] **Weapon order**: flare gun, paint bomb, paint sprayer together;
+- [x] **Weapon order**: flare gun, paint bomb, paint sprayer together;
       then wings; napalm rocket moves to just after the big shooter.
 
 ### Loot
 
-- [ ] **The lights over loot flicker** — they switch off and back on.
-- [ ] **Ration loot to the world's size and, partly, to how many are
+- [x] **The lights over loot flicker** — they switch off and back on.
+- [x] **Ration loot to the world's size and, partly, to how many are
       playing.** Two players on a huge map should not be hunting ten
       crates between them.
 
 ### Drops
 
-- [ ] **Drop teams TOGETHER** — a team of four (or seventeen) lands as a
+- [x] **Drop teams TOGETHER** — a team of four (or seventeen) lands as a
       group with about one block between them, so they start together and
       can fly out from there. **Spread the groups well across the map** so
       every team gets its own space.
