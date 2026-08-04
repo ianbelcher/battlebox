@@ -86,6 +86,9 @@ func set_team_glow(team: int) -> void:
 		_team_light = null
 	pass
 var downed := false
+## Has the death animation already run for this knock-down? Reset when
+## the player gets back up.
+var _death_played := false
 var dropping := false
 var _was_in_water := false
 var _ride_prev_jump := false
@@ -789,7 +792,20 @@ func camera_look_dir() -> Vector3:
 
 var _dragon_fire_cd := 0.0
 
+## In the fight, and able to dig, build and shoot? Downed players are
+## waiting to be picked up and eliminated players are spectating — neither
+## should be able to touch the world, and eliminated players in
+## particular were still shooting at everyone from the sky.
+func can_act() -> bool:
+	if downed:
+		return false
+	if world != null and world.ghost_ids.has(player_id):
+		return false
+	return true
+
 func _local_actions(delta: float) -> void:
+	if not can_act():
+		return
 	if riding >= 0:
 		# From dragonback you breathe fire instead of using your tools.
 		_dragon_fire_cd = maxf(0.0, _dragon_fire_cd - delta)
@@ -825,8 +841,8 @@ func _local_actions(delta: float) -> void:
 		else:
 			_highlight.visible = false
 
-	if downed:
-		return  # crawling: no digging, placing or shooting
+	if not can_act():
+		return  # down or out: no digging, placing or shooting
 	var pick := input.slot_pick()
 	if pick != _prev_slot_pick and pick >= 0:
 		if pick < 8:
@@ -1114,12 +1130,17 @@ func _animate_kenney(_delta: float) -> void:
 	var want := "idle"
 	var ground_speed := Vector2(velocity.x, velocity.z).length()
 	if downed:
-		# Down and staying down: start the fall once, then leave it be.
-		ap.get_animation("die").loop_mode = Animation.LOOP_NONE \
-			if ap.has_animation("die") else 0
-		if ap.current_animation != "die":
+		# Down and staying down. Play the fall EXACTLY once and then leave
+		# the rig alone: a non-looping animation clears current_animation
+		# the moment it finishes, so testing "is die playing?" said no a
+		# second later and started it over — which is the thumping.
+		if not _death_played:
+			_death_played = true
+			if ap.has_animation("die"):
+				ap.get_animation("die").loop_mode = Animation.LOOP_NONE
 			ap.play("die", 0.15)
 		return
+	_death_played = false
 	if swing_time > 0.0:
 		want = "attack-melee-right"
 	elif anim == Anim.SNEAK:

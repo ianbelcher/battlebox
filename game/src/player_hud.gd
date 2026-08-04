@@ -1817,7 +1817,12 @@ func _process(_delta: float) -> void:
 				team_name = str(world.client_team_names[team])
 			# Players left = everyone still IN the match, downed included:
 			# they can be revived and start shooting again.
-			_score_label.text = "🚩 %s  %d/%d alive   ·   %d players left" % [
+			# The flag glyph is always red, so tint the whole label to the
+			# team's colour — a red flag over "Blue" told you nothing.
+			if team >= 0 and team < WorldNode.TEAM_COLORS.size():
+				_score_label.add_theme_color_override("font_color",
+					WorldNode.TEAM_COLORS[team])
+			_score_label.text = "%s  %d/%d alive   ·   %d players left" % [
 				team_name, mates_alive, mates_total, world.alive_ids.size()]
 	if _vignette != null and world != null:
 		# The hurt vignette: strongest when hearts are low, eases back as

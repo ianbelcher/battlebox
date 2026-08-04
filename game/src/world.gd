@@ -33,7 +33,7 @@ var client_minutes := 5
 var client_size := 250
 var client_loot := false
 var client_fly := false
-var client_team_names: Array = ["A", "B", "C", "D"]
+var client_team_names: Array = TEAM_NAMES.slice(0, 4)
 var client_world := ""
 var client_mode := "creative"
 ## player_id -> dragon critter id, replicated so everyone sees who rides.
@@ -135,7 +135,9 @@ const MERCY_MS := 2000
 var _last_hit_ms: Dictionary = {}
 ## Display names for the teams, A..X by default; renameable from the
 ## Players view. Size always equals team_count.
-var team_names: Array = ["A", "B", "C", "D"]
+## Named after their colour — "Blue" — never "B". A child cannot be asked
+## to remember which letter they were.
+var team_names: Array = TEAM_NAMES.slice(0, 4)
 var match_phase := "IDLE"
 ## Soft edge for players: the world's hard chunk bound plus a splash of
 ## swimmable ocean — nobody drifts into the infinite procedural sea.
@@ -1294,7 +1296,7 @@ func sv_add_team() -> void:
 	if team_count >= 24:
 		return
 	team_count += 1
-	team_names.append(char(65 + (team_count - 1) % 24))
+	team_names.append(TEAM_NAMES[(team_count - 1) % TEAM_NAMES.size()])
 	_redistribute_bots()
 	cl_teams.rpc(team_names)
 	_save_battle_setup()
@@ -1538,6 +1540,11 @@ func _load_battle_setup() -> void:
 	battle_fly = bool(cfg.get_value("battle", "world_fly", battle_fly))
 	var names: Array = cfg.get_value("battle", "team_names", team_names)
 	if names.size() >= 2:
+		# Worlds saved before teams were named by colour still hold
+		# "A"/"B"/... — swap them for the colour they actually are.
+		for i in names.size():
+			if str(names[i]).length() <= 2:
+				names[i] = TEAM_NAMES[i % TEAM_NAMES.size()]
 		team_names = names
 		team_count = names.size()
 	game_mode = str(cfg.get_value("battle", "mode", "creative"))
@@ -1866,11 +1873,18 @@ func _storm_damage() -> void:
 		if state.is_empty() or now < int(_storm_hurt_ms.get(id, 0)):
 			continue
 		var pos: Vector3 = state.pos
-		# The first dozen blocks outside the wall are a warning zone; deeper
-		# than that the storm hits hard.
-		if Vector2(pos.x - storm_center.x, pos.z - storm_center.z).length() \
-				> storm_radius + 12.0:
-			_storm_hurt_ms[id] = now + 1600
+		# Outside the wall you are ON THE CLOCK. A short grace band, then
+		# damage that speeds up the further out you are: matches used to
+		# end by everyone standing in the middle waiting for the storm to
+		# get round to it.
+		var out := Vector2(pos.x - storm_center.x,
+			pos.z - storm_center.z).length() - storm_radius
+		if out > 2.0:
+			# 1.1s a heart at the edge, down to 0.3s deep out — eight
+			# hearts is about nine seconds at the rim, under three if you
+			# ignore it completely.
+			var bite := clampf(1.1 - out / 40.0, 0.3, 1.1)
+			_storm_hurt_ms[id] = now + int(bite * 1000.0)
 			state.hp = int(state.get("hp", MATCH_HP)) - 1
 			cl_hearts.rpc(id, state.hp)
 			# No knockback from the storm: pushing players while they're

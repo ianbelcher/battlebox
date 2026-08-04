@@ -103,9 +103,12 @@ func height_at(wx: int, wz: int) -> int:
 		# Skylands: a shallow ocean below, all the action up on the islands.
 		return clampi(SEA_LEVEL - 3 + int(detail * 0.8), 2, CHUNK_H - 12)
 	if theme == "space":
-		# Barren rolling moon-ground, well clear of any water table.
-		var swell := 10.0 + hills * hills * 22.0 + base * 6.0 + detail * 2.2
-		return clampi(int(SEA_LEVEL + 2.0 + swell * 0.55), 2, CHUNK_H - 14)
+		# Long rolling swells with real relief — dunes you walk over and
+		# see something new behind, not a flat plain with bumps on it.
+		var swell := sin(float(wx) * 0.021) * 6.0 + sin(float(wz) * 0.017) * 5.5 \
+			+ sin(float(wx + wz) * 0.009) * 7.0
+		swell += hills * hills * 26.0 + base * 10.0 + detail * 2.0
+		return clampi(int(SEA_LEVEL + 6.0 + swell * 0.75), 2, CHUNK_H - 16)
 	if theme == "desert":
 		# Flat rolling dunes well above the water table.
 		var dune := 14.0 + (base * 18.0 + hills * hills * 30.0) * falloff + detail * 1.8
@@ -683,41 +686,70 @@ func _space_landmark(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 			if base + 1 < CHUNK_H and hash01(wx, wz, 77) < 0.06:
 				data[idx(lx, base + 1, lz)] = [Blocks.TALL_GRASS,
 					Blocks.FLOWER_RED, Blocks.SAPLING][int(hash01(wx, wz, 78) * 3.0)]
-		# The shell: glass where the sphere's surface passes this column.
-		var shell := radius * radius - flat * flat
-		if shell > 0.0:
-			var top := base + int(sqrt(shell))
-			if top < CHUNK_H and top > base:
-				# A doorway on the north face so you can walk in.
-				var door: bool = absi(dx) <= 2 and dz < 0 and top < base + 5
-				data[idx(lx, top, lz)] = Blocks.AIR if door else Blocks.GLASS
-		if absf(flat - radius) < 1.0 and base < CHUNK_H:
+		# The shell. Testing one column against the sphere left holes
+		# wherever its surface ran steeply — you could walk straight
+		# through the dome. Fill every y whose distance from the centre
+		# lands inside the shell's thickness, so it is always sealed.
+		var centre_y := float(base)
+		for y in range(base, mini(CHUNK_H - 1, base + int(radius) + 2)):
+			var d := Vector3(float(dx), float(y) - centre_y, float(dz)).length()
+			# Generous thickness on purpose: a thinner test leaves gaps
+			# wherever the sphere's surface runs steeply through a column,
+			# and a dome you can walk through is not a dome.
+			if absf(d - radius) > 1.4:
+				continue
+			# A doorway on the north face, tall enough to walk through.
+			if absi(dx) <= 2 and dz < 0 and y < base + 4:
+				continue
+			data[idx(lx, y, lz)] = Blocks.GLASS
+		# A steel ring where it meets the ground.
+		if absf(flat - radius) < 1.2 and base < CHUNK_H:
 			data[idx(lx, base, lz)] = Blocks.STEEL
+			if base + 1 < CHUNK_H and posmod(dx + dz, 7) == 0:
+				data[idx(lx, base + 1, lz)] = Blocks.GLOWSTONE
 		return
 	if roll < 0.72:
-		# Underground bunker: a steel room with a lit interior, reached by
-		# a shaft you drop down.
-		var half := 9
+		# Underground base: a proper CAVERN you climb down into, not a
+		# cupboard. A ramped entryway cut into the hillside leads to a
+		# steel-floored hall big enough to build in and get lost in.
+		var half := 26
 		if absi(dx) > half or absi(dz) > half:
 			return
-		var floor_y := 8
-		var roof_y := floor_y + 6
-		var wall: bool = absi(dx) == half or absi(dz) == half
+		var floor_y := 6
+		var roof_y := floor_y + 15
+		var edge := maxi(absi(dx), absi(dz))
+		# The entry: a trench sloping down from the surface on the north
+		# side, opening into the hall.
+		if absi(dx) <= 3 and dz < 0:
+			var t := float(-dz) / float(half)      # 0 at the hall, 1 outside
+			var mouth := int(lerpf(float(roof_y), float(h + 2), t))
+			for y in range(floor_y, mini(mouth + 1, CHUNK_H)):
+				data[idx(lx, y, lz)] = Blocks.AIR
+			if floor_y - 1 > 0:
+				data[idx(lx, floor_y - 1, lz)] = Blocks.STEEL
+			if absi(dx) == 3 and posmod(dz, 6) == 0 and floor_y + 2 < CHUNK_H:
+				data[idx(lx, floor_y + 2, lz)] = Blocks.GLOWSTONE
+			return
+		if edge > half - 2:
+			return                                  # solid rock wall
+		# The hall itself: hollow it out and floor it.
 		for y in range(floor_y, mini(roof_y + 1, CHUNK_H)):
-			if wall or y == floor_y or y == roof_y:
+			data[idx(lx, y, lz)] = Blocks.AIR
+		if floor_y - 1 > 0:
+			data[idx(lx, floor_y - 1, lz)] = Blocks.STEEL
+		data[idx(lx, roof_y, lz)] = Blocks.STONE
+		# Pillars holding the roof up, and lights between them.
+		if posmod(dx, 9) == 0 and posmod(dz, 9) == 0:
+			for y in range(floor_y, roof_y):
 				data[idx(lx, y, lz)] = Blocks.STEEL
-			else:
-				data[idx(lx, y, lz)] = Blocks.AIR
-		if not wall and y_lit(wx, wz) and floor_y + 1 < CHUNK_H:
+		elif posmod(dx + 4, 9) == 0 and posmod(dz + 4, 9) == 0 \
+				and roof_y - 1 < CHUNK_H:
 			data[idx(lx, roof_y - 1, lz)] = Blocks.GLOWSTONE
-		# The entry shaft, straight up to daylight.
-		if absi(dx) <= 1 and absi(dz) <= 1:
-			for y in range(roof_y, mini(h + 2, CHUNK_H)):
-				data[idx(lx, y, lz)] = Blocks.AIR
-			if absi(dx) == 0 and absi(dz) == 0:
-				for y in range(roof_y, mini(h + 2, CHUNK_H)):
-					if y % 3 == 0:
-						data[idx(lx, y, lz)] = Blocks.GLOWSTONE
+		# A glowing core at the very centre — somewhere to head for.
+		if absi(dx) <= 2 and absi(dz) <= 2 and floor_y + 3 < CHUNK_H:
+			data[idx(lx, floor_y, lz)] = Blocks.CRYSTAL_BLUE
+			if absi(dx) <= 1 and absi(dz) <= 1:
+				data[idx(lx, floor_y + 1, lz)] = Blocks.GLOWSTONE
 		return
 	# Spaceship parked in the sky: a glowing hull you fly up to.
 	var ship_y := 52 + int(roll * 14.0)
