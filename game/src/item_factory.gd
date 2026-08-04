@@ -246,14 +246,14 @@ static func build(kind: String, id: int) -> Node3D:
 			root.add_child(_box(Vector3(0.11, 0.035, 0.62), Color("dfe6f0"), Vector3(0, 0, -0.36)))
 			root.add_child(_box(Vector3(0.035, 0.045, 0.58), Color("f7fafd"), Vector3(0, 0, -0.34)))
 			root.add_child(_box(Vector3(0.065, 0.037, 0.12), Color("f4f8fc"), Vector3(0, 0, -0.72)))
-		5:  # Bridge gun: plank thrower
-			root.add_child(_box(Vector3(0.1, 0.1, 0.3), Color("8a6a42"), Vector3(0, 0.06, -0.06)))
-			root.add_child(_box(Vector3(0.18, 0.04, 0.2), Color("d6c396"), Vector3(0, 0.14, -0.16)))
-		6:  # Party popper: striped cone
-			root.add_child(_cyl(0.1, 0.02, 0.4, Color("ef9fc8"), Vector3(0, 0.08, -0.12), Vector3(90, 0, 0)))
-		7:  # Whirl wand
-			root.add_child(_cyl(0.02, 0.02, 0.4, Color("2ea89a"), Vector3(0, 0.08, -0.08), Vector3(90, 0, 0)))
-			root.add_child(_box(Vector3(0.14, 0.14, 0.04), Color("3ad4c2"), Vector3(0, 0.08, -0.3), true))
+		18:  # Paint sprayer: a squat can with a nozzle
+			root.add_child(_cyl(0.075, 0.075, 0.26, Color("60d394"), Vector3(0, 0.06, -0.04)))
+			root.add_child(_cyl(0.025, 0.025, 0.1, Color("dfe6f0"), Vector3(0, 0.06, -0.2), Vector3(90, 0, 0)))
+			root.add_child(_box(Vector3(0.09, 0.05, 0.05), Color("3a3d45"), Vector3(0, 0.02, 0.09)))
+		19:  # Smoke bomb: a banded canister
+			root.add_child(_cyl(0.07, 0.07, 0.24, Color("9aa6c4"), Vector3(0, 0.05, -0.06)))
+			root.add_child(_cyl(0.075, 0.075, 0.05, Color("3a3d45"), Vector3(0, 0.05, -0.16)))
+			root.add_child(_cyl(0.03, 0.03, 0.05, Color("dfe6f0"), Vector3(0, 0.05, -0.2), Vector3(90, 0, 0)))
 		8:  # Paint bomb: bucket
 			root.add_child(_cyl(0.11, 0.09, 0.16, Color("b07df0"), Vector3(0, 0.04, -0.06)))
 		3:  # Freeze ray: icy emitter with a glowing crystal muzzle

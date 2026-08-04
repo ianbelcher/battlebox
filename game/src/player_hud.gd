@@ -1814,7 +1814,11 @@ func _process(_delta: float) -> void:
 	if OS.get_environment("WORLD_AUTOTEST_MENU") == "1" and slot == 0 \
 			and not _autoopened and Time.get_ticks_msec() > 9000:
 		_autoopened = true
-		_toggle_menu(player, 1)
+		# OPEN, not toggle: a stray key press before the 9-second mark
+		# would leave the menu already up, and a toggle then closed the
+		# very thing the screenshot run exists to photograph.
+		if not _menu.visible:
+			_toggle_menu(player, 1)
 	if _autoopened and _menu.visible and not OS.get_environment("WORLD_AUTOTEST_TAB").is_empty():
 		_set_page(int(OS.get_environment("WORLD_AUTOTEST_TAB")))
 

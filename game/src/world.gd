@@ -231,6 +231,7 @@ func _process(delta: float) -> void:
 		_drain_chunk_queues()
 		_server_dawn_check()
 		_server_tick_bombs()
+		_server_tick_smoke()
 		_server_tick_match(delta)
 		_server_tick_bots(delta)
 		_water_accum += delta
@@ -560,7 +561,10 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 							and Vector3(cell).distance_to(_player_state[pid].pos) < 6.0:
 						_match_hurt(pid, 2, Vector3(cell), Game.player_id(multiplayer.get_remote_sender_id(), slot))
 			return
-		14:  # Flare: a sky light, nothing to break.
+		14:  # Flare: a sky light in the shooter's team colour, nothing
+			# to break. The colour is what makes it a signal and not just
+			# a firework.
+			cl_flare.rpc(Vector3(cell), _team_of(id))
 			return
 		15:  # Big Shooter: one huge crater.
 			_blast(cell, 5.6, [], cell)
@@ -571,8 +575,11 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 							and Vector3(cell).distance_to(_player_state[pid].pos) < 8.0:
 						_match_hurt(pid, 3, Vector3(cell), Game.player_id(multiplayer.get_remote_sender_id(), slot))
 			return
-		1:  # Bazooka
-			_blast(cell, 3.4, [], cell)
+		1:  # Medium Shooter. 2.6, not 3.4: at the old radius a couple of
+			# shots flattened whatever ground a player was standing on,
+			# and this is the weapon everyone has most of the time.
+			# Halving the VOLUME is what "half" means for a sphere.
+			_blast(cell, 2.6, [], cell)
 			if match_phase == "BATTLE":
 				for pid: String in _match_alive.keys():
 					if pid != id and _teams_differ(id, pid) \
@@ -615,40 +622,27 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 				_disturb_water([cell])
 				cl_suck.rpc(id, block)
 			return
-		5:  # Bridge Gun: a plank walkway growing back toward the shooter.
-			var dir := Vector3(state.pos) - Vector3(cell)
-			dir.y = 0
-			if dir.length() < 0.5:
-				return
-			dir = dir.normalized()
-			var planks: Array = []
-			for i in range(0, 5):
-				var pos := Vector3i((Vector3(cell) + dir * i).round())
-				pos.y = cell.y
-				if store.get_block(pos) == Blocks.AIR:
-					store.set_block(pos, Blocks.PLANKS)
-					planks.append(pos)
-			if not planks.is_empty():
-				cl_batch.rpc(planks, Blocks.PLANKS)
+		18:  # Paint Sprayer: a small dab in the shooter's OWN team colour,
+			# so a team can draw lines and mark the ground it holds.
+			var spray_wool := _team_wool(id)
+			var sprayed: Array = []
+			for dy in range(-1, 2):
+				for dz in range(-1, 2):
+					for dx in range(-1, 2):
+						var spos: Vector3i = cell + Vector3i(dx, dy, dz)
+						if _paintable(spos):
+							store.set_block(spos, spray_wool)
+							sprayed.append(spos)
+			if not sprayed.is_empty():
+				cl_batch.rpc(sprayed, spray_wool)
 			return
-		6:  # Party Popper: confetti and a harmless mass fling.
-			cl_party_fx.rpc(cell)
-			for pid: String in _player_state.keys():
-				if Vector3(cell).distance_to(_player_state[pid].pos) < 7.0:
-					cl_bonk.rpc(pid, Vector3(cell))
-			for monster_id: int in _monsters.keys():
-				var m: Dictionary = _monsters[monster_id]
-				if Vector3(cell).distance_to(m.pos) < 7.0:
-					m.pos += (m.pos - Vector3(cell)).normalized() * 4.0
-			return
-		7:  # Whirl Wand: skyward gust, Grumps scattered.
-			for pid: String in _player_state.keys():
-				if Vector3(cell).distance_to(_player_state[pid].pos) < 6.0:
-					cl_fling.rpc(pid)
-			for monster_id: int in _monsters.keys():
-				var m: Dictionary = _monsters[monster_id]
-				if Vector3(cell).distance_to(m.pos) < 6.0:
-					m.pos += Vector3(randf_range(-6, 6), 0, randf_range(-6, 6))
+		19:  # Smoke Bomb: a team-coloured "we are going THERE" marker.
+			# Exactly one exists in the world at a time — throwing a new
+			# one clears whoever's was up before, so the signal is never
+			# ambiguous.
+			_smoke_marker = {"pos": Vector3(cell), "team": _team_of(id),
+				"until": Time.get_ticks_msec() + SMOKE_MSEC}
+			cl_smoke.rpc(Vector3(cell), _team_of(id))
 			return
 		8:  # Paint Bomb: soft terrain becomes random wool.
 			var wools := [Blocks.WOOL_RED, Blocks.WOOL_YELLOW, Blocks.WOOL_BLUE,
@@ -787,6 +781,15 @@ func sv_pet(slot: int, critter_id: int) -> void:
 
 ## Boom blocks explode after their fuse; fireworks launch. Both checked
 ## every frame (the lists are tiny).
+## The smoke marker times out by itself, so a match that runs long isn't
+## still being pointed at a building somebody took ten minutes ago.
+func _server_tick_smoke() -> void:
+	if _smoke_marker.is_empty():
+		return
+	if Time.get_ticks_msec() >= int(_smoke_marker.get("until", 0)):
+		_smoke_marker.clear()
+		cl_smoke_clear.rpc()
+
 func _server_tick_bombs() -> void:
 	var now := Time.get_ticks_msec()
 	var pending: Array = []
@@ -834,6 +837,57 @@ func _server_explode(origin: Vector3i) -> void:
 	var radius := BOOM_RADIUS * pow(connected.size(), 0.34)
 	_blast(Vector3i(center.round()), radius, connected.keys())
 
+## ------------------------------------------------------------------
+## Team colours: the paint sprayer, the flare and the smoke bomb all
+## carry the thrower's team, which is what turns them from decoration
+## into signals your side can read across a field.
+## ------------------------------------------------------------------
+
+const TEAM_WOOL := [Blocks.WOOL_RED, Blocks.WOOL_BLUE, Blocks.WOOL_GREEN,
+	Blocks.WOOL_YELLOW, Blocks.WOOL_PURPLE, Blocks.WOOL_ORANGE,
+	Blocks.WOOL_TEAL, Blocks.WOOL_PINK]
+
+## How long one smoke marker stands before it fades by itself.
+const SMOKE_MSEC := 45000
+
+## The live marker, or {} for none. Only ever ONE.
+var _smoke_marker: Dictionary = {}
+
+func _team_of(id: String) -> int:
+	return int(Game.roster.get(id, {}).get("team", -1))
+
+func _team_wool(id: String) -> int:
+	var team := _team_of(id)
+	if team < 0:
+		return Blocks.WOOL_WHITE
+	return TEAM_WOOL[team % TEAM_WOOL.size()]
+
+## Soft, plain terrain only — never glass, plants, liquids or anything
+## anyone built out of a hard material.
+func _paintable(pos: Vector3i) -> bool:
+	var block := store.get_block(pos)
+	return block != Blocks.AIR and Blocks.is_breakable(block) \
+		and Blocks.hardness(block) == 0 and not Blocks.is_liquid(block) \
+		and not Blocks.is_cross(block)
+
+## Shave a crater's lip until you can walk out of it.
+##
+## A blast carves a SPHERE, and a sphere meets the ground almost
+## vertically at its rim — so the outer ring of every crater was a wall
+## one to three blocks high. Land in one mid-fight and you were simply
+## stuck in a pit while somebody shot down at you, which is not a game.
+##
+## So: measure the surface height of every column in and just around the
+## crater, then relax it until no column stands more than ONE block above
+## its lowest neighbour. The result is a shallow bowl with a walkable
+## slope all the way round. Digging a shaft straight down under your own
+## feet is still your own business — this only touches the footprint of
+## an explosion.
+func _walk_out(origin: Vector3i, radius: float) -> void:
+	var shaved := store.shave_walkable(origin, radius)
+	if not shaved.is_empty():
+		cl_batch.rpc(shaved, Blocks.AIR)
+
 func _blast(origin: Vector3i, radius: float, pre_cleared: Array, impact := Vector3i(0, -999, 0)) -> void:
 	var cleared: Array = pre_cleared.duplicate()
 	var reach := int(ceil(radius))
@@ -867,6 +921,10 @@ func _blast(origin: Vector3i, radius: float, pre_cleared: Array, impact := Vecto
 				store.set_block(pos, Blocks.AIR)
 				cleared.append(pos)
 	cl_batch.rpc(cleared, Blocks.AIR)
+	# Nothing moved, nothing to smooth — skip the heightmap pass for shots
+	# that hit air or bounced off diamond.
+	if not cleared.is_empty():
+		_walk_out(origin, radius)
 	# Scorch the crater floor.
 	var charred: Array = []
 	for pos: Vector3i in cleared:
@@ -1896,7 +1954,7 @@ func _server_match_drop() -> void:
 					near_weapon = int(other.weapon)
 			if too_close:
 				continue
-			var pool2 := [1, 1, 1, 2, 3, 9, 9, 11, 12, 12, 15, 15]
+			var pool2 := [1, 1, 1, 2, 9, 9, 11, 12, 12, 15, 15, 19]
 			var pick: int = pool2[randi() % pool2.size()]
 			if pick == near_weapon:
 				pick = pool2[randi() % pool2.size()]
@@ -2337,9 +2395,13 @@ func cl_drop(id: String, pos: Vector3, loot := false) -> void:
 			child.teleport(pos)
 			child.start_drop_glide()
 			child.fly_mode = false
-			# PUBG rules: everyone drops with just a sword — the rest is loot.
-			child.slots = [{"kind": "weapon", "id": 13}]
-			for i in 7:
+			# Everyone drops with the same small kit — a sword to fight
+			# with and the two team markers, so a squad can talk to each
+			# other from the first second. Everything else is loot.
+			child.slots = []
+			for weapon_id: int in Weapons.STARTING_KIT:
+				child.slots.append({"kind": "weapon", "id": weapon_id})
+			while child.slots.size() < 8:
 				child.slots.append({"kind": "empty", "id": 0})
 			child.selected_slot = 0
 			child.downed = false
@@ -2607,7 +2669,7 @@ func _server_tick_crates() -> void:
 				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER \
 				and (store.theme != "sky" or y > WorldGen.SEA_LEVEL + 6):
 			# Rarer weapons show up less often.
-			var pool := [1, 1, 1, 2, 3, 9, 9, 11, 12, 12, 15, 15]
+			var pool := [1, 1, 1, 2, 9, 9, 11, 12, 12, 15, 15, 19]
 			_crates[_next_crate_id] = {"weapon": pool[randi() % pool.size()],
 				"pos": Vector3(wx + 0.5, y + 1.0, wz + 0.5)}
 			_next_crate_id += 1
@@ -3292,6 +3354,77 @@ func cl_fuse_fx(pos: Vector3i) -> void:
 	get_tree().create_timer(3.4).timeout.connect(func() -> void:
 		if is_instance_valid(sparks):
 			sparks.queue_free())
+
+## ------------------------------------------------------------------
+## Team signals
+## ------------------------------------------------------------------
+
+@rpc("authority", "call_local", "reliable")
+func cl_flare(pos: Vector3, team: int) -> void:
+	if orbs == null:
+		return
+	var tint: Color = TEAM_COLORS[team] if team >= 0 and team < TEAM_COLORS.size() \
+		else Color("ff9ac0")
+	orbs._spawn_flare(pos + Vector3(0.5, 0.5, 0.5), tint)
+
+## The one smoke marker. Putting a new one up takes the old one down,
+## wherever it was and whoever threw it, so there is never any question
+## about which spot the team is being pointed at.
+var _smoke_node: Node3D = null
+
+@rpc("authority", "call_local", "reliable")
+func cl_smoke(pos: Vector3, team: int) -> void:
+	if is_instance_valid(_smoke_node):
+		_smoke_node.queue_free()
+	_smoke_node = null
+	if chunks == null:
+		return
+	var tint: Color = TEAM_COLORS[team] if team >= 0 and team < TEAM_COLORS.size() \
+		else Color("f0f0f0")
+	var centre := pos + Vector3(0.5, 0.5, 0.5)
+	var marker := Node3D.new()
+	marker.position = centre
+	add_child(marker)
+	_smoke_node = marker
+	# A fat column of drifting puffs — readable from the far side of the
+	# map without hiding anything, which is the whole point: it marks a
+	# place, it is not cover.
+	var puff_mat := StandardMaterial3D.new()
+	puff_mat.albedo_color = Color(tint.r, tint.g, tint.b, 0.5)
+	puff_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	puff_mat.emission_enabled = true
+	puff_mat.emission = tint
+	puff_mat.emission_energy_multiplier = 1.6
+	puff_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for i in 14:
+		var puff := MeshInstance3D.new()
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.9 + float(i) * 0.10
+		sphere.height = sphere.radius * 2.0
+		puff.mesh = sphere
+		puff.material_override = puff_mat
+		puff.position = Vector3(randf_range(-0.7, 0.7), float(i) * 1.15,
+			randf_range(-0.7, 0.7))
+		marker.add_child(puff)
+		var drift := create_tween().set_loops()
+		drift.tween_property(puff, "position:y",
+			puff.position.y + 0.55, 1.6 + randf() * 0.7)
+		drift.tween_property(puff, "position:y",
+			puff.position.y, 1.6 + randf() * 0.7)
+	var beam := OmniLight3D.new()
+	beam.omni_range = 26.0
+	beam.light_energy = 2.2
+	beam.light_color = tint
+	beam.shadow_enabled = false
+	beam.position = Vector3(0, 3.0, 0)
+	marker.add_child(beam)
+	Sfx.play("pop", -8.0 - _nearest_local_dist(centre) * 0.4)
+
+@rpc("authority", "call_local", "reliable")
+func cl_smoke_clear() -> void:
+	if is_instance_valid(_smoke_node):
+		_smoke_node.queue_free()
+	_smoke_node = null
 
 @rpc("authority", "reliable")
 func cl_boom_fx(pos: Vector3i) -> void:

@@ -85,17 +85,18 @@ func _draw() -> void:
 					var a := i * TAU / 4.0 + TAU / 8.0
 					var dir := Vector2(cos(a), sin(a))
 					draw_line(mid + dir * w * 0.24, mid + dir * w * 0.08, ink, w * 0.055)
-			5:  # Bridge: planks.
-				for i in 3:
-					draw_rect(Rect2(mid.x - w * 0.2 + i * w * 0.14, mid.y - w * 0.16, w * 0.1, w * 0.32), ink)
-			6:  # Party: dots.
+			18:  # Paint sprayer: a can with a spray fan in team colours.
+				draw_rect(Rect2(mid.x - w * 0.13, mid.y - w * 0.12, w * 0.2, w * 0.34), ink)
+				draw_rect(Rect2(mid.x - w * 0.07, mid.y - w * 0.2, w * 0.08, w * 0.09), ink)
 				for i in 5:
-					var a := i * TAU / 5.0
-					draw_circle(mid + Vector2(cos(a), sin(a)) * w * 0.16, w * 0.06,
-						[Color("d63d2e"), Color(0.1, 0.3, 0.8), Color(0.1, 0.5, 0.2)][i % 3])
-			7:  # Whirl: spiral arcs.
-				draw_arc(mid, w * 0.1, 0, PI * 1.5, 10, ink, w * 0.05)
-				draw_arc(mid, w * 0.2, PI, PI * 2.6, 10, ink, w * 0.05)
+					var spray := mid + Vector2(w * 0.14 + w * 0.05 * i,
+						-w * 0.2 + w * 0.055 * i)
+					draw_circle(spray, w * 0.035, ink)
+			19:  # Smoke bomb: a canister under three rising puffs.
+				draw_rect(Rect2(mid.x - w * 0.1, mid.y + w * 0.04, w * 0.2, w * 0.22), ink)
+				for i in 3:
+					draw_circle(mid + Vector2(w * (0.06 * i - 0.06), -w * (0.06 + 0.11 * i)),
+						w * (0.08 + 0.02 * i), Color(ink.r, ink.g, ink.b, 0.55))
 			8:  # Paint: drips.
 				draw_circle(mid + Vector2(-w * 0.1, -w * 0.05), w * 0.09, Color("d63d2e"))
 				draw_circle(mid + Vector2(w * 0.1, -w * 0.02), w * 0.08, Color(0.15, 0.3, 0.75))

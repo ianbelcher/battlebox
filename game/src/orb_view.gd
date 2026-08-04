@@ -92,7 +92,7 @@ func _physics_process(delta: float) -> void:
 				continue
 		if orb.kind == 14:
 			if orb.age > 1.1:
-				_spawn_flare(node.position)
+				_spawn_flare(node.position, _team_tint(orb.shooter_id))
 				node.queue_free()
 				_orbs.remove_at(i)
 			continue
@@ -177,7 +177,9 @@ func _poof(at: Vector3) -> void:
 
 
 ## A drifting sky light: bright star + real light that sinks slowly.
-func _spawn_flare(pos: Vector3) -> void:
+## `tint` is the shooter's TEAM colour — a flare is a signal, and a signal
+## nobody can attribute is just a firework.
+func _spawn_flare(pos: Vector3, tint := Color("ff9ac0")) -> void:
 	var flare := Node3D.new()
 	flare.position = pos
 	var star := MeshInstance3D.new()
@@ -186,9 +188,9 @@ func _spawn_flare(pos: Vector3) -> void:
 	mesh.height = 0.64
 	star.mesh = mesh
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color("fff0f6")
+	mat.albedo_color = tint.lightened(0.7)
 	mat.emission_enabled = true
-	mat.emission = Color("ff9ac0")
+	mat.emission = tint
 	mat.emission_energy_multiplier = 6.0
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	star.material_override = mat
@@ -196,7 +198,7 @@ func _spawn_flare(pos: Vector3) -> void:
 	var light := OmniLight3D.new()
 	light.omni_range = 55.0
 	light.light_energy = 4.5
-	light.light_color = Color("ffd6e6")
+	light.light_color = tint.lightened(0.35)
 	light.shadow_enabled = false
 	flare.add_child(light)
 	add_child(flare)
@@ -212,6 +214,13 @@ func _spawn_flare(pos: Vector3) -> void:
 		if is_instance_valid(flare):
 			flare.queue_free())
 
+
+## The shooter's team colour, or a neutral pink when they have no team.
+func _team_tint(shooter_id: String) -> Color:
+	var team := int(Game.roster.get(shooter_id, {}).get("team", -1))
+	if team >= 0 and team < WorldNode.TEAM_COLORS.size():
+		return WorldNode.TEAM_COLORS[team]
+	return Color("ff9ac0")
 
 ## Waypoints from the face the hook hit to standing on the block's top.
 static func _grapple_path_for(cell: Vector3i, shot_vel: Vector3, from: Vector3) -> Array:

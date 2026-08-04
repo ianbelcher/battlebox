@@ -107,6 +107,76 @@ func clamp_inside(pos: Vector3, margin := 3) -> Vector3:
 	return Vector3(clampf(pos.x, -limit, limit), pos.y,
 		clampf(pos.z, -limit, limit))
 
+## Shave a crater's lip until you can walk out of it.
+##
+## A blast carves a SPHERE, and a sphere meets the ground almost
+## vertically at its rim — so the outer ring of every crater was a wall
+## one to three blocks high. Land in one mid-fight and you were simply
+## stuck in a pit while somebody shot down at you, which is not a game.
+##
+## Measure the surface height of every column in and just around the
+## crater, then relax it until no column stands more than ONE block above
+## its lowest neighbour: a shallow bowl with a walkable slope all the way
+## round. Digging a shaft straight down under your own feet is still your
+## own business — this only ever touches the footprint of an explosion.
+##
+## It lives HERE, on the store, rather than on WorldNode: it is a pure
+## terrain operation with no node, network or scene tree in it, which is
+## what lets tests/blast_walkout.gd check it against real generated
+## terrain without standing up a server.
+##
+## Clears the blocks it decides on and returns them for broadcasting.
+func shave_walkable(origin: Vector3i, radius: float) -> Array:
+	# Wide enough to actually reach ground level, and no wider. A crater
+	# is at most `radius` deep, and a slope of one block per block needs
+	# `radius` blocks of run to climb out of it — so the footprint has to
+	# be about twice the radius. At radius + 3 the relaxation ran out of
+	# room and simply left the step at the edge of its own footprint,
+	# which is the very thing it exists to remove. Still bounded, because
+	# without a hard edge one crater beside a cliff would relax its way
+	# up the whole cliff face.
+	var reach := int(ceil(radius * 2.0)) + 2
+	# The floor of the crater — never shave below this, or a blast would
+	# keep eating downwards instead of just opening a way out.
+	var floor_y := origin.y - int(ceil(radius)) - 1
+	var tops: Dictionary = {}      # Vector2i -> surface y
+	for dz in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var key := Vector2i(origin.x + dx, origin.z + dz)
+			# surface_y, NOT a hand-rolled scan over a band around the
+			# blast: a column whose ground sits above that band read as
+			# lower than it really was, and the lip stayed put.
+			tops[key] = surface_y(key.x, key.y)
+	# Relax: nobody may stand more than one block above their lowest
+	# neighbour. Each pass only ever takes a column DOWN, so it settles;
+	# reach + 4 passes is enough to carry the deepest rim outwards.
+	var shaved: Array = []
+	for _pass in reach + 4:
+		var changed := false
+		for key: Vector2i in tops.keys():
+			var here: int = tops[key]
+			var lowest := here
+			for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var next: Vector2i = key + off
+				if tops.has(next):
+					lowest = mini(lowest, int(tops[next]))
+			var want := maxi(lowest + 1, floor_y)
+			while here > want:
+				var pos := Vector3i(key.x, here, key.y)
+				var block := get_block(pos)
+				# Steel and diamond survive anything; so does whatever is
+				# not breakable at all. Stop rather than punch through.
+				if not Blocks.is_breakable(block) or Blocks.hardness(block) >= 3:
+					break
+				set_block(pos, Blocks.AIR)
+				shaved.append(pos)
+				here -= 1
+				changed = true
+			tops[key] = here
+		if not changed:
+			break
+	return shaved
+
 func get_chunk(cpos: Vector2i) -> PackedByteArray:
 	if _cache.has(cpos):
 		return _cache[cpos]
