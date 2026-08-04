@@ -82,6 +82,31 @@ func _init() -> void:
 func in_bounds(cpos: Vector2i) -> bool:
 	return absi(cpos.x) <= WORLD_RADIUS_CHUNKS and absi(cpos.y) <= WORLD_RADIUS_CHUNKS
 
+## Half the slab, in blocks. The world is a square `world_size` on a side
+## centred on the origin, so anything placed outside ±this is off the map.
+func half_extent() -> int:
+	return world_size / 2
+
+## THE bounds check for anything the server puts in the world — crates,
+## kits, animals, structures, players at the drop. Everything used to
+## work off its own radius (the storm's, the arena's, a hard-coded
+## number), and on a small world those all reached past the edge of the
+## slab and dropped things into the void.
+##
+## `margin` keeps a thing clear of the very edge, so a crate is never
+## half-buried in the border wall.
+func inside_world(wx: int, wz: int, margin := 2) -> bool:
+	var limit := half_extent() - margin
+	return absi(wx) <= limit and absi(wz) <= limit
+
+## The same point, pulled back inside the slab instead of rejected. Use
+## this where a thing MUST exist somewhere (a player's drop) rather than
+## where it can simply be skipped (one crate out of forty).
+func clamp_inside(pos: Vector3, margin := 3) -> Vector3:
+	var limit := float(half_extent() - margin)
+	return Vector3(clampf(pos.x, -limit, limit), pos.y,
+		clampf(pos.z, -limit, limit))
+
 func get_chunk(cpos: Vector2i) -> PackedByteArray:
 	if _cache.has(cpos):
 		return _cache[cpos]

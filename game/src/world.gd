@@ -1826,6 +1826,7 @@ func _server_match_drop() -> void:
 	_revive_progress.clear()
 	_bot_orbs.clear()
 	_team_drop_angle.clear()
+	_team_drop_taken.clear()
 	var counts: Array[int] = []
 	counts.resize(team_count)
 	for id: String in Game.roster.keys():
@@ -1854,11 +1855,7 @@ func _server_match_drop() -> void:
 		state.hp = MATCH_HP
 		cl_hearts.rpc(id, MATCH_HP)
 		var team_i := int(entry.get("team", 0))
-		if not _team_drop_angle.has(team_i):
-			_team_drop_angle[team_i] = randf() * TAU
-		var angle := float(_team_drop_angle[team_i]) + randf_range(-0.25, 0.25)
-		var dist := battle_size * randf_range(0.16, 0.3)
-		var drop := Vector3(cos(angle) * dist, WorldGen.CHUNK_H - 4, sin(angle) * dist)
+		var drop := _team_drop_spot(team_i)
 		cl_drop.rpc(id, drop, loot_only)
 		if _bots.has(id):
 			_bots[id].pos = drop
@@ -1869,21 +1866,22 @@ func _server_match_drop() -> void:
 			_bots[id].weapon = forced_weapon.to_int() if forced_weapon.is_valid_int() else 13
 			_player_state[id].pos = drop
 		i += 1
-	# Fresh loot everywhere so late matches aren't scavenged dry — the
-	# count scales with the battle square's area.
+	# Fresh loot everywhere so late matches aren't scavenged dry.
 	_crates.clear()
-	var crate_count := clampi(maxi(int(pow(_storm_start() / 125.0, 2.0) * 40.0),
-		Game.roster.size() * 4), 8, 140)
+	var crate_count := _crate_target()
 	var placed := 0
 	var attempts := 0
 	while placed < crate_count and attempts < crate_count * 12:
 		attempts += 1
 		var langle2 := randf() * TAU
-		var ldist2 := sqrt(randf()) * (_storm_start() * 0.85)
+		# Scatter inside the SLAB, not inside the storm. The storm's
+		# starting radius is deliberately bigger than the arena so no red
+		# shows at the drop, so using it here threw loot off the map.
+		var ldist2 := sqrt(randf()) * float(store.half_extent() - 4)
 		var lx2 := int(cos(langle2) * ldist2)
 		var lz2 := int(sin(langle2) * ldist2)
 		var ly2 := store.surface_y(lx2, lz2)
-		if ly2 > 2 and ly2 < WorldGen.CHUNK_H - 6 \
+		if store.inside_world(lx2, lz2) and ly2 > 2 and ly2 < WorldGen.CHUNK_H - 6 \
 				and store.get_block(Vector3i(lx2, ly2, lz2)) != Blocks.WATER \
 				and (store.theme != "sky" or ly2 > WorldGen.SEA_LEVEL + 6):
 			var crate_here := Vector3(lx2 + 0.5, ly2 + 1.0, lz2 + 0.5)
@@ -2008,6 +2006,46 @@ func _emit_feed(id: String, attacker := "") -> void:
 ## Out-of-combat healing: untouched for 8s, a heart every 3s.
 var _last_regen_ms: Dictionary = {}
 var _team_drop_angle: Dictionary = {}
+## How many of each team have been given a landing spot this battle, so
+## the next one gets the next slot in the huddle.
+var _team_drop_taken: Dictionary = {}
+
+## Where one player of `team_i` lands.
+##
+## Teams drop TOGETHER. Each team gets its own bearing from the centre —
+## spread as evenly around the compass as there are teams, so nobody
+## lands on top of anybody else — and its players are packed into a tight
+## spiral around that spot, one block apart, so a squad starts the match
+## looking at each other and can fly out from there together. Before
+## this, every player got an independent random angle and distance and
+## teams were scattered across the whole map from the first second.
+func _team_drop_spot(team_i: int) -> Vector3:
+	if not _team_drop_angle.has(team_i):
+		# Evenly spaced bearings, with a small jitter so the same team
+		# doesn't land in the same field every single battle.
+		var slot := _team_drop_angle.size()
+		_team_drop_angle[team_i] = (TAU * float(slot) / float(maxi(team_count, 1))
+			+ randf_range(-0.18, 0.18))
+	var angle := float(_team_drop_angle[team_i])
+	var dist := float(store.half_extent()) * randf_range(0.45, 0.62)
+	var centre := Vector3(cos(angle) * dist, 0.0, sin(angle) * dist)
+	# Ring-by-ring spiral: 1 in the middle, then 6, then 12 … all one
+	# block apart, so even a team of seventeen lands in one huddle.
+	var n := int(_team_drop_taken.get(team_i, 0))
+	_team_drop_taken[team_i] = n + 1
+	var offset := Vector3.ZERO
+	if n > 0:
+		var ring := 1
+		var placed := 1
+		while placed + ring * 6 <= n:
+			placed += ring * 6
+			ring += 1
+		var index := n - placed
+		var around := TAU * float(index) / float(ring * 6)
+		offset = Vector3(cos(around), 0.0, sin(around)) * float(ring)
+	var spot := store.clamp_inside(centre + offset, 6)
+	spot.y = WorldGen.CHUNK_H - 4
+	return spot
 
 @rpc("authority", "reliable")
 func cl_hit_ok() -> void:
@@ -2533,20 +2571,39 @@ func _spawn_monster(alive: Array) -> void:
 var _crates: Dictionary = {}
 var _next_crate_id := 1
 
+## How much loot this world should be carrying.
+##
+## Rationed to the AREA of the map first — a big map needs more crates to
+## feel stocked, and a small one is swamped by the same number — with a
+## floor per player so two people on a huge map are not hunting a handful
+## of crates between them. Capped by a density ceiling at the small end
+## so a 50-block world does not become a car boot sale.
+func _crate_target() -> int:
+	var area := float(store.world_size) * float(store.world_size)
+	var want := maxi(int(area / 1100.0), Game.roster.size() * 4)
+	want = mini(want, maxi(8, int(area / 200.0)))
+	if game_mode != "battle":
+		want = maxi(8, want / 4)   # creative only needs a trickle
+	return clampi(want, 8, 160)
+
 func _server_tick_crates() -> void:
 	var positions: Array = []
 	for state: Dictionary in _player_state.values():
 		positions.append(state.pos)
 	if positions.is_empty():
 		return
-	if _crates.size() < 14:
+	# Top back up to the SAME ration the battle started with. This used to
+	# stop at 14 for the whole world, so once the opening loot had been
+	# picked up — and the computer players are quick about it — a big map
+	# was left with almost nothing on it.
+	if _crates.size() < _crate_target():
 		var anchor: Vector3 = positions[randi() % positions.size()]
 		var angle := randf() * TAU
 		var dist := randf_range(14.0, 60.0)
 		var wx := int(anchor.x + cos(angle) * dist)
 		var wz := int(anchor.z + sin(angle) * dist)
 		var y := store.surface_y(wx, wz)
-		if y > 2 and y < WorldGen.CHUNK_H - 6 \
+		if store.inside_world(wx, wz) and y > 2 and y < WorldGen.CHUNK_H - 6 \
 				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER \
 				and (store.theme != "sky" or y > WorldGen.SEA_LEVEL + 6):
 			# Rarer weapons show up less often.
@@ -2624,8 +2681,10 @@ func _server_tick_critters() -> void:
 				break
 		if not near or (critter.kind == CritterView.FIREFLY and not night):
 			_critters.erase(id)
-	# Keep the population up around each player.
-	if _critters.size() < mini(MAX_CRITTERS, CRITTERS_PER_PLAYER * player_positions.size()):
+	# Keep the population up around each player, but never more than the
+	# world can carry. A 50-block world was getting the same 56 animals a
+	# 350-block one did, which on that much ground is a zoo.
+	if _critters.size() < _critter_cap(player_positions.size()):
 		var anchor: Vector3 = player_positions[randi() % player_positions.size()]
 		_try_spawn_critter(anchor, night)
 	# Wander + flee.
@@ -2665,11 +2724,22 @@ func _biome_at(wx: int, wz: int) -> String:
 		return Creatures.JUNGLE
 	return Creatures.LAND  # wild country: dinosaur territory
 
+## How many animals this world should hold: per-player as before, but
+## capped by the AREA of the slab so small worlds stay calm. Roughly one
+## animal per 900 blocks of ground — a 50-block world tops out at a
+## handful, a 350-block one at the old maximum.
+func _critter_cap(players: int) -> int:
+	var area := float(store.world_size) * float(store.world_size)
+	var by_area := int(area / 900.0)
+	return clampi(mini(CRITTERS_PER_PLAYER * players, by_area), 3, MAX_CRITTERS)
+
 func _try_spawn_critter(anchor: Vector3, night: bool) -> void:
 	var angle := randf() * TAU
 	var dist := randf_range(10.0, 26.0)
 	var wx := int(anchor.x + cos(angle) * dist)
 	var wz := int(anchor.z + sin(angle) * dist)
+	if not store.inside_world(wx, wz):
+		return
 	var y := store.surface_y(wx, wz)
 	if y <= 1 or y >= WorldGen.CHUNK_H - 4:
 		return
@@ -2764,7 +2834,10 @@ func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 	if critter.think <= 0.0:
 		critter.think = randf_range(2.0, 5.0)
 		var angle := randf() * TAU
-		critter.target = critter.pos + Vector3(cos(angle), 0, sin(angle)) * randf_range(2.0, 8.0)
+		# Clamped, or a wander that happens to point outwards walks the
+		# animal off the edge of the slab and into the void.
+		critter.target = store.clamp_inside(critter.pos
+			+ Vector3(cos(angle), 0, sin(angle)) * randf_range(2.0, 8.0))
 	var to_target: Vector3 = critter.target - critter.pos
 	to_target.y = 0
 	if to_target.length() > 0.3:
@@ -2803,8 +2876,8 @@ func _move_flier(critter: Dictionary, delta: float) -> void:
 	if critter.think <= 0.0 or critter.pos.distance_to(critter.target) < 2.0:
 		critter.think = randf_range(4.0, 9.0)
 		var angle := randf() * TAU
-		var spot: Vector3 = critter.pos \
-			+ Vector3(cos(angle), 0, sin(angle)) * randf_range(14.0, 34.0)
+		var spot: Vector3 = store.clamp_inside(critter.pos
+			+ Vector3(cos(angle), 0, sin(angle)) * randf_range(14.0, 34.0), 6)
 		spot.y = float(store.surface_y(int(spot.x), int(spot.z))) + 1.0 \
 			+ randf_range(0.0, 5.0)
 		critter.target = spot

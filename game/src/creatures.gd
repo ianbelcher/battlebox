@@ -155,9 +155,9 @@ const DEFS := {
 	54: {"name": "Capybara", "model": "res://assets/models/jungle/capybara.glb",
 		"height": 0.9, "move": GROUND, "speed": 1.4, "habitat": JUNGLE,
 		"weight": 0.12, "anims": DINO_ANIMS},
-	55: {"name": "Python", "model": "res://assets/models/jungle/python.glb",
-		"height": 0.6, "move": STILL, "speed": 0.0, "habitat": JUNGLE,
-		"weight": 0.12, "anims": DINO_ANIMS},
+	# 55 was the Python. Retired: it is modelled lying down, so it could
+	# only ever sit where it spawned (move: STILL) and read as scenery
+	# rather than an animal. Leave the id unused — ids are wire values.
 	56: {"name": "Cassowary", "model": "res://assets/models/jungle/cassowary.glb",
 		"height": 1.7, "move": GROUND, "speed": 2.4, "habitat": JUNGLE,
 		"weight": 0.12, "anims": DINO_ANIMS},
