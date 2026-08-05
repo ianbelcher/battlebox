@@ -278,7 +278,7 @@ func _ready() -> void:
 	_radar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_radar)
 	var radar_timer := Timer.new()
-	radar_timer.wait_time = 0.6
+	radar_timer.wait_time = 0.3
 	radar_timer.timeout.connect(_update_radar)
 	add_child(radar_timer)
 	radar_timer.start()
@@ -1124,7 +1124,10 @@ func _set_page(page: int) -> void:
 		# empty space.
 		if world != null:
 			_map_fit = clampf(float(world.client_size) / 320.0, 0.08, 8.0)
-			_map_zoom = _map_fit
+			# Open twice as close as the fit. Fitting the whole world is
+			# still the furthest you may pull BACK, but starting there
+			# was too far out to make anything out.
+			_map_zoom = _map_fit * 0.5
 		_map_tick = 0.0
 
 func _page_disabled(page: int) -> bool:
@@ -1322,12 +1325,12 @@ func _poll_map_nav(input: InputSlot, delta: float) -> void:
 	if absf(zoom.y) > 0.35:
 		_map_zoom = clampf(_map_zoom * (1.0 + zoom.y * delta * 1.6),
 			_map_fit * 0.12, _map_fit)
-	# Redrawn several times a second: it is a 320x320 image built from a
+	# Redrawn ~25 times a second: it is a 320x320 image built from a
 	# cached heightmap, which is cheap, and a map that lags behind the
 	# stick feels broken.
 	_map_tick -= delta
 	if _map_tick <= 0.0:
-		_map_tick = 0.08
+		_map_tick = 0.04
 		_draw_big_map()
 
 func _draw_big_map() -> void:
@@ -1452,8 +1455,10 @@ func _update_radar() -> void:
 	# looking further away, so the radar pulls BACK to cover more ground.
 	# The TIGHT end is the normal view — that is where you spend your
 	# time and where you want detail — and full zoom is a third wider.
-	# Anchored the other way round it was too zoomed out to read at rest.
-	var span := 1.5 + 0.5 * (float(player.fp_zoom) / 3.0)
+	# Halved again from 1.5/2.0: at a block and a half per pixel you were
+	# looking at 192 blocks of ground and could not tell a house from a
+	# hill.
+	var span := 0.75 + 0.25 * (float(player.fp_zoom) / 3.0)
 	var image := Image.create(128, 128, false, Image.FORMAT_RGB8)
 	for py in 128:
 		for px in 128:

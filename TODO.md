@@ -9,10 +9,7 @@ any tool) can pick the work up cold.
 
 ## Open work
 
-- [ ] **Computer players get stuck.** They pin themselves against a
-      block and spin on the spot looking in every direction instead of
-      going round it or digging through. Worst while running from the
-      storm.
+Nothing outstanding. Ian will say what is next.
 
 ---
 
@@ -118,6 +115,22 @@ which is why downing half a team moved nothing on screen.
 **A match's result is recorded once.** `_result_recorded` is set the
 moment a battle is decided and cleared as the next opens — several
 players eliminated in the same tick used to count two wins for one game.
+
+## Weapon icons
+
+`assets/ui/weapons/w<id>.png` is a render of that weapon's HELD MODEL,
+not a drawing. `tests/weapon_icons.gd` makes them — it frames each model
+from its own bounds, so weapons modelled around wildly different origins
+all come out centred and the same size:
+
+```sh
+WORLD_ICON_IDS=18,19 WORLD_ICON_OUT=$PWD/assets/ui/weapons \
+  godot --path game --resolution 256x256 res://tests/weapon_icons.tscn
+```
+
+It needs a real window — a headless run has no renderer. A weapon with
+no PNG falls back to BlockIcon's hand-drawn shapes, which look like a
+different game beside the rendered ones.
 
 ## The look of the menus
 

@@ -177,9 +177,13 @@ static func build(kind: String, id: int) -> Node3D:
 		return root
 	# Kenney Blaster Kit (CC0): real models for the shooters. Forward is
 	# -Z to match the muzzle convention everywhere else in the game.
+	# Real models beat hand-stacked boxes every time. 18 takes the blaster
+	# the retired bridge gun used to have; 19 shares the grenade with the
+	# paint bomb, which is exactly what a smoke canister looks like.
 	const KENNEY_WEAPONS := {0: "blaster-g", 1: "blaster-m", 2: "blaster-i",
-		3: "blaster-b", 4: "blaster-c", 5: "blaster-o", 8: "grenade-a",
-		9: "blaster-h", 14: "blaster-k", 15: "blaster-q"}
+		3: "blaster-b", 4: "blaster-c", 8: "grenade-a",
+		9: "blaster-h", 14: "blaster-k", 15: "blaster-q",
+		18: "blaster-o", 19: "grenade-a"}
 	if kind == "weapon" and KENNEY_WEAPONS.has(id):
 		var scene: PackedScene = load("res://assets/models/%s.glb" % KENNEY_WEAPONS[id])
 		if scene != null:

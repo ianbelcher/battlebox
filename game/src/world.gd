@@ -647,19 +647,16 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 				_disturb_water([cell])
 				cl_suck.rpc(id, block)
 			return
-		18:  # Paint Sprayer: a small dab in the shooter's OWN team colour,
-			# so a team can draw lines and mark the ground it holds.
-			var spray_wool := _team_wool(id)
-			var sprayed: Array = []
-			for dy in range(-1, 2):
-				for dz in range(-1, 2):
-					for dx in range(-1, 2):
-						var spos: Vector3i = cell + Vector3i(dx, dy, dz)
-						if _paintable(spos):
-							store.set_block(spos, spray_wool)
-							sprayed.append(spos)
-			if not sprayed.is_empty():
-				cl_batch.rpc(sprayed, spray_wool)
+		18:  # Paint Sprayer: ONE block, recoloured, in your team's colour.
+			# It used to splat a 3x3x3 ball, which is no use for drawing
+			# a line or marking a spot — and painting a whole cube of
+			# space meant glass, leaves and anything see-through came
+			# back as solid wool, so it read as CREATING blocks out of
+			# nothing and filling in holes.
+			if _paintable(cell):
+				var spray_wool := _team_wool(id)
+				store.set_block(cell, spray_wool)
+				cl_batch.rpc([cell], spray_wool)
 			return
 		19:  # Smoke Bomb: a team-coloured "we are going THERE" marker.
 			# Exactly one exists in the world at a time — throwing a new
@@ -972,11 +969,18 @@ func _team_wool(id: String) -> int:
 
 ## Soft, plain terrain only — never glass, plants, liquids or anything
 ## anyone built out of a hard material.
+## Paint RECOLOURS a block. It never adds one and never takes one away,
+## so what you paint has to already be a plain solid cube: no air, no
+## water, no plants, and nothing you can see through. Painting glass or
+## leaves turned a window or a canopy into solid wool, which looks
+## exactly like the sprayer inventing blocks and filling in holes.
 func _paintable(pos: Vector3i) -> bool:
 	var block := store.get_block(pos)
 	if block == Blocks.AIR or Blocks.is_liquid(block) or Blocks.is_cross(block):
 		return false
 	if not Blocks.is_breakable(block):
+		return false
+	if not Blocks.is_solid(block) or not Blocks.is_opaque(block):
 		return false
 	# Anything you could dig. It used to insist on hardness 0, which is
 	# soil and sand and not much else — so the sprayer did nothing on
@@ -1721,8 +1725,24 @@ func _bot_dig_out(id: String, bot: Dictionary, pos: Vector3, dir: Vector2) -> vo
 
 func _bot_step_ok(pos: Vector3, dir: Vector2) -> bool:
 	var ahead := Vector2(pos.x, pos.z) + dir * 1.6
-	var gy := store.surface_y(floori(ahead.x), floori(ahead.y))
-	return float(gy) - pos.y <= 1.6 or _water_at(floori(ahead.x), floori(ahead.y))
+	var ax := floori(ahead.x)
+	var az := floori(ahead.y)
+	# Never walk off the map, whatever else is true.
+	if not store.inside_world(ax, az, 1):
+		return false
+	if _water_at(ax, az):
+		return true
+	var gy := store.surface_y(ax, az)
+	# Too tall to climb.
+	if float(gy) - pos.y > 1.6:
+		return false
+	# ...and too FAR TO FALL. This only ever checked the step UP, so a
+	# bot would happily walk over the lip of a twenty-block drop, land at
+	# the bottom of a pit it could not climb, and spend the rest of the
+	# match turning on the spot down there.
+	if pos.y - float(gy) > 4.0:
+		return false
+	return true
 
 func _water_at(wx: int, wz: int) -> bool:
 	return store.get_block(Vector3i(wx, WorldGen.SEA_LEVEL, wz)) == Blocks.WATER
@@ -1826,12 +1846,31 @@ func _server_tick_bots(delta: float) -> void:
 				pos.x += dir.x * pace * delta
 				pos.z += dir.y * pace * delta
 				bot.yaw = atan2(-dir.x, -dir.y)
-			# Barely moving while far from the goal means wedged — re-think.
-			bot.moved = float(bot.get("moved", 0.0)) + pos.distance_to(Vector3(bot.get("last_pos", pos)))
+			# STUCK DETECTION, on its own clock rather than the wander
+			# timer's. Distance covered is summed over a fixed window; if
+			# a bot has barely moved while still wanting to be somewhere
+			# else, it is wedged — pick a new goal, and if it keeps
+			# happening, dig. Hanging this off `think` meant the check
+			# only ever ran in the last moment of a wander, which is why
+			# one could stand in a corner for a whole match.
+			bot.moved = float(bot.get("moved", 0.0)) \
+				+ pos.distance_to(Vector3(bot.get("last_pos", pos)))
 			bot.last_pos = pos
-			if bot.think <= 0.05 and float(bot.moved) < 0.6 and flat.length() > 3.0:
-				bot.goal = pos + Vector3(randf_range(-10, 10), 0, randf_range(-10, 10))
-			if bot.think <= 0.05:
+			bot.stuck_t = float(bot.get("stuck_t", 0.0)) + delta
+			if float(bot.stuck_t) > 1.1:
+				if float(bot.moved) < 0.8 and flat.length() > 2.0:
+					bot.wedged = int(bot.get("wedged", 0)) + 1
+					if int(bot.wedged) >= 2:
+						# Twice in a row against the same thing: go
+						# through it rather than round it.
+						_bot_dig_out(id, bot, pos, dir)
+						bot.wedged = 0
+					bot.goal = store.clamp_inside(pos + Vector3(
+						randf_range(-14, 14), 0, randf_range(-14, 14)), 6)
+					bot.think = randf_range(0.3, 0.7)
+				else:
+					bot.wedged = 0
+				bot.stuck_t = 0.0
 				bot.moved = 0.0
 		var gy := store.surface_y(floori(pos.x), floori(pos.z))
 		var floor_y := float(gy) + 1.0

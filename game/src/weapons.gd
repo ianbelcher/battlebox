@@ -22,14 +22,14 @@ const WEAPONS := [
 		"blurb": "Drills a 3x3 tunnel 15 blocks through anything soft"},
 	{"id": 14, "name": "Flare Gun", "color": Color("ff8ac2"), "cooldown": 3.0, "speed": 26.0,
 		"blurb": "A star in YOUR TEAM'S colour, floating down over the field"},
+	{"id": 11, "name": "Wings", "color": Color("eceff4"), "cooldown": 9.0, "speed": 1.0,
+		"blurb": "Hold to glide from high places - but you can't shoot while soaring"},
 	{"id": 8, "name": "Paint Bomb", "color": Color("b07df0"), "cooldown": 0.9, "speed": 36.0,
 		"blurb": "Splats the landscape into random wool colors"},
 	{"id": 18, "name": "Paint Sprayer", "color": Color("60d394"), "cooldown": 0.12, "speed": 46.0,
-		"blurb": "Paints in YOUR TEAM'S colour - draw lines, mark your ground"},
+		"blurb": "Paints ONE block in YOUR TEAM'S colour - draw, mark, sign your work"},
 	{"id": 19, "name": "Smoke Bomb", "color": Color("9aa6c4"), "cooldown": 4.0, "speed": 32.0,
 		"blurb": "One team-coloured marker at a time: THAT is where we're going"},
-	{"id": 11, "name": "Wings", "color": Color("eceff4"), "cooldown": 9.0, "speed": 1.0,
-		"blurb": "Hold to glide from high places - but you can't shoot while soaring"},
 	{"id": 17, "name": "Dragon Fire", "color": Color("ff7a1a"), "cooldown": 0.45, "speed": 44.0,
 		"blurb": "Breathed from dragonback: big orange booms", "hidden": true},
 	{"id": 3, "name": "Freeze Ray", "color": Color("aef7f0"), "cooldown": 0.8, "speed": 44.0,
@@ -44,7 +44,9 @@ const WEAPONS := [
 ]
 
 ## What a player starts a battle holding. Everything else is loot.
-const STARTING_KIT := [13, 18, 14]   # sword, paint sprayer, flare gun
+## Sword to fight with, and all three TEAM-COLOUR markers: a flare to
+## light a spot, a sprayer to paint one, smoke to point at one.
+const STARTING_KIT := [13, 14, 18, 19]
 
 static func count() -> int:
 	return WEAPONS.size()
