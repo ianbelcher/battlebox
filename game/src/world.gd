@@ -219,7 +219,6 @@ func _server_setup() -> void:
 	config.load(store.data_dir.path_join("world.cfg"))
 	clock = float(config.get_value("world", "clock", 0.35))
 	print("World spawn at %s, clock %.2f" % [spawn_pos, clock])
-	_load_player_file()
 	_load_battle_setup()
 	var autosave := Timer.new()
 	autosave.wait_time = AUTOSAVE_SECONDS
@@ -270,7 +269,6 @@ func _process(delta: float) -> void:
 func _exit_tree() -> void:
 	if multiplayer.is_server() and store != null:
 		store.save_dirty()
-		_save_player_file()
 
 func _server_autosave() -> void:
 	if match_phase != "IDLE":
@@ -280,46 +278,14 @@ func _server_autosave() -> void:
 	config.load(store.data_dir.path_join("world.cfg"))
 	config.set_value("world", "clock", clock)
 	config.save(store.data_dir.path_join("world.cfg"))
-	_save_player_file()
 	if saved > 0:
 		print("Autosave: %d chunks" % saved)
 
-func _player_file_path() -> String:
-	return store.data_dir.path_join("players.cfg")
-
-func _load_player_file() -> void:
-	pass  # read lazily per name in _saved_state_for
-
-func _saved_state_for(pname: String) -> Dictionary:
-	var config := ConfigFile.new()
-	config.load(_player_file_path())
-	var key := pname.to_lower()
-	if not config.has_section(key):
-		return {}
-	return {
-		"pos": config.get_value(key, "pos", Vector3.ZERO),
-		"treasures": int(config.get_value(key, "treasures", 0)),
-	}
-
-func _save_player_file() -> void:
-	if _player_state.is_empty():
-		return
-	var config := ConfigFile.new()
-	config.load(_player_file_path())
-	for id: String in _player_state.keys():
-		var state: Dictionary = _player_state[id]
-		var key := str(state.name).to_lower()
-		if key.is_empty():
-			continue
-		config.set_value(key, "pos", state.pos)
-		config.set_value(key, "treasures", state.treasures)
-	config.save(_player_file_path())
-
 func _server_on_roster_changed() -> void:
-	# Persist and forget players whose roster entries vanished.
+	# Forget players whose roster entries vanished. NOTHING about a player
+	# is written to disk — see sv_where().
 	for id: String in _known_roster_ids.keys():
 		if not Game.roster.has(id):
-			_save_player_file()
 			_player_state.erase(id)
 	_known_roster_ids.clear()
 	for id: String in Game.roster.keys():
@@ -383,47 +349,38 @@ func sv_where(slot: int) -> void:
 	var entry: Dictionary = Game.roster.get(id, {})
 	if entry.is_empty():
 		return
-	var saved := _saved_state_for(str(entry.name))
-	var pos: Vector3
-	var count := 0
-	if not saved.is_empty() and saved.pos != Vector3.ZERO:
-		pos = saved.pos
-		count = saved.treasures
-	else:
-		pos = _far_spawn()
-	# Never place anyone OUTSIDE the world. A saved position is from
-	# whatever world was loaded when it was written, so after the map is
-	# shrunk it can sit far beyond the new edge — where there is no
-	# terrain at all, and the player falls to bedrock. This is what
-	# stranded everyone when the size was changed to 50.
-	pos = store.clamp_inside(pos, 4)
-	# Never place anyone inside terrain, wherever the position came from.
-	var ground := store.surface_y(int(pos.x), int(pos.z))
-	if pos.y < float(ground) + 1.0 or store.get_block(Vector3i(int(pos.x),
-			int(pos.y), int(pos.z))) != Blocks.AIR:
-		pos.y = float(ground) + 1.5
-	_player_state[id] = {"pos": pos, "treasures": count, "name": str(entry.name)}
-	cl_treasures.rpc(id, count)
-	cl_where.rpc_id(peer, slot, pos, count)
+	# NOTHING IS REMEMBERED between sessions. Where you were standing is
+	# state that belongs to a world, and this game throws its world away
+	# on every restart and every resize — so keeping it on disk only ever
+	# meant restoring a position that made no sense in the world that
+	# replaced it. Every join is a fresh placement.
+	var pos := _far_spawn()
+	_player_state[id] = {"pos": pos, "treasures": 0, "name": str(entry.name)}
+	cl_treasures.rpc(id, 0)
+	cl_where.rpc_id(peer, slot, pos, 0)
 
-## Fresh characters spawn ~100 blocks from everyone already playing.
+## Somewhere to stand, well away from everyone already playing — and
+## always on the map. Every candidate and the fallback both go through
+## ChunkStore.safe_stand(), which is the only thing allowed to decide
+## where a person ends up.
 func _far_spawn() -> Vector3:
 	var others: Array = []
 	for state: Dictionary in _player_state.values():
 		others.append(state.pos)
 	if others.is_empty():
-		return Vector3(spawn_pos) + Vector3(randf_range(-2, 2), 2.0, randf_range(-2, 2))
-	var best := Vector3(spawn_pos) + Vector3(0, 2, 0)
+		return store.safe_stand(Vector3(spawn_pos), 3.0)
+	var best := store.safe_stand(Vector3(spawn_pos), 3.0)
 	var best_score := -1e9
+	# Scale the search to the WORLD: hunting for a spot 85-125 blocks away
+	# on a 50-block map finds nothing and falls through every time.
+	var reach := clampf(float(store.half_extent()) * 0.8, 8.0, 125.0)
 	for i in 24:
 		var anchor: Vector3 = others[randi() % others.size()]
 		var angle := randf() * TAU
-		var dist := randf_range(85.0, 125.0)
+		var dist := randf_range(reach * 0.5, reach)
 		var wx := int(anchor.x + cos(angle) * dist)
 		var wz := int(anchor.z + sin(angle) * dist)
-		# The WORLD's edge, not a hard-coded island radius — that
-		# constant has nothing to do with how big this map actually is.
-		if not store.inside_world(wx, wz, 8):
+		if not store.inside_world(wx, wz, 6):
 			continue
 		var y := store.surface_y(wx, wz)
 		if y <= WorldGen.SEA_LEVEL or y >= WorldGen.CHUNK_H - 8:
@@ -433,7 +390,7 @@ func _far_spawn() -> Vector3:
 			nearest = minf(nearest, Vector2(wx - other.x, wz - other.z).length())
 		if nearest > best_score:
 			best_score = nearest
-			best = Vector3(wx + 0.5, y + 2.0, wz + 0.5)
+			best = store.safe_stand(Vector3(wx, 0, wz))
 	return best
 
 @rpc("any_peer", "unreliable_ordered")
@@ -1263,10 +1220,6 @@ func _do_world_reset(map_name := "", new_size := 0) -> void:
 	# terrain that no longer exists, a league table for a map nobody is
 	# playing any more.
 	#
-	# Saved positions go first, and from DISK too — restoring one into
-	# fresh terrain is what left players standing past the edge of a
-	# shrunken map, falling to bedrock.
-	_forget_saved_positions()
 	for state: Dictionary in _player_state.values():
 		state.pos = Vector3.ZERO
 	_player_state.clear()
@@ -1289,16 +1242,6 @@ func _do_world_reset(map_name := "", new_size := 0) -> void:
 	if game_mode == "battle":
 		match_loop = true
 		_begin_battle_lobby()
-
-## Wipe every remembered position, in memory and on disk. They belong to
-## the world that was just thrown away.
-func _forget_saved_positions() -> void:
-	var config := ConfigFile.new()
-	config.load(_player_file_path())
-	for section in config.get_sections():
-		if config.has_section_key(section, "pos"):
-			config.erase_section_key(section, "pos")
-	config.save(_player_file_path())
 
 # ------------------------------------------------------------------
 # Battle royale match
@@ -1353,7 +1296,7 @@ func _spawn_bot() -> void:
 	var id := Game.player_id(1, slot)
 	Game.roster[id] = {"peer": 1, "slot": slot, "name": _next_bot_name(),
 		"style": AvatarFactory.random_style(), "team": -1, "bot": true}
-	var start := Vector3(spawn_pos) + Vector3(randf_range(-8, 8), 2, randf_range(-8, 8))
+	var start := store.safe_stand(Vector3(spawn_pos), 8.0)
 	_bots[id] = {"slot": slot, "pos": start, "yaw": 0.0, "think": 0.0,
 		"weapon": 13, "shoot_cd": 0.0, "goal": start}
 	_apply_bot_skill(_bots[id])
@@ -1607,8 +1550,8 @@ func _bot_pick_goal(id: String, bot: Dictionary) -> Vector3:
 ## height and dry.
 func _bot_step_ok(pos: Vector3, dir: Vector2) -> bool:
 	var ahead := Vector2(pos.x, pos.z) + dir * 1.6
-	var gy := store.surface_y(int(ahead.x), int(ahead.y))
-	return float(gy) - pos.y <= 1.6 or _water_at(int(ahead.x), int(ahead.y))
+	var gy := store.surface_y(floori(ahead.x), floori(ahead.y))
+	return float(gy) - pos.y <= 1.6 or _water_at(floori(ahead.x), floori(ahead.y))
 
 func _water_at(wx: int, wz: int) -> bool:
 	return store.get_block(Vector3i(wx, WorldGen.SEA_LEVEL, wz)) == Blocks.WATER
@@ -1697,9 +1640,9 @@ func _server_tick_bots(delta: float) -> void:
 				bot.goal = pos + Vector3(randf_range(-10, 10), 0, randf_range(-10, 10))
 			if bot.think <= 0.05:
 				bot.moved = 0.0
-		var gy := store.surface_y(int(pos.x), int(pos.z))
+		var gy := store.surface_y(floori(pos.x), floori(pos.z))
 		var floor_y := float(gy) + 1.0
-		if _water_at(int(pos.x), int(pos.z)):
+		if _water_at(floori(pos.x), floori(pos.z)):
 			# Bots swim: ride the surface instead of sinking to the seabed.
 			floor_y = maxf(floor_y, float(WorldGen.SEA_LEVEL) + 0.4)
 		if pos.y > floor_y + 3.0:
@@ -1754,50 +1697,17 @@ func _server_tick_bots(delta: float) -> void:
 			bot.send_t = 1.0 / 15.0
 			cl_pos.rpc(id, pos, bot.yaw, 1)
 
-## Battle SETTINGS survive restarts (the world itself never does):
-## length, size, loot mode, team layout and the computer players.
+## NOTHING IS KEPT ON DISK. Not where players stood, not the team layout,
+## not the game mode — the world itself is thrown away on every restart
+## and every resize, so anything remembered from the last one only ever
+## made nonsense of the new one, and every bug where somebody turned up
+## in the void traced back to state that outlived its world. A restart is
+## a clean table: default teams, no computer players, creative mode.
 func _save_battle_setup() -> void:
-	if store == null:
-		return
-	var cfg := ConfigFile.new()
-	cfg.set_value("battle", "minutes", storm_minutes)
-	cfg.set_value("battle", "size", battle_size)
-	cfg.set_value("battle", "loot", loot_only)
-	cfg.set_value("battle", "world_fly", battle_fly)
-	cfg.set_value("battle", "team_names", team_names)
-	cfg.set_value("battle", "bots", _bots.size())
-	cfg.set_value("battle", "world", selected_map)
-	cfg.set_value("battle", "mode", game_mode)
-	cfg.save(store.data_dir.path_join("battle.cfg"))
+	pass
 
 func _load_battle_setup() -> void:
-	var cfg := ConfigFile.new()
-	if cfg.load(store.data_dir.path_join("battle.cfg")) != OK:
-		return
-	storm_minutes = float(cfg.get_value("battle", "minutes", storm_minutes))
-	battle_size = float(cfg.get_value("battle", "size", battle_size))
-	loot_only = bool(cfg.get_value("battle", "loot", loot_only))
-	battle_fly = bool(cfg.get_value("battle", "world_fly", battle_fly))
-	var names: Array = cfg.get_value("battle", "team_names", team_names)
-	if names.size() >= 2:
-		# Worlds saved before teams were named by colour still hold
-		# "A"/"B"/... — swap them for the colour they actually are.
-		for i in names.size():
-			if str(names[i]).length() <= 2:
-				names[i] = TEAM_NAMES[i % TEAM_NAMES.size()]
-		team_names = names
-		team_count = names.size()
-	game_mode = str(cfg.get_value("battle", "mode", "creative"))
-	match_loop = game_mode == "battle"
-	selected_map = str(cfg.get_value("battle", "world", ""))
-	if not _known_map(selected_map):
-		selected_map = ""
-	# Restore bots but always leave room for a family of humans.
-	var bot_count := int(cfg.get_value("battle", "bots", 0))
-	for i in mini(bot_count, 16):
-		_spawn_bot()
-	print("Battle setup restored: %d min, %d blocks, %d teams, %d bots" % [
-		int(storm_minutes), int(battle_size), team_count, _bots.size()])
+	pass
 
 func _is_host(_sender: int) -> bool:
 	# Family rule: ANYBODY at the table can run battles, change maps and
@@ -1888,7 +1798,7 @@ func _begin_battle_lobby() -> void:
 	_assign_stray_humans()
 	_monsters.clear()
 	for id: String in _bots.keys():
-		_bots[id].pos = Vector3(spawn_pos) + Vector3(randf_range(-6, 6), 1, randf_range(-6, 6))
+		_bots[id].pos = store.safe_stand(Vector3(spawn_pos), 6.0)
 		if _player_state.has(id):
 			_player_state[id].pos = _bots[id].pos
 	match_phase = "LOBBY"
@@ -2041,7 +1951,7 @@ func _server_match_drop() -> void:
 		# World resets between battles can drop server-side state for
 		# bots — recreate instead of crashing the match start.
 		if not _player_state.has(id):
-			_player_state[id] = {"pos": Vector3(spawn_pos), "treasures": 0,
+			_player_state[id] = {"pos": store.safe_stand(Vector3(spawn_pos)), "treasures": 0,
 				"name": str(entry.get("name", "?")), "hp": MATCH_HP}
 		var state: Dictionary = _player_state[id]
 		state.hp = MATCH_HP
@@ -2237,11 +2147,8 @@ func _team_start_spot(team_i: int) -> Vector3:
 		var index := n - placed
 		var around := TAU * float(index) / float(ring * 6)
 		offset = Vector3(cos(around), 0.0, sin(around)) * float(ring)
-	var spot := store.clamp_inside(centre + offset, 6)
-	# Stand them ON the ground wherever the spiral put them, not at the
-	# site's height — a hut on a slope would otherwise bury half a team.
-	spot.y = float(store.surface_y(int(spot.x), int(spot.z))) + 1.0
-	return spot
+	# One chokepoint for every placement: in bounds, on dry ground.
+	return store.safe_stand(centre + offset)
 
 ## A place for a whole team to stand: out on its own bearing, on dry
 ## level-ish ground, as far from the other teams' sites as we can manage
@@ -2279,10 +2186,8 @@ func _find_team_site(slot: int) -> Vector3:
 			best = Vector3(wx, float(y) + 1.0, wz)
 	if best == Vector3.ZERO:
 		# Nowhere nice: anywhere inside the world beats nowhere at all.
-		var fallback := store.clamp_inside(Vector3(cos(bearing), 0.0,
-			sin(bearing)) * float(store.half_extent()) * 0.5, 10)
-		fallback.y = float(store.surface_y(int(fallback.x), int(fallback.z))) + 1.0
-		return fallback
+		return store.safe_stand(Vector3(cos(bearing), 0.0, sin(bearing))
+			* float(store.half_extent()) * 0.5)
 	return best
 
 @rpc("authority", "reliable")
@@ -2297,7 +2202,7 @@ func _tick_crate_gravity() -> void:
 	var moved := false
 	for crate_id: int in _crates.keys():
 		var cpos: Vector3 = _crates[crate_id].pos
-		var ground := store.surface_y(int(cpos.x), int(cpos.z))
+		var ground := store.surface_y(floori(cpos.x), floori(cpos.z))
 		var rest := float(ground) + 1.0
 		if cpos.y > rest + 0.5:
 			_crates[crate_id].pos.y = maxf(cpos.y - 6.0, rest)
@@ -2319,8 +2224,8 @@ func _tick_fire() -> void:
 		if state.is_empty() or now < int(_burn_ms.get(id, 0)):
 			continue
 		var foot: Vector3 = state.pos
-		if store.get_block(Vector3i(int(foot.x), int(foot.y), int(foot.z))) == Blocks.FIRE \
-				or store.get_block(Vector3i(int(foot.x), int(foot.y) + 1, int(foot.z))) == Blocks.FIRE:
+		if store.get_block(Vector3i(floori(foot.x), floori(foot.y), floori(foot.z))) == Blocks.FIRE \
+				or store.get_block(Vector3i(floori(foot.x), floori(foot.y) + 1, floori(foot.z))) == Blocks.FIRE:
 			_burn_ms[id] = now + 1400
 			_match_hurt(id, 1, foot)
 
@@ -2818,7 +2723,7 @@ func _server_tick_survival() -> void:
 			# and forts genuinely keep them out. They wade water fine.
 			# Grumps scale walls and scuttle over roofs — height is no refuge.
 			var attempt: Vector3 = monster.pos + step
-			var floor_y := store.surface_y(int(attempt.x), int(attempt.z))
+			var floor_y := store.surface_y(floori(attempt.x), floori(attempt.z))
 			var rise: float = float(floor_y) + 1.0 - monster.pos.y
 			if rise > 0.9:
 				attempt = monster.pos
@@ -3143,15 +3048,15 @@ func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 	# The jungle python is modelled lying down and rotated, so any walking
 	# at all looks wrong — it just rests on the ground where it spawned.
 	if move_mode == Creatures.STILL:
-		critter.pos.y = float(store.surface_y(int(critter.pos.x),
-			int(critter.pos.z))) + 1.0
+		critter.pos.y = float(store.surface_y(floori(critter.pos.x),
+			floori(critter.pos.z))) + 1.0
 		return
 	# Ground creatures settle onto whatever is under them EVERY tick, not
 	# just while walking: shoot the block out from under an animal and it
 	# falls instead of hanging in mid-air.
 	if move_mode == Creatures.GROUND:
-		var rest_y := float(store.surface_y(int(critter.pos.x),
-			int(critter.pos.z))) + 1.0
+		var rest_y := float(store.surface_y(floori(critter.pos.x),
+			floori(critter.pos.z))) + 1.0
 		if critter.pos.y > rest_y:
 			critter.pos.y = maxf(rest_y, critter.pos.y - 9.0 * delta)
 		elif critter.pos.y < rest_y:
@@ -3183,8 +3088,8 @@ func _move_critter(critter: Dictionary, player_positions: Array) -> void:
 		var speed: float = critter.speed
 		var step: Vector3 = to_target.limit_length(speed * delta)
 		var next: Vector3 = critter.pos + step
-		var y := store.surface_y(int(next.x), int(next.z))
-		var ground := store.get_block(Vector3i(int(next.x), y, int(next.z)))
+		var y := store.surface_y(floori(next.x), floori(next.z))
+		var ground := store.get_block(Vector3i(floori(next.x), y, floori(next.z)))
 		if move_mode == Creatures.SWIMMER:
 			if ground != Blocks.WATER:
 				critter.think = 0.0
@@ -3217,7 +3122,7 @@ func _move_flier(critter: Dictionary, delta: float) -> void:
 		var angle := randf() * TAU
 		var spot: Vector3 = store.clamp_inside(critter.pos
 			+ Vector3(cos(angle), 0, sin(angle)) * randf_range(14.0, 34.0), 6)
-		spot.y = float(store.surface_y(int(spot.x), int(spot.z))) + 1.0 \
+		spot.y = float(store.surface_y(floori(spot.x), floori(spot.z))) + 1.0 \
 			+ randf_range(0.0, 5.0)
 		critter.target = spot
 	var step: Vector3 = (critter.target - critter.pos).limit_length(
@@ -3225,7 +3130,7 @@ func _move_flier(critter: Dictionary, delta: float) -> void:
 	var next: Vector3 = critter.pos + step
 	# Never fly into a hillside: keep a block of air under the wings.
 	next.y = maxf(next.y,
-		float(store.surface_y(int(next.x), int(next.z))) + 1.0)
+		float(store.surface_y(floori(next.x), floori(next.z))) + 1.0)
 	if OS.get_environment("WORLD_FLIER_DEBUG") == "1":
 		print("FLIER kind=%d moved %.2f -> %v" % [int(critter.kind),
 			critter.pos.distance_to(next), next])
@@ -3590,7 +3495,14 @@ func cl_downed(id: String) -> void:
 	hearts_changed.emit()
 	for child in players.get_children():
 		if child is Player and child.player_id == id and child.is_local:
-			child.teleport(Vector3(spawn_pos) + Vector3(0.5, 2.0, 0.5))
+			# Clamped client-side too: this is the one placement the
+			# server does not hand down, and spawn_pos arrives over the
+			# wire from whatever world the server last built.
+			var half := float(int(client_size) / 2 - 4)
+			var home := Vector3(clampf(float(spawn_pos.x), -half, half) + 0.5,
+				float(spawn_pos.y) + 2.0,
+				clampf(float(spawn_pos.z), -half, half) + 0.5)
+			child.teleport(home)
 			Sfx.play("drop")
 
 ## Bulk terrain change (explosions, sponge drains) — one message, not one

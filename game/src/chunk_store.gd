@@ -68,14 +68,11 @@ func _init() -> void:
 		for file in dir.get_files():
 			if file.begins_with("c_") and file.ends_with(".bin"):
 				dir.remove(file)
-	# ...and saved positions must die with the world they were valid in —
-	# restoring an old position into fresh terrain buried players alive.
-	var boot_players := ConfigFile.new()
-	boot_players.load(data_dir.path_join("players.cfg"))
-	for section in boot_players.get_sections():
-		if boot_players.has_section_key(section, "pos"):
-			boot_players.erase_section_key(section, "pos")
-	boot_players.save(data_dir.path_join("players.cfg"))
+	# Nothing about a PLAYER is kept on disk at all any more — not where
+	# they stood, not what they carried. A restart is a fresh world, so
+	# anything remembered from the last one only ever made nonsense of
+	# the new one. Old players.cfg files are deleted on sight.
+	DirAccess.remove_absolute(data_dir.path_join("players.cfg"))
 	print("World store: source=%s seed=%d data=%s edited_chunks=%d" % [
 		source, seed_value, data_dir, _edited.size()])
 
@@ -98,6 +95,74 @@ func half_extent() -> int:
 func inside_world(wx: int, wz: int, margin := 2) -> bool:
 	var limit := half_extent() - margin
 	return absi(wx) <= limit and absi(wz) <= limit
+
+## THE ONE FUNCTION THAT PLACES A PLAYER.
+##
+## Every path that puts a person somewhere — joining, respawning, a match
+## starting, a world reset — goes through here, and what comes out is
+## always inside the slab and always standing on the ground.
+##
+## It exists because the alternative was tried and failed repeatedly:
+## each caller doing its own bounds check meant each new caller was a new
+## chance to forget, and the one that mattered most (the world's spawn
+## point itself) was wrong, so fixing the callers fixed nothing.
+##
+## `spread` scatters around the requested spot; the result is pulled back
+## inside the world first and grounded second, in that order, because
+## grounding an out-of-bounds column tells you nothing.
+func safe_stand(around: Vector3, spread := 0.0) -> Vector3:
+	var wx := around.x
+	var wz := around.z
+	if spread > 0.0:
+		wx += randf_range(-spread, spread)
+		wz += randf_range(-spread, spread)
+	var here := clamp_inside(Vector3(wx, 0.0, wz), 4)
+	# floori, NOT int(): int() truncates towards zero, so int(-45.5) is
+	# -45 — a different column from the one -45.5 actually sits in. Every
+	# world coordinate west or north of the origin is off by one if you
+	# get this wrong, which is most of the map.
+	var gx := floori(here.x)
+	var gz := floori(here.z)
+	# Try where we were asked, then step in towards the middle: better a
+	# few blocks inland than standing in the sea or over a hole.
+	for tries in 10:
+		var found := _stand_at(gx, gz)
+		if found.y > 0.0:
+			return found
+		var inward := Vector2(-float(gx), -float(gz))
+		if inward.length() < 1.0:
+			break
+		inward = inward.normalized() * 6.0
+		var edge := float(half_extent() - 4)
+		gx = floori(clampf(float(gx) + inward.x, -edge, edge))
+		gz = floori(clampf(float(gz) + inward.y, -edge, edge))
+	# Still nothing: sweep the world properly rather than guessing. This
+	# is the branch that used to lift people to SEA_LEVEL, which on a map
+	# whose ground sits BELOW sea level (space has no sea at all) left
+	# them standing in mid-air.
+	var edge2 := half_extent() - 4
+	for ring in range(0, edge2, 5):
+		for step in 16:
+			var a := TAU * float(step) / 16.0
+			var probe := _stand_at(floori(cos(a) * float(ring)),
+				floori(sin(a) * float(ring)))
+			if probe.y > 0.0:
+				return probe
+	# The world is a hole. Stand on the origin column, whatever it is.
+	return Vector3(0.5, float(maxi(surface_y(0, 0), 1)) + 1.2, 0.5)
+
+## A standable spot in this column, or y <= 0 if there is not one: solid
+## ground under foot, nothing liquid, and clear of the sky and the void.
+func _stand_at(gx: int, gz: int) -> Vector3:
+	if not inside_world(gx, gz, 2):
+		return Vector3.ZERO
+	var y := surface_y(gx, gz)
+	if y <= 1 or y >= WorldGen.CHUNK_H - 4:
+		return Vector3.ZERO
+	var under := get_block(Vector3i(gx, y, gz))
+	if under == Blocks.AIR or Blocks.is_liquid(under):
+		return Vector3.ZERO
+	return Vector3(float(gx) + 0.5, float(y) + 1.2, float(gz) + 0.5)
 
 ## The same point, pulled back inside the slab instead of rejected. Use
 ## this where a thing MUST exist somewhere (a player's drop) rather than
@@ -340,13 +405,6 @@ func _apply_map(map_name: String, new_seed: int) -> void:
 	config.set_value("world", "theme", theme)
 	config.set_value("world", "size", world_size)
 	config.save(data_dir.path_join("world.cfg"))
-	# Forget saved positions (treasures survive).
-	var players := ConfigFile.new()
-	players.load(data_dir.path_join("players.cfg"))
-	for section in players.get_sections():
-		if players.has_section_key(section, "pos"):
-			players.erase_section_key(section, "pos")
-	players.save(data_dir.path_join("players.cfg"))
 
 func save_dirty() -> int:
 	var saved := 0

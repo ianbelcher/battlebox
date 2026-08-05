@@ -7,143 +7,18 @@ any tool) can pick the work up cold.
 
 ---
 
-## Needs Ian on real hardware
-
-- [ ] **Controller pass over the player menu.** LB/RB step through the
-      picker's tabs (Tools / Build / Nature / Colors / Lights / Special /
-      Kits / You), the stick moves the grid, A picks. Verified in the
-      automated harness only.
-- [ ] **Rename / team / kick** in the world menu's Players tab. The rows,
-      team swatches and ✕ all render and the cursor is free, but nobody
-      has clicked them on a real machine.
-- [ ] **Both menus were restyled** (see "The look of the menus" below).
-      Every tab was checked in the screenshot harness at 1080p and in a
-      two-way split, but nobody has looked at them on the TV. Watch for
-      text that is too small across a living room.
-
 ## Open work
 
-Everything below came from Ian in one go on 4/8/2026, in priority order
-as agreed: bugs that spoil a game first, then the things that make it a
-better game. Tick them off here as they ship.
-
-### Resizing the world
-
-- [x] **Resizing restarts EVERYTHING** — new terrain, new loot, players
-      re-placed, any running battle abandoned and re-opened, scoreboard
-      wiped, saved positions forgotten (on disk too).
-
-### Bounds — things leaving the play area
-
-- [x] **Nothing may be placed outside the world size.** Crates, kits,
-      structures, animals and decoration are all placed without checking
-      `battle_size`, so on a small world they land off the grid. Every
-      placement goes through one bounds check.
-- [x] **No player may be dropped outside the grid** either — same check
-      on the drop path.
-
-### Roster and teams
-
-- [x] **Name computer players from the phonetic alphabet** — Alpha,
-      Bravo, Charlie, Delta … Zulu. Humans keep animal names (newt, duck,
-      bee, bear), so the two are told apart at a glance. The current
-      names sort alphanumerically, so "Bot 10" lands between "Bot 1" and
-      "Bot 2" and the roster reads as nonsense. 24 bots max, 26 letters —
-      it fits. Computers always sort AFTER humans.
-- [x] **Make bot team assignment legible.** Right now you cannot tell
-      what team a bot landed on or why.
-- [x] **A counts row at the top of the team grid**: how many players are
-      on each team.
-- [x] **The world menu runs off the right edge** once there are enough
-      teams — the swatch row does not wrap or scroll.
-
-### Creatures
-
-- [x] **Far fewer animals, scaled to the world.** A 50×50 world is
-      swamped with them.
-- [x] **Drop snakes.** They cannot move around properly.
-
-### Weapons
-
-- [x] **Medium shooter is far too destructive** — roughly halve the
-      blast.
-- [x] **No explosion may leave a 2-block height differential.** Getting
-      stuck in a crater you cannot walk out of is not fun. Craters should
-      come out walkable — no step taller than one block anywhere around
-      the rim. (Digging down under your own feet is still your problem.)
-- [x] **Remove** the bridge gun, the party popper and the world wand —
-      none of them are useful.
-- [x] **Starting loadout: sword, paint sprayer, flare gun.**
-- [x] **New — paint sprayer.** Works like the paint bomb but sprays in
-      YOUR TEAM's colour, so you can draw lines and mark things.
-- [x] **Flare gun fires your team's colour.**
-- [x] **New — smoke bomb.** A team-coloured marker you throw to say
-      "we're taking that building". Not for hiding. **Only ever one in
-      the world at a time** — throwing a new one clears the previous.
-- [x] **Weapon order**: flare gun, paint bomb, paint sprayer together;
-      then wings; napalm rocket moves to just after the big shooter.
-
-### Loot
-
-- [x] **The lights over loot flicker** — they switch off and back on.
-- [x] **Ration loot to the world's size and, partly, to how many are
-      playing.** Two players on a huge map should not be hunting ten
-      crates between them.
-
-### Starts (was: drops)
-
-- [x] **No sky drop at all.** Teams START on the ground, standing
-      together, so they can dig in and build something defensible. Loot
-      moves every game.
-- [x] **Drop teams TOGETHER** — a team of four (or seventeen) lands as a
-      group with about one block between them, so they start together and
-      can fly out from there. **Spread the groups well across the map** so
-      every team gets its own space.
-
-### Space map
-
-- [x] **Biodomes must sit on the ground.** Sample every block under the
-      dome's circular footprint and set it at the LOWEST of them, instead
-      of leaving it hanging in the air.
-- [x] **Weapons/loot still spawn floating high in the air** on this map.
-- [x] **More than one cavern.** A large space world currently gets one.
-- [x] **An angled archway leading down into a cavern**, rather than the
-      bare hole it is now.
-- [x] **Better spaceships.** They are meant to be the floating-island
-      feature of this map and they look terrible.
-
-### Scoreboard
-
-- [x] **Track games won per team.** The end of a match announces "Team
-      Blue wins", and there is a leaderboard.
-- [x] **The board has two sides**: teams by games won on one, players by
-      TOTAL frags on the other — with each player's team, their running
-      total, and what they got in the game just finished.
-- [x] **Resets when the map changes.** Players coming and going does not
-      reset it.
-
-### Bots
-
-- [x] **Better bot play, with a spread of skill** — some genuinely good
-      players, some genuinely bad ones.
-
-### Older items
-
-- [ ] **Space map, third pass — needs Ian to say what.** Everything he
-      listed is done: domes sit on the ground, loot stays off roofs and
-      hulls, landmarks are on a 56-block grid so a map gets several
-      caverns, the cavern entrance is a ramped archway, and the ships
-      have hulls, cockpits, fins and engines in three sizes. Anything
-      further (interiors, something to FIND in there) needs a steer.
-- [x] **3D held tool models** — the five that are hand-built rather than
-      Kenney imports (sword, digger, wings, paint sprayer, smoke bomb)
-      were slabs and cylinders; they now have shape. The other seven are
-      Kenney blaster models and were always fine.
-- [ ] **More kits — needs Ian to pick.** The importer now reads all three
-      formats those sites hand out (see "Adding more kits"), so this is
-      pure sourcing: download the builds you want, drop them in a folder,
-      run the importer. 28 of the 143 MoreChineseStructures builds ship;
-      the rest are street fragments or too big to stamp.
+- [ ] **Space map — anything more?** Everything asked for is done: domes
+      sit on the ground, loot stays off roofs and hulls, landmarks are on
+      a 56-block grid so a map gets several caverns, the cavern entrance
+      is a ramped archway, ships have hulls, cockpits, fins and engines
+      in three sizes. Interiors, or something to FIND in there, needs a
+      steer from Ian.
+- [ ] **More kits — needs Ian to pick.** Pure sourcing: download the
+      builds you want, drop them in a folder, run the importer. 28 of the
+      143 MoreChineseStructures builds ship; the rest are street
+      fragments or too big to stamp. See "Adding more kits" below.
 - [ ] Remaining vanilla stand-ins, accepted unless Ian's builds say
       otherwise: per-species door colours (doors are thin panels; generic
       wood/iron), glazed terracotta (imports as wool colours), tinted
@@ -208,6 +83,41 @@ usable for testing the importer, not for shipping. Its pre-parsed JSON
 also drops all block states, so stairs import flat; use raw `.nbt`/`.schem`.
 
 ---
+
+## Nothing is persisted
+
+**The server keeps NOTHING on disk about a game in progress** — not
+where players stood, not what they carried, not the team layout, not the
+mode, not the world's blocks. A restart is a clean table: fresh terrain,
+default teams, no computer players, creative mode.
+
+That is deliberate, and it is the fix for a whole family of bugs. The
+world is thrown away on every restart AND every resize, so anything
+remembered from the last one only ever made nonsense of the new one:
+positions from a map twice the size (players falling to bedrock outside
+the new edge), crates hanging in the void, a battle running over terrain
+that no longer existed. Do not add persistence back without a reason
+better than convenience.
+
+## Placing a player
+
+**`ChunkStore.safe_stand()` is the only thing allowed to decide where a
+person ends up.** Joining, respawning, a match starting, a world reset —
+all of it goes through there, and what comes out is always inside the
+slab and always on solid ground. `tests/placement.gd` hammers it across
+world sizes and themes.
+
+Players kept turning up off the map because each caller did its own
+bounds check, so each new caller was a fresh chance to forget — and the
+one that mattered most was wrong anyway: `WorldGen.find_spawn()`
+spiralled out to 88 blocks whatever the world's size, so on a 50-block
+map the world's own spawn point was off the map, and every other path
+falls back to it.
+
+**Use `floori()`, never `int()`, on a world coordinate.** `int()`
+truncates towards zero, so `int(-45.5)` is `-45` — a different column
+from the one `-45.5` sits in. Every coordinate west or north of the
+origin is off by one if you get this wrong, which is half the map.
 
 ## The look of the menus
 

@@ -1166,11 +1166,20 @@ func find_spawn() -> Vector3i:
 	if theme == "sky":
 		# The (0,0) island always exists; land on top of it.
 		return Vector3i(0, 36 + int(hash01(0, 0, 952) * 22.0), 0)
+	# The search NEVER leaves the slab. It used to spiral out to 88 blocks
+	# whatever the world's size, so on a 50-block map (25 blocks from the
+	# origin to the edge) the spawn point itself was off the map — and
+	# every other placement falls back to it, which is why players kept
+	# turning up in the void however many times the callers were fixed.
+	var limit := maxf(4.0, float(world_size) / 2.0 - 6.0)
 	for radius in range(0, 12):
+		var ring := minf(float(radius) * 8.0, limit)
 		for attempt in 24:
 			var angle := hash01(radius, attempt, 55) * TAU
-			var wx := int(cos(angle) * radius * 8.0)
-			var wz := int(sin(angle) * radius * 8.0)
+			var wx := int(cos(angle) * ring)
+			var wz := int(sin(angle) * ring)
+			if not in_bounds(wx, wz):
+				continue
 			var h := height_at(wx, wz)
 			h -= lake_depth_at(wx, wz, h)
 			if h > SEA_LEVEL + 1 and h < SEA_LEVEL + 14:
