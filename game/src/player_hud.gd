@@ -1463,10 +1463,18 @@ func _update_radar() -> void:
 	# looking at 192 blocks of ground and could not tell a house from a
 	# hill.
 	var span := 0.75 + 0.75 * (float(player.fp_zoom) / 3.0)
+	# WHERE YOU SIT ON THE MAP, in pixels from the top. Dead centre while
+	# you are just walking about; as you zoom the view in, you slide DOWN
+	# the map so more of what is IN FRONT of you fits on it — which is
+	# the whole reason you zoomed. Half way up at rest, then four, three
+	# and two tenths up at each zoom step.
+	var from_bottom := 0.5 - 0.1 * float(player.fp_zoom)
+	var eye_row := 128.0 * (1.0 - from_bottom)
 	var image := Image.create(128, 128, false, Image.FORMAT_RGB8)
 	for py in 128:
 		for px in 128:
-			var off := Vector2(px - 64, py - 64).rotated(-yaw) * span
+			var off := Vector2(float(px) - 64.0,
+				float(py) - eye_row).rotated(-yaw) * span
 			var wx := int(center.x + off.x)
 			var wz := int(center.z + off.y)
 			# Off the edge of the world is BLACK. Both sources will
@@ -1497,7 +1505,7 @@ func _update_radar() -> void:
 			var rs := Vector2(world.storm_center.x + cos(a) * ring - center.x,
 				world.storm_center.z + sin(a) * ring - center.z).rotated(yaw) / span
 			var rx := 64 + int(rs.x)
-			var ry := 64 + int(rs.y)
+			var ry := int(eye_row) + int(rs.y)
 			for ro in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]:
 				if rx + ro.x >= 0 and rx + ro.x < 128 and ry + ro.y >= 0 and ry + ro.y < 128:
 					image.set_pixel(rx + ro.x, ry + ro.y, Color(1.0, 0.25, 0.2))
@@ -1515,8 +1523,8 @@ func _update_radar() -> void:
 				else Color("ff4426")
 			if team == my_team and my_team >= 0:
 				blip_color = blip_color.lightened(0.4)
-			_blip(image, center, yaw, child.position, blip_color, true, span)
-	_blip(image, center, yaw, player.position, Color.WHITE, true, span)
+			_blip(image, center, yaw, child.position, blip_color, true, span, eye_row)
+	_blip(image, center, yaw, player.position, Color.WHITE, true, span, eye_row)
 	_radar.texture = ImageTexture.create_from_image(image)
 	_update_clock()
 
@@ -1529,10 +1537,10 @@ func _update_clock() -> void:
 	_clock.text = "%s %02d:00 · %d playing" % ["☾" if night else "☀", hour, Game.roster.size()]
 
 func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color,
-		big := false, span := 2.0) -> void:
+		big := false, span := 2.0, eye_row := 64.0) -> void:
 	var s := Vector2(pos.x - center.x, pos.z - center.z).rotated(yaw) / span
 	var px := 64 + int(s.x)
-	var py := 64 + int(s.y)
+	var py := int(eye_row) + int(s.y)
 	var r := 2 if big else 1
 	for dy in range(-r - 1, r + 2):
 		for dx in range(-r - 1, r + 2):
