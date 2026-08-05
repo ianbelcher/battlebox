@@ -1470,13 +1470,23 @@ func _refresh_team_panel() -> void:
 		child.queue_free()
 	var names: Array = world.client_team_names
 	for t in names.size():
+		# "standing / still in the game". A DOWNED player is still in
+		# alive_ids — they can be revived — so counting that alone left
+		# every team reading 8/8 however many you had put on the floor.
+		# Anyone eliminated or gone drops out of both numbers, so a team
+		# of eight that loses one reads 5/7, not 5/8: the first number is
+		# who can shoot back, the second is how many you still have to
+		# put down to finish them.
 		var alive := 0
 		var total := 0
 		for rid: String in Game.roster.keys():
-			if int(Game.roster[rid].get("team", -1)) == t:
-				total += 1
-				if world.alive_ids.has(rid):
-					alive += 1
+			if int(Game.roster[rid].get("team", -1)) != t:
+				continue
+			if not world.alive_ids.has(rid):
+				continue
+			total += 1
+			if not world.client_downed.has(rid):
+				alive += 1
 		if total == 0:
 			continue
 		var row_label := Label.new()

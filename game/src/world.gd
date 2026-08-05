@@ -270,6 +270,7 @@ func _process(delta: float) -> void:
 		_server_tick_smoke()
 		_server_tick_resize_test(delta)
 		_server_tick_kick_test(delta)
+		_server_tick_win_test(delta)
 		_server_tick_match(delta)
 		_server_tick_bots(delta)
 		_water_accum += delta
@@ -849,6 +850,34 @@ func _server_tick_resize_test(delta: float) -> void:
 ## last one there the join prompt comes back.
 var _kick_test_t := 0.0
 var _kick_test_done := false
+
+## WORLD_WIN_TEST=<team>: hand a few knockouts around, then end the
+## battle for that team after 22s. Checks the end-of-match scoreboard
+## renders, and that ONE win is recorded for one game — the banner used
+## to say two.
+var _win_test_t := 0.0
+var _win_test_done := false
+
+func _server_tick_win_test(delta: float) -> void:
+	var want := OS.get_environment("WORLD_WIN_TEST")
+	if not want.is_valid_int() or _win_test_done:
+		return
+	_win_test_t += delta
+	if _win_test_t < 22.0 or match_phase != "BATTLE":
+		return
+	_win_test_done = true
+	# Some knockouts to fill the table with, credited across teams.
+	var ids: Array = Game.roster.keys()
+	for i in mini(ids.size(), 6):
+		var attacker: String = ids[i]
+		var victim: String = ids[(i + 3) % ids.size()]
+		if _teams_differ(attacker, victim):
+			_credit_frag(attacker)
+	_broadcast_scoreboard()
+	print("WINTEST ending for team %s, frags=%s" % [want, str(player_frags)])
+	_server_match_end(want.to_int())
+	print("WINTEST wins now %s (should be exactly one for team %s)"
+		% [str(team_wins), want])
 
 func _server_tick_kick_test(delta: float) -> void:
 	if OS.get_environment("WORLD_KICK_TEST") != "1":
@@ -2052,6 +2081,7 @@ func _server_match_drop() -> void:
 	_bot_orbs.clear()
 	_team_site.clear()
 	_team_drop_taken.clear()
+	_result_recorded = false
 	_start_new_scorecard()
 	var counts: Array[int] = []
 	counts.resize(team_count)
@@ -2541,7 +2571,17 @@ func _credit_frag(attacker_id: String) -> void:
 	row.team = int(Game.roster[attacker_id].get("team", -1))
 	player_frags[who] = row
 
+## Set the moment a battle is decided, cleared as the next one opens.
+## Without it a match whose end is detected twice — several players
+## eliminated in the same tick, a timeout landing on the same frame as
+## the last knockout — counted two wins for one game, which is exactly
+## what Ian saw on the banner.
+var _result_recorded := false
+
 func _record_result(winner: int) -> void:
+	if _result_recorded:
+		return
+	_result_recorded = true
 	matches_played += 1
 	if winner >= 0:
 		team_wins[winner] = int(team_wins.get(winner, 0)) + 1
@@ -2693,6 +2733,9 @@ func cl_downed_state(id: String, is_down: bool) -> void:
 		client_downed[id] = true
 	else:
 		client_downed.erase(id)
+	# Going down changes the team counts, so say so. Only elimination
+	# used to, which is why downing half a team moved nothing on screen.
+	match_score_changed.emit()
 	for child in players.get_children():
 		if child is Player and child.player_id == id:
 			child.downed = is_down

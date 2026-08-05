@@ -497,24 +497,19 @@ func _on_connected() -> void:
 	world.survival_changed.connect(_refresh_survival)
 	world.match_changed.connect(_refresh_match)
 	world.match_changed.connect(func() -> void:
-		if Game.world != null and Game.world.match_phase == "COUNTDOWN":
+		if Game.world == null:
+			return
+		# The final table stands until the next battle actually gets going.
+		if Game.world.match_phase in ["LOBBY", "SETUP", "BATTLE"]:
+			_hide_final_scores()
+		if Game.world.match_phase == "COUNTDOWN":
 			_show_banner("Next battle starting soon — fresh map incoming!"))
 	world.match_won.connect(func(winner: int) -> void:
-		var message := "The storm wins... nobody survived!"
+		# The scoreboard says who won, how many games they have taken and
+		# what everybody scored — so no banner on top of it.
 		if winner >= 0:
-			var team_label := str(winner + 1)
-			if winner < world.client_team_names.size():
-				team_label = str(world.client_team_names[winner]).to_upper()
-			message = "🏆  TEAM %s WINS THE BATTLE!  🏆" % team_label
-			# ...and how they stand on this map. The full table is under
-			# Escape → Scores.
-			var won := int(world.team_wins.get(winner, 0))
-			if won > 1:
-				message += "\n%d wins on this map" % won
 			Sfx.play("cheer", -4.0)
-		elif winner == -2:
-			message = "Everyone's out — no winner this time!"
-		_show_banner(message, true))
+		_show_final_scores(winner))
 	world.reset_vote_started.connect(func() -> void: _vote_panel.visible = true)
 	world.reset_result.connect(func(happened: bool) -> void:
 		_vote_panel.visible = false
@@ -842,6 +837,174 @@ func _refresh_survival() -> void:
 		if Game.world.survival_active else ""
 
 var _banner_sticky := false
+
+## THE FINAL SCORE, on screen, the moment a battle ends.
+##
+## The end of a match only ever announced who won. The table itself was
+## tucked away under Escape → Scores, which nobody is going to open in
+## the ten seconds between battles — so as far as anyone playing was
+## concerned there were no player stats at all. It now comes up by
+## itself, and goes away when the next battle starts.
+var _final_panel: PanelContainer = null
+
+func _show_final_scores(winner: int) -> void:
+	_hide_final_scores()
+	var world: Node = Game.world
+	if world == null:
+		return
+	var sc := UiTheme.scale_for(get_viewport_rect().size)
+	_final_panel = PanelContainer.new()
+	_final_panel.theme = UiTheme.build(sc)
+	_final_panel.add_theme_stylebox_override("panel", UiTheme.panel_box(sc))
+	_final_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_final_panel.anchor_left = 0.5
+	_final_panel.anchor_right = 0.5
+	_final_panel.anchor_top = 0.5
+	_final_panel.anchor_bottom = 0.5
+	_final_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_final_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_final_panel.offset_left = -UiTheme.px(430, sc)
+	_final_panel.offset_right = UiTheme.px(430, sc)
+	_final_panel.offset_top = -UiTheme.px(250, sc)
+	_final_panel.offset_bottom = UiTheme.px(250, sc)
+	_game_screen.add_child(_final_panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", UiTheme.px(12, sc))
+	_final_panel.add_child(box)
+
+	var title := Label.new()
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_TITLE, sc))
+	title.add_theme_color_override("font_color", UiTheme.ACCENT)
+	if winner >= 0 and winner < world.client_team_names.size():
+		var won := int(world.team_wins.get(winner, 0))
+		title.text = "🏆  %s WINS" % str(world.client_team_names[winner]).to_upper()
+		if won > 1:
+			title.text += "  ·  %d ON THIS MAP" % won
+		title.add_theme_color_override("font_color",
+			WorldNode.TEAM_COLORS[winner] if winner < WorldNode.TEAM_COLORS.size()
+			else UiTheme.ACCENT)
+	else:
+		title.text = "NO WINNER THIS TIME"
+	box.add_child(title)
+	box.add_child(HSeparator.new())
+
+	var split := HBoxContainer.new()
+	split.add_theme_constant_override("separation", UiTheme.px(18, sc))
+	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(split)
+	split.add_child(_final_teams(world, sc))
+	split.add_child(_final_players(world, sc))
+
+	var hint := Label.new()
+	hint.text = "The full table is under Esc → Scores"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_NOTE, sc))
+	hint.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+	box.add_child(hint)
+
+func _final_teams(world: Node, sc: float) -> Control:
+	var wrap := VBoxContainer.new()
+	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrap.add_theme_constant_override("separation", UiTheme.px(6, sc))
+	wrap.add_child(_final_head("GAMES WON", sc))
+	var teams: Array = []
+	for t in int(world.team_count):
+		teams.append(t)
+	teams.sort_custom(func(a: int, b: int) -> bool:
+		return int(world.team_wins.get(a, 0)) > int(world.team_wins.get(b, 0)))
+	for t: int in teams:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", UiTheme.px(10, sc))
+		wrap.add_child(row)
+		var name_label := Label.new()
+		name_label.text = str(world.client_team_names[t]) 			if t < world.client_team_names.size() else str(t + 1)
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_label.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_LABEL, sc))
+		if t < WorldNode.TEAM_COLORS.size():
+			name_label.add_theme_color_override("font_color", WorldNode.TEAM_COLORS[t])
+		row.add_child(name_label)
+		var wins := Label.new()
+		wins.text = str(int(world.team_wins.get(t, 0)))
+		wins.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		wins.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_BODY, sc))
+		wins.add_theme_color_override("font_color", UiTheme.ACCENT)
+		wins.custom_minimum_size = Vector2(UiTheme.px(50, sc), 0)
+		row.add_child(wins)
+	return wrap
+
+func _final_players(world: Node, sc: float) -> Control:
+	var wrap := VBoxContainer.new()
+	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrap.size_flags_stretch_ratio = 1.4
+	wrap.add_theme_constant_override("separation", UiTheme.px(6, sc))
+	wrap.add_child(_final_head("KNOCKOUTS", sc))
+	var names: Array = world.player_frags.keys()
+	if names.is_empty():
+		var none := Label.new()
+		none.text = "Nobody knocked anybody out."
+		none.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_LABEL, sc))
+		none.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+		wrap.add_child(none)
+		return wrap
+	# This game first, then the running total — the game just played is
+	# what everyone wants to see the second it finishes.
+	names.sort_custom(func(a: String, b: String) -> bool:
+		var la := int(world.player_frags[a].get("last", 0))
+		var lb := int(world.player_frags[b].get("last", 0))
+		if la != lb:
+			return la > lb
+		return int(world.player_frags[a].get("total", 0)) 			> int(world.player_frags[b].get("total", 0)))
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", UiTheme.px(12, sc))
+	grid.add_theme_constant_override("v_separation", UiTheme.px(5, sc))
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrap.add_child(grid)
+	for head_text in ["Player", "Team", "This game", "Total"]:
+		var head := Label.new()
+		head.text = str(head_text)
+		head.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_NOTE, sc))
+		head.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+		if head_text != "Player":
+			head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		grid.add_child(head)
+	var shown := 0
+	for who: String in names:
+		if shown >= 10:
+			break
+		shown += 1
+		var row: Dictionary = world.player_frags[who]
+		var team := int(row.get("team", -1))
+		for spec in [[who, HORIZONTAL_ALIGNMENT_LEFT, UiTheme.INK],
+				[str(world.client_team_names[team]) if team >= 0
+					and team < world.client_team_names.size() else "—",
+					HORIZONTAL_ALIGNMENT_RIGHT,
+					WorldNode.TEAM_COLORS[team] if team >= 0
+						and team < WorldNode.TEAM_COLORS.size() else UiTheme.INK_DIM],
+				[str(int(row.get("last", 0))), HORIZONTAL_ALIGNMENT_RIGHT, UiTheme.ACCENT],
+				[str(int(row.get("total", 0))), HORIZONTAL_ALIGNMENT_RIGHT, UiTheme.INK_DIM]]:
+			var cell := Label.new()
+			cell.text = str(spec[0])
+			cell.horizontal_alignment = spec[1]
+			cell.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_LABEL, sc))
+			cell.add_theme_color_override("font_color", spec[2])
+			if spec[1] == HORIZONTAL_ALIGNMENT_LEFT:
+				cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			grid.add_child(cell)
+	return wrap
+
+func _final_head(text: String, sc: float) -> Label:
+	var head := Label.new()
+	head.text = text
+	head.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_HEADING, sc))
+	head.add_theme_color_override("font_color", UiTheme.INK_DIM)
+	return head
+
+func _hide_final_scores() -> void:
+	if is_instance_valid(_final_panel):
+		_final_panel.queue_free()
+	_final_panel = null
 
 func _show_banner(text: String, sticky := false) -> void:
 	_loading_label.visible = false

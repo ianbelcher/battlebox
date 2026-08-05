@@ -116,11 +116,12 @@ position, so one still running in the world that was just replaced will
 send coordinates from it. Neither is a substitute for placing them
 properly; they are there so no future path can strand anyone.
 
-**Test hooks:** `WORLD_RESIZE_TEST=<size>` spawns four computer players,
-resizes the world after 12s, then logs every player's position and
-whether it is on the map. `WORLD_KICK_TEST=1` kicks the first human after
-15s. Both exist because these are whole-sequence behaviours that cannot
-be checked without a person driving the menu otherwise.
+**Test hooks**, all for whole-sequence behaviours that otherwise need a
+person driving the menu: `WORLD_RESIZE_TEST=<size>` spawns four computer
+players and resizes the world after 12s, logging where everyone ends up;
+`WORLD_KICK_TEST=1` kicks the first human after 15s; `WORLD_WIN_TEST=<team>`
+hands out some knockouts and ends the battle for that team after 22s, so
+the end-of-match scoreboard and the win count can be checked.
 
 **`ChunkStore.safe_stand()` is the only thing allowed to decide where a
 person ends up.** Joining, respawning, a match starting, a world reset —
@@ -169,6 +170,22 @@ roster broadcast and then watched vanish. Registration is a round trip
 and the server sends the roster on connect, before this machine's players
 are in it, so dropping seats on any missing id wiped every one of them
 the moment anybody was kicked.
+
+## Counting who is still alive
+
+**"standing / still in the game".** A DOWNED player is still in
+`alive_ids` — they can be revived — so counting that alone left every
+team reading 8/8 however many were on the floor. Both the top score line
+and the per-team panel now count: still-in = in `alive_ids`, standing =
+in `alive_ids` and NOT in `client_downed`. Anyone eliminated drops out of
+both, so a team of eight that loses one reads 5/7, not 5/8.
+
+`cl_downed_state` emits `match_score_changed`; only elimination used to,
+which is why downing half a team moved nothing on screen.
+
+**A match's result is recorded once.** `_result_recorded` is set the
+moment a battle is decided and cleared as the next opens — several
+players eliminated in the same tick used to count two wins for one game.
 
 ## The look of the menus
 
