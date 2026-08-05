@@ -1454,11 +1454,13 @@ func _update_radar() -> void:
 	# BLOCKS PER PIXEL, following your VIEW zoom. Zooming in means you are
 	# looking further away, so the radar pulls BACK to cover more ground.
 	# The TIGHT end is the normal view — that is where you spend your
-	# time and where you want detail — and full zoom is a third wider.
+	# time and where you want detail. Full zoom pulls back half again as
+	# far as it used to: when you are looking right across the map you
+	# want the radar covering that much ground too.
 	# Halved again from 1.5/2.0: at a block and a half per pixel you were
 	# looking at 192 blocks of ground and could not tell a house from a
 	# hill.
-	var span := 0.75 + 0.25 * (float(player.fp_zoom) / 3.0)
+	var span := 0.75 + 0.375 * (float(player.fp_zoom) / 3.0)
 	var image := Image.create(128, 128, false, Image.FORMAT_RGB8)
 	for py in 128:
 		for px in 128:

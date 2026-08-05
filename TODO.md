@@ -116,6 +116,32 @@ which is why downing half a team moved nothing on screen.
 moment a battle is decided and cleared as the next opens — several
 players eliminated in the same tick used to count two wins for one game.
 
+## Computer players and the ground
+
+**`surface_y()` is the TOP of a column, which for anything with a roof
+is the roof.** Never use it to decide where a body can stand — use
+`WorldNode._walk_y(wx, wz, from_y)`, which finds the floor reachable
+from a given height and needs two blocks of headroom.
+
+Getting this wrong is subtle and it bit hard: a computer player inside a
+castle saw a wall in every direction (nothing was ever one step up from
+the roof), AND the code that keeps a bot on the ground lerped it toward
+`surface_y + 1`, dragging it up through the ceiling onto the
+battlements. They ended up standing on roofs turning on the spot at the
+same coordinates for a whole match. On a castle map it was 5 of 12; with
+`_walk_y` it is 0 or 1.
+
+Blocked bots run a small breadth-first search over the local heightmap
+(`_bot_path_step`) — 17x17, capped, recomputed at most every 0.6s —
+and dig through when there is genuinely no route. Falls are FREE: jumping
+off a roof to get out of the storm is the right move.
+
+**Test hook:** `WORLD_BOT_DEBUG=1` reports, every ten seconds, how far
+each live computer player actually got and names any that have not
+moved. Stuck is invisible in a screenshot, so it needs a number — and
+the number only counts bots that are alive and not downed, or it means
+nothing.
+
 ## Weapon icons
 
 `assets/ui/weapons/w<id>.png` is a render of that weapon's HELD MODEL,

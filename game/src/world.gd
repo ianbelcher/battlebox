@@ -271,6 +271,7 @@ func _process(delta: float) -> void:
 		_server_tick_resize_test(delta)
 		_server_tick_kick_test(delta)
 		_server_tick_win_test(delta)
+		_server_tick_bot_watch(delta)
 		_server_tick_match(delta)
 		_server_tick_bots(delta)
 		_water_accum += delta
@@ -887,6 +888,47 @@ func _server_tick_kick_test(delta: float) -> void:
 			str(Game.roster[id].get("name", "?")), id])
 		Game.sv_kick_player(id)
 		return
+
+## WORLD_BOT_DEBUG=1: every ten seconds, report how far each computer
+## player actually got. "Stuck" is the failure that matters — a bot
+## standing in a hole turning on the spot — and it is invisible in a
+## screenshot, so it needs a number.
+var _bot_watch_t := 0.0
+var _bot_watch_from: Dictionary = {}
+
+func _server_tick_bot_watch(delta: float) -> void:
+	if OS.get_environment("WORLD_BOT_DEBUG") != "1":
+		return
+	_bot_watch_t += delta
+	if _bot_watch_t < 10.0:
+		return
+	_bot_watch_t = 0.0
+	var stuck := 0
+	var moved_total := 0.0
+	var counted := 0
+	for id: String in _bots.keys():
+		# Only ones that are actually trying to go somewhere. A bot that
+		# is out of the match, or lying downed, has every right not to
+		# have moved, and counting it made the number meaningless.
+		if match_phase == "BATTLE" and (not _match_alive.has(id)
+				or _downed_ids.has(id)):
+			continue
+		if match_phase != "BATTLE" and match_phase != "IDLE":
+			continue
+		counted += 1
+		var at: Vector3 = _bots[id].pos
+		var was: Vector3 = _bot_watch_from.get(id, at)
+		var gone := Vector2(at.x - was.x, at.z - was.z).length()
+		moved_total += gone
+		if gone < 2.0:
+			stuck += 1
+			print("BOTWATCH %s STUCK at (%d,%d,%d), moved %.1f in 10s" % [
+				str(Game.roster.get(id, {}).get("name", "?")),
+				floori(at.x), floori(at.y), floori(at.z), gone])
+		_bot_watch_from[id] = at
+	if counted > 0:
+		print("BOTWATCH %d/%d stuck, average %.1f blocks in 10s" % [
+			stuck, counted, moved_total / float(counted)])
 
 func _server_tick_smoke() -> void:
 	if _smoke_marker.is_empty():
@@ -1709,7 +1751,10 @@ func _bot_dig_out(id: String, bot: Dictionary, pos: Vector3, dir: Vector2) -> vo
 		return
 	var ahead := Vector2(pos.x, pos.z) + dir.normalized() * 1.1
 	var cleared: Array = []
-	for dy in [0, 1]:
+	# Head height and one above, AND the step up — a bot at the bottom of
+	# a pit needs the wall in front of it opened at the height it wants
+	# to climb to, not just the height it is standing at.
+	for dy in [0, 1, 2]:
 		var cell := Vector3i(floori(ahead.x), floori(pos.y) + dy, floori(ahead.y))
 		if not store.inside_world(cell.x, cell.z, 1):
 			continue
@@ -1732,17 +1777,104 @@ func _bot_step_ok(pos: Vector3, dir: Vector2) -> bool:
 		return false
 	if _water_at(ax, az):
 		return true
-	var gy := store.surface_y(ax, az)
-	# Too tall to climb.
-	if float(gy) - pos.y > 1.6:
+	# Climbing more than a step is a wall. DROPPING IS FINE, however far:
+	# jumping off a roof to get out of the storm is the right move, and
+	# refusing left computer players standing on buildings watching it
+	# close in on them. Getting OUT of a hole is a digging problem, not a
+	# reason never to enter one — see _bot_path_step().
+	var gy := _walk_y(ax, az, pos.y)
+	if gy < 0:
 		return false
-	# ...and too FAR TO FALL. This only ever checked the step UP, so a
-	# bot would happily walk over the lip of a twenty-block drop, land at
-	# the bottom of a pit it could not climb, and spend the rest of the
-	# match turning on the spot down there.
-	if pos.y - float(gy) > 4.0:
-		return false
-	return true
+	return float(gy) - pos.y <= 1.6
+
+## ONE STEP OF A REAL PATH, or Vector2.ZERO if there is not one.
+##
+## Breadth-first over the local heightmap: a move to a neighbouring
+## column is allowed if it is at most one block UP (drops are free, as
+## they are for a player), and the search is bounded to a box around the
+## bot so it stays cheap. Returns the direction of the first step along
+## the shortest route to whichever explored column is nearest the goal —
+## so even when the goal itself is unreachable, the bot sets off the best
+## way it can rather than walking into the same wall again.
+##
+## This is what turns "blocked, try eight angles, give up" into actually
+## going round things: the eight-angle probe only ever looked 1.6 blocks
+## ahead, which cannot see round a corner, let alone out of a pit.
+func _bot_path_step(pos: Vector3, goal: Vector3) -> Vector2:
+	# Deliberately small. Every column costs a surface_y scan, this runs
+	# server-side for every blocked computer player, and a 17x17 box is
+	# enough to see round a building or out of a pit — which is all it
+	# has to do. The straight-line walk handles everything else.
+	var reach := 8
+	var start := Vector2i(floori(pos.x), floori(pos.z))
+	var target := Vector2i(floori(goal.x), floori(goal.z))
+	if start == target:
+		return Vector2.ZERO
+	var came: Dictionary = {start: start}
+	var heights: Dictionary = {start: _walk_y(start.x, start.y, pos.y)}
+	var queue: Array = [start]
+	var best := start
+	var best_d := float(start.distance_squared_to(target))
+	var seen := 0
+	while not queue.is_empty() and seen < 170:
+		var here: Vector2i = queue.pop_front()
+		seen += 1
+		var here_y: int = heights[here]
+		for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var next := Vector2i(here.x + off.x, here.y + off.y)
+			if came.has(next):
+				continue
+			if absi(next.x - start.x) > reach or absi(next.y - start.y) > reach:
+				continue
+			if not store.inside_world(next.x, next.y, 1):
+				continue
+			var next_y := _walk_y(next.x, next.y, float(here_y))
+			if next_y < 0 or next_y - here_y > 1:
+				continue          # a wall, or nowhere to stand
+			came[next] = here
+			heights[next] = next_y
+			queue.append(next)
+			var d := float(next.distance_squared_to(target))
+			if d < best_d:
+				best_d = d
+				best = next
+	if best == start:
+		return Vector2.ZERO       # boxed in completely
+	# Walk the chain back to the first step out of the start column.
+	var step: Vector2i = best
+	while came[step] != start:
+		step = came[step]
+		if step == came[step]:
+			break
+	return Vector2(step.x - start.x, step.y - start.y).normalized()
+
+## THE FLOOR A BOT COULD STAND ON in this column, given it is currently
+## at `from_y`. Returns -1 when there is nowhere to stand.
+##
+## This exists because surface_y() returns the TOPMOST block, which for
+## anything with a roof on it is the roof. A computer player inside a
+## castle therefore saw a wall in every direction — nothing was ever
+## "one step up" from it — and, worse, the code that keeps a bot on the
+## ground lerped it towards surface_y + 1, dragging it up through the
+## ceiling onto the battlements. That is why they ended up standing on
+## roofs, turning on the spot, at the exact same coordinates for the
+## whole match.
+##
+## Scanning DOWN from just above the bot is also cheaper than surface_y,
+## which starts at the top of the world.
+func _walk_y(wx: int, wz: int, from_y: float) -> int:
+	var top := mini(int(from_y) + 2, WorldGen.CHUNK_H - 3)
+	for y in range(top, 0, -1):
+		var here := store.get_block(Vector3i(wx, y, wz))
+		if here == Blocks.AIR or Blocks.is_liquid(here):
+			continue
+		# Two blocks of headroom, or it is not somewhere a body fits.
+		if store.get_block(Vector3i(wx, y + 1, wz)) != Blocks.AIR:
+			return -1
+		if store.get_block(Vector3i(wx, y + 2, wz)) != Blocks.AIR:
+			return -1
+		return y
+	return -1
 
 func _water_at(wx: int, wz: int) -> bool:
 	return store.get_block(Vector3i(wx, WorldGen.SEA_LEVEL, wz)) == Blocks.WATER
@@ -1821,25 +1953,23 @@ func _server_tick_bots(delta: float) -> void:
 			# Steer around cliffs and water: try straight, then angled
 			# detours, before giving up and re-thinking.
 			if not _bot_step_ok(pos, dir):
-				var found := false
-				# A wider fan than before, and both ways round, so a
-				# shallow obstacle is stepped around rather than argued
-				# with. Four options meant a bot facing a corner had
-				# nowhere to go and spun on the spot.
-				for turn in [0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.2, -2.2]:
-					var side := dir.rotated(turn)
-					if _bot_step_ok(pos, side):
-						dir = side
-						found = true
-						break
-				if not found:
-					# Nothing works: DIG. Standing in front of a wall
-					# turning in circles is the single most obviously
-					# broken thing a computer player can do, and they are
-					# carrying tools that go through walls.
+				# Blocked: ASK FOR A ROUTE. Recomputed a few times a
+				# second at most, because it is a search.
+				bot.path_cd = float(bot.get("path_cd", 0.0)) - delta
+				if float(bot.path_cd) <= 0.0:
+					bot.path_cd = 0.6
+					bot.path_dir = _bot_path_step(pos, Vector3(bot.goal))
+				var routed: Vector2 = bot.get("path_dir", Vector2.ZERO)
+				if routed != Vector2.ZERO and _bot_step_ok(pos, routed):
+					dir = routed
+				else:
+					# No way round at all — boxed in, or in a pit. Dig,
+					# and keep digging: they are carrying tools that go
+					# through walls, and standing in a hole turning in
+					# circles is the most obviously broken thing a
+					# computer player can do.
 					_bot_dig_out(id, bot, pos, dir)
-					bot.goal = pos - (Vector3(bot.goal) - pos)
-					bot.think = randf_range(0.5, 0.9)
+					bot.think = randf_range(0.3, 0.6)
 					dir = Vector2.ZERO
 			if dir != Vector2.ZERO:
 				var pace: float = float(bot.get("speed", 3.4))
@@ -1872,7 +2002,9 @@ func _server_tick_bots(delta: float) -> void:
 					bot.wedged = 0
 				bot.stuck_t = 0.0
 				bot.moved = 0.0
-		var gy := store.surface_y(floori(pos.x), floori(pos.z))
+		var gy := _walk_y(floori(pos.x), floori(pos.z), pos.y)
+		if gy < 0:
+			gy = store.surface_y(floori(pos.x), floori(pos.z))
 		var floor_y := float(gy) + 1.0
 		if _water_at(floori(pos.x), floori(pos.z)):
 			# Bots swim: ride the surface instead of sinking to the seabed.
