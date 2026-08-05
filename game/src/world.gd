@@ -253,6 +253,7 @@ func _process(delta: float) -> void:
 		_server_dawn_check()
 		_server_tick_bombs()
 		_server_tick_smoke()
+		_server_tick_resize_test(delta)
 		_server_tick_match(delta)
 		_server_tick_bots(delta)
 		_water_accum += delta
@@ -401,6 +402,14 @@ func sv_pos(slot: int, pos: Vector3, yaw: float, anim: int) -> void:
 	var id := Game.player_id(peer, slot)
 	if not Game.roster.has(id):
 		return
+	# People send their OWN position, so a client still running in the
+	# world that was just replaced will report coordinates from it. Do not
+	# take their word for it: anything outside the map gets put back and
+	# the client is told where it now is.
+	if not store.inside_world(floori(pos.x), floori(pos.z), 2):
+		pos = store.safe_stand(Vector3(spawn_pos), 6.0)
+		cl_where.rpc_id(peer, slot, pos,
+			int(_player_state.get(id, {}).get("treasures", 0)))
 	var state: Dictionary = _player_state.get(id, {"pos": pos, "treasures": 0,
 		"name": str(Game.roster[id].name)})
 	state.pos = pos
@@ -773,6 +782,42 @@ func sv_pet(slot: int, critter_id: int) -> void:
 ## every frame (the lists are tiny).
 ## The smoke marker times out by itself, so a match that runs long isn't
 ## still being pointed at a building somebody took ten minutes ago.
+## WORLD_RESIZE_TEST=<size>: resize the world after 12s, then report
+## every player's position for the next 12s and whether it is on the map.
+## This is the exact sequence that kept stranding people — a running
+## world with computer players in it, shrunk under them — and it is the
+## only way to check it end to end without a person driving the menu.
+var _resize_test_t := 0.0
+var _resize_test_done := false
+
+func _server_tick_resize_test(delta: float) -> void:
+	var want := OS.get_environment("WORLD_RESIZE_TEST")
+	if not want.is_valid_int():
+		return
+	_resize_test_t += delta
+	# Bring some computer players along: they are the case that broke,
+	# and relying on a client to add them made the run flaky.
+	if _resize_test_t > 6.0 and _bots.size() < 4:
+		_spawn_bot()
+	if not _resize_test_done and _resize_test_t > 12.0:
+		_resize_test_done = true
+		print("RESIZETEST resizing to %s" % want)
+		sv_match_config(-1, -1, want.to_int(), -1)
+	if _resize_test_done and fmod(_resize_test_t, 3.0) < delta:
+		var half := store.half_extent()
+		var bad := 0
+		for id: String in _player_state.keys():
+			var at: Vector3 = _player_state[id].pos
+			var inside := store.inside_world(floori(at.x), floori(at.z), 0)
+			if not inside:
+				bad += 1
+			print("RESIZETEST %s %s at (%d,%d) half=%d %s" % [
+				str(Game.roster.get(id, {}).get("name", "?")),
+				"bot" if _bots.has(id) else "human",
+				floori(at.x), floori(at.z), half,
+				"OK" if inside else "*** OFF THE MAP ***"])
+		print("RESIZETEST %d of %d off the map" % [bad, _player_state.size()])
+
 func _server_tick_smoke() -> void:
 	if _smoke_marker.is_empty():
 		return
@@ -1223,6 +1268,24 @@ func _do_world_reset(map_name := "", new_size := 0) -> void:
 	for state: Dictionary in _player_state.values():
 		state.pos = Vector3.ZERO
 	_player_state.clear()
+	# Computer players keep their position in _bots, which is NOT
+	# _player_state and was not being cleared — so after a regenerate they
+	# stood exactly where they had been standing in the world before,
+	# which on a smaller map is off the edge of it. Same two names, same
+	# two spots, every time. Give each of them somewhere new in the world
+	# that now exists.
+	for bot_id: String in _bots.keys():
+		var fresh := store.safe_stand(Vector3(spawn_pos), 10.0)
+		_bots[bot_id].pos = fresh
+		_bots[bot_id].goal = fresh
+		_bots[bot_id].think = randf_range(0.1, 0.5)
+		_bots[bot_id].last_pos = fresh
+		# ...and put their _player_state back. Clearing that wholesale
+		# above deletes the computer players' entries too, and without
+		# one a bot is invisible to everything that walks _player_state:
+		# the radar, targeting, the crate pickup test.
+		_player_state[bot_id] = {"pos": fresh, "treasures": 0,
+			"name": str(Game.roster.get(bot_id, {}).get("name", "?")), "hp": 5}
 	# Any running battle is abandoned; the scoreboard starts again.
 	if match_phase != "IDLE":
 		match_phase = "IDLE"
@@ -1600,6 +1663,19 @@ func _server_tick_bots(delta: float) -> void:
 			continue
 		var bot: Dictionary = _bots[id]
 		_ensure_bot_skill(bot)
+		# A LAST LINE OF DEFENCE, not a substitute for placing them
+		# properly: whatever put a computer player outside the world, it
+		# does not get to leave them there. Cheap — two integer compares
+		# per bot per tick — and it means no future placement path can
+		# strand one where Ian has to find it.
+		var bpos: Vector3 = bot.pos
+		if not store.inside_world(floori(bpos.x), floori(bpos.z), 2):
+			var rescued := store.safe_stand(Vector3(spawn_pos), 10.0)
+			bot.pos = rescued
+			bot.goal = rescued
+			bot.think = 0.0
+			if _player_state.has(id):
+				_player_state[id].pos = rescued
 		bot.send_t = float(bot.get("send_t", 0.0)) - delta
 		bot.shoot_cd = maxf(0.0, float(bot.shoot_cd) - delta)
 		bot.think = float(bot.think) - delta

@@ -101,6 +101,26 @@ better than convenience.
 
 ## Placing a player
 
+**A computer player's position lives in `_bots`, NOT in
+`_player_state`.** That is what stranded Alpha and Bravo outside the map
+and put them back in the same spot on every regenerate: the world reset
+cleared `_player_state` and never touched `_bots`, so bots simply stood
+wherever they had been standing in the world before. `_do_world_reset()`
+now re-places every bot AND rebuilds its `_player_state` entry (clearing
+that wholesale had been deleting the bots' entries too, which makes a
+bot invisible to the radar, to targeting and to crate pickup).
+
+`_server_tick_bots()` also pulls any bot found outside the world back in,
+and `sv_pos()` does the same for a person — clients report their own
+position, so one still running in the world that was just replaced will
+send coordinates from it. Neither is a substitute for placing them
+properly; they are there so no future path can strand anyone.
+
+**Test hook:** `WORLD_RESIZE_TEST=<size>` spawns four computer players,
+resizes the world after 12s, then logs every player's position and
+whether it is on the map. It is the only way to check the whole sequence
+without a person driving the menu.
+
 **`ChunkStore.safe_stand()` is the only thing allowed to decide where a
 person ends up.** Joining, respawning, a match starting, a world reset —
 all of it goes through there, and what comes out is always inside the
