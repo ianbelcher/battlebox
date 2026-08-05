@@ -1388,7 +1388,7 @@ func _do_world_reset(map_name := "", new_size := 0) -> void:
 # ------------------------------------------------------------------
 # Battle royale match
 # ------------------------------------------------------------------
-const LOBBY_SECONDS := 10.0
+const LOBBY_SECONDS := 6.0
 const STORM_START := 360.0
 
 ## Battle square side in blocks (the storm starts at its edge).
@@ -1690,6 +1690,35 @@ func _bot_pick_goal(id: String, bot: Dictionary) -> Vector3:
 ## True when a bot can walk from `pos` one step toward `dir` without a
 ## cliff-face climb or a swim: the ground ahead must be near walkable
 ## height and dry.
+## Punch a hole through whatever a computer player has walked into.
+##
+## Two blocks tall at head height, right in front of them, and only
+## through things a player could dig by hand — so they cannot tunnel out
+## of a steel vault, but a hillside, a tree or somebody's wall will not
+## hold them for ever. Rate-limited by the same cooldown as shooting so
+## this cannot turn into a mining laser.
+func _bot_dig_out(id: String, bot: Dictionary, pos: Vector3, dir: Vector2) -> void:
+	if float(bot.get("dig_cd", 0.0)) > 0.0:
+		return
+	bot.dig_cd = 0.8
+	if dir == Vector2.ZERO:
+		return
+	var ahead := Vector2(pos.x, pos.z) + dir.normalized() * 1.1
+	var cleared: Array = []
+	for dy in [0, 1]:
+		var cell := Vector3i(floori(ahead.x), floori(pos.y) + dy, floori(ahead.y))
+		if not store.inside_world(cell.x, cell.z, 1):
+			continue
+		var block := store.get_block(cell)
+		if block == Blocks.AIR or Blocks.is_liquid(block):
+			continue
+		if not Blocks.is_breakable(block) or Blocks.hardness(block) >= 3:
+			continue
+		store.set_block(cell, Blocks.AIR)
+		cleared.append(cell)
+	if not cleared.is_empty():
+		cl_batch.rpc(cleared, Blocks.AIR)
+
 func _bot_step_ok(pos: Vector3, dir: Vector2) -> bool:
 	var ahead := Vector2(pos.x, pos.z) + dir * 1.6
 	var gy := store.surface_y(floori(ahead.x), floori(ahead.y))
@@ -1758,6 +1787,7 @@ func _server_tick_bots(delta: float) -> void:
 				_player_state[id].pos = rescued
 		bot.send_t = float(bot.get("send_t", 0.0)) - delta
 		bot.shoot_cd = maxf(0.0, float(bot.shoot_cd) - delta)
+		bot.dig_cd = maxf(0.0, float(bot.get("dig_cd", 0.0)) - delta)
 		bot.think = float(bot.think) - delta
 		var pos: Vector3 = bot.pos
 		var downed := _downed_ids.has(id)
@@ -1772,17 +1802,24 @@ func _server_tick_bots(delta: float) -> void:
 			# detours, before giving up and re-thinking.
 			if not _bot_step_ok(pos, dir):
 				var found := false
-				for turn in [0.8, -0.8, 1.6, -1.6]:
+				# A wider fan than before, and both ways round, so a
+				# shallow obstacle is stepped around rather than argued
+				# with. Four options meant a bot facing a corner had
+				# nowhere to go and spun on the spot.
+				for turn in [0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.2, -2.2]:
 					var side := dir.rotated(turn)
 					if _bot_step_ok(pos, side):
 						dir = side
 						found = true
 						break
 				if not found:
-					# Fully blocked (usually the water's edge): turn
-					# around and pick business elsewhere.
+					# Nothing works: DIG. Standing in front of a wall
+					# turning in circles is the single most obviously
+					# broken thing a computer player can do, and they are
+					# carrying tools that go through walls.
+					_bot_dig_out(id, bot, pos, dir)
 					bot.goal = pos - (Vector3(bot.goal) - pos)
-					bot.think = randf_range(0.6, 1.2)
+					bot.think = randf_range(0.5, 0.9)
 					dir = Vector2.ZERO
 			if dir != Vector2.ZERO:
 				var pace: float = float(bot.get("speed", 3.4))
@@ -1953,10 +1990,11 @@ func _begin_battle_lobby() -> void:
 		_do_world_reset(selected_map)
 	_assign_stray_humans()
 	_monsters.clear()
-	for id: String in _bots.keys():
-		_bots[id].pos = store.safe_stand(Vector3(spawn_pos), 6.0)
-		if _player_state.has(id):
-			_player_state[id].pos = _bots[id].pos
+	# Nobody is moved for the LOBBY. Herding every player and computer
+	# player onto the spawn point between battles put the whole table in
+	# a huddle at the origin for a few seconds, which looked like a bug.
+	# _server_match_drop() places everyone at their team's site when the
+	# battle actually starts, which is the only placement that matters.
 	match_phase = "LOBBY"
 	_match_timer = LOBBY_SECONDS
 	print("Battle royale lobby open")
@@ -2465,8 +2503,19 @@ func _tick_bot_orbs(delta: float) -> void:
 func _tick_revives(delta: float) -> void:
 	var now := Time.get_ticks_msec()
 	for id: String in _downed_ids.keys().duplicate():
-		# Bleed out after 45s down.
-		if now - int(_downed_ids[id]) > 45_000:
+		# NOBODY LEFT TO PICK YOU UP? Then you are out NOW. Waiting the
+		# full bleed-out for a player no team-mate could possibly reach
+		# is why a won battle sat there for twenty seconds before anyone
+		# was told: the last team was still "in" because one of its
+		# players was lying there with nobody standing.
+		var team := int(Game.roster.get(id, {}).get("team", -1))
+		var rescuer := false
+		for other: String in _match_alive.keys():
+			if other != id and not _downed_ids.has(other) \
+					and int(Game.roster.get(other, {}).get("team", -2)) == team:
+				rescuer = true
+				break
+		if not rescuer or now - int(_downed_ids[id]) > 45_000:
 			_downed_ids.erase(id)
 			_revive_progress.erase(id)
 			_match_alive.erase(id)
@@ -2474,7 +2523,6 @@ func _tick_revives(delta: float) -> void:
 			cl_eliminated.rpc(id)
 			_check_match_win()
 			continue
-		var team := int(Game.roster.get(id, {}).get("team", -1))
 		var pos: Vector3 = _player_state.get(id, {}).get("pos", Vector3.ZERO)
 		var mate_close := false
 		for other: String in _match_alive.keys():
@@ -2528,9 +2576,10 @@ func _check_match_win() -> void:
 
 func _server_match_end(winner: int) -> void:
 	match_phase = "END"
-	# Long enough to actually READ the table. Ten seconds was gone before
-	# anyone had found their own name on it.
-	_match_timer = 22.0
+	# Long enough to read the table, short enough not to be a wait. The
+	# next battle places everyone properly at their team's site, so there
+	# is nothing to see in between.
+	_match_timer = 14.0
 	print("Battle royale over: team %d" % winner)
 	_record_result(winner)
 	cl_match_end.rpc(winner)
@@ -2739,11 +2788,30 @@ func cl_downed_state(id: String, is_down: bool) -> void:
 	match_score_changed.emit()
 	for child in players.get_children():
 		if child is Player and child.player_id == id:
+			# Being downed makes you a GHOST: you walk about normally, you
+			# cannot shoot or pick anything up, and only YOUR OWN TEAM can
+			# see you — they are the ones who can do something about it.
+			# Lying on the floor visible to everybody just told the other
+			# side where to finish you off, and left your own side
+			# guessing whose body it even was. `downed` still gates
+			# acting; the death POSE is gone (see Player._animate_*).
 			child.downed = is_down
 			child.set_ghost(is_down)
+			child.visible = (not is_down) or _my_team_has(id)
 			if child.is_local and is_down:
 				Sfx.play("drop", -4.0)
 	_refresh_overheads()
+
+## Is `id` on the same team as one of MY players? Downed teammates are
+## visible so they can be found and revived; downed enemies are not.
+func _my_team_has(id: String) -> bool:
+	var their_team := int(Game.roster.get(id, {}).get("team", -1))
+	if their_team < 0:
+		return false
+	for mine: String in Game.local_player_ids():
+		if int(Game.roster.get(mine, {}).get("team", -2)) == their_team:
+			return true
+	return false
 
 @rpc("authority", "unreliable_ordered")
 func cl_revive_progress(id: String, frac: float) -> void:

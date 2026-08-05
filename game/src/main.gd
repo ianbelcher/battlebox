@@ -890,7 +890,8 @@ func _show_final_scores(winner: int) -> void:
 	box.add_child(HSeparator.new())
 
 	var split := HBoxContainer.new()
-	split.add_theme_constant_override("separation", UiTheme.px(18, sc))
+	split.add_theme_constant_override("separation", UiTheme.px(46, sc))
+	split.alignment = BoxContainer.ALIGNMENT_CENTER
 	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(split)
 	split.add_child(_final_teams(world, sc))
@@ -905,7 +906,7 @@ func _show_final_scores(winner: int) -> void:
 
 func _final_teams(world: Node, sc: float) -> Control:
 	var wrap := VBoxContainer.new()
-	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrap.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	wrap.add_theme_constant_override("separation", UiTheme.px(6, sc))
 	wrap.add_child(_final_head("GAMES WON", sc))
 	var teams: Array = []
@@ -919,7 +920,7 @@ func _final_teams(world: Node, sc: float) -> Control:
 		wrap.add_child(row)
 		var name_label := Label.new()
 		name_label.text = str(world.client_team_names[t]) 			if t < world.client_team_names.size() else str(t + 1)
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_label.custom_minimum_size = Vector2(UiTheme.px(120, sc), 0)
 		name_label.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_LABEL, sc))
 		if t < WorldNode.TEAM_COLORS.size():
 			name_label.add_theme_color_override("font_color", WorldNode.TEAM_COLORS[t])
@@ -935,8 +936,7 @@ func _final_teams(world: Node, sc: float) -> Control:
 
 func _final_players(world: Node, sc: float) -> Control:
 	var wrap := VBoxContainer.new()
-	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	wrap.size_flags_stretch_ratio = 1.4
+	wrap.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	wrap.add_theme_constant_override("separation", UiTheme.px(6, sc))
 	wrap.add_child(_final_head("KNOCKOUTS", sc))
 	var names: Array = world.player_frags.keys()
@@ -955,13 +955,16 @@ func _final_players(world: Node, sc: float) -> Control:
 		if la != lb:
 			return la > lb
 		return int(world.player_frags[a].get("total", 0)) 			> int(world.player_frags[b].get("total", 0)))
+	# Three columns hugged left, the team carried by the NAME'S COLOUR.
+	# Four full-width columns left a chasm between the names and the
+	# numbers, and a "Team" column repeating what the colour already says.
 	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", UiTheme.px(12, sc))
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", UiTheme.px(20, sc))
 	grid.add_theme_constant_override("v_separation", UiTheme.px(5, sc))
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	wrap.add_child(grid)
-	for head_text in ["Player", "Team", "This game", "Total"]:
+	for head_text in ["Player", "This game", "Total"]:
 		var head := Label.new()
 		head.text = str(head_text)
 		head.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_NOTE, sc))
@@ -976,21 +979,17 @@ func _final_players(world: Node, sc: float) -> Control:
 		shown += 1
 		var row: Dictionary = world.player_frags[who]
 		var team := int(row.get("team", -1))
-		for spec in [[who, HORIZONTAL_ALIGNMENT_LEFT, UiTheme.INK],
-				[str(world.client_team_names[team]) if team >= 0
-					and team < world.client_team_names.size() else "—",
-					HORIZONTAL_ALIGNMENT_RIGHT,
-					WorldNode.TEAM_COLORS[team] if team >= 0
-						and team < WorldNode.TEAM_COLORS.size() else UiTheme.INK_DIM],
-				[str(int(row.get("last", 0))), HORIZONTAL_ALIGNMENT_RIGHT, UiTheme.ACCENT],
-				[str(int(row.get("total", 0))), HORIZONTAL_ALIGNMENT_RIGHT, UiTheme.INK_DIM]]:
+		var tint: Color = WorldNode.TEAM_COLORS[team] \
+			if team >= 0 and team < WorldNode.TEAM_COLORS.size() else UiTheme.INK
+		for spec in [[who, HORIZONTAL_ALIGNMENT_LEFT, tint],
+				[str(int(row.get("last", 0))), HORIZONTAL_ALIGNMENT_RIGHT, tint],
+				[str(int(row.get("total", 0))), HORIZONTAL_ALIGNMENT_RIGHT,
+					UiTheme.INK_FAINT]]:
 			var cell := Label.new()
 			cell.text = str(spec[0])
 			cell.horizontal_alignment = spec[1]
 			cell.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_LABEL, sc))
 			cell.add_theme_color_override("font_color", spec[2])
-			if spec[1] == HORIZONTAL_ALIGNMENT_LEFT:
-				cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			grid.add_child(cell)
 	return wrap
 

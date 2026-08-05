@@ -1028,20 +1028,11 @@ func _animate(delta: float) -> void:
 		_animate_kenney(delta)
 		return
 	_bob_time += delta
-	if downed:
-		# The hand-built rig has no death clip, so it tips over and holds:
-		# flat on its back, limbs still.
-		_avatar.rotation.x = lerp_angle(_avatar.rotation.x, -PI * 0.5,
-			minf(1.0, delta * 6.0))
-		_avatar.position.y = lerpf(_avatar.position.y, 0.25, minf(1.0, delta * 6.0))
-		for limb in ["LegL", "LegR", "ArmL", "ArmR"]:
-			var pivot: Node3D = _avatar.get_node_or_null(limb)
-			if pivot != null:
-				pivot.rotation.x = lerp_angle(pivot.rotation.x, 0.0,
-					minf(1.0, delta * 6.0))
-				pivot.rotation.z = lerp_angle(pivot.rotation.z, 0.0,
-					minf(1.0, delta * 6.0))
-		return
+	# NO DEATH POSE. Being downed used to tip the rig flat on its back and
+	# hold it there, which is nonsense now that a downed player gets up
+	# and walks about looking for a team-mate. They animate normally; the
+	# ghost shimmer and being invisible to the other side is what says
+	# they are down.
 	var swing := 0.0
 	var arms_up := 0.0
 	match anim:
@@ -1118,18 +1109,10 @@ func _animate_kenney(_delta: float) -> void:
 		return
 	var want := "idle"
 	var ground_speed := Vector2(velocity.x, velocity.z).length()
-	if downed:
-		# Down and staying down. Play the fall EXACTLY once and then leave
-		# the rig alone: a non-looping animation clears current_animation
-		# the moment it finishes, so testing "is die playing?" said no a
-		# second later and started it over — which is the thumping.
-		if not _death_played:
-			_death_played = true
-			if ap.has_animation("die"):
-				ap.get_animation("die").loop_mode = Animation.LOOP_NONE
-			ap.play("die", 0.15)
-		return
-	_death_played = false
+	# No "die" clip any more: a downed player gets up and walks about
+	# looking for a team-mate, so they animate like anyone else. The
+	# ghost shimmer, and being invisible to the other side, is what says
+	# they are down.
 	if swing_time > 0.0:
 		want = "attack-melee-right"
 	elif anim == Anim.SNEAK:

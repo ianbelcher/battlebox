@@ -1118,10 +1118,13 @@ func _set_page(page: int) -> void:
 		var me := _player()
 		if me != null:
 			_map_centre = Vector2(me.position.x, me.position.z)
-		# Open showing the WHOLE world, not an arbitrary zoom — you open
-		# the map to find out where things are.
+		# Open on the world FITTED to the panel — no black margin around
+		# it — and treat that as the zoomed-OUT limit. From there you
+		# zoom in. Opening wider than the world just wasted the panel on
+		# empty space.
 		if world != null:
-			_map_zoom = clampf(float(world.client_size) / 300.0, 0.4, 8.0)
+			_map_fit = clampf(float(world.client_size) / 320.0, 0.08, 8.0)
+			_map_zoom = _map_fit
 		_map_tick = 0.0
 
 func _page_disabled(page: int) -> bool:
@@ -1171,7 +1174,7 @@ func _refresh_scores_tab() -> void:
 	_scores_box.add_child(split)
 
 	var left := VBoxContainer.new()
-	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	left.add_theme_constant_override("separation", _ms(5))
 	split.add_child(left)
 	left.add_child(_scores_head("GAMES WON"))
@@ -1187,7 +1190,7 @@ func _refresh_scores_tab() -> void:
 		var team_label := Label.new()
 		team_label.text = str(world.client_team_names[t]) \
 			if t < world.client_team_names.size() else str(t + 1)
-		team_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		team_label.custom_minimum_size = Vector2(_ms(110), 0)
 		team_label.add_theme_font_size_override("font_size",
 			UiTheme.px(UiTheme.T_LABEL, _menu_scale))
 		if t < WorldNode.TEAM_COLORS.size():
@@ -1203,8 +1206,7 @@ func _refresh_scores_tab() -> void:
 		row.add_child(wins)
 
 	var right := VBoxContainer.new()
-	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right.size_flags_stretch_ratio = 1.5
+	right.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	right.add_theme_constant_override("separation", _ms(5))
 	split.add_child(right)
 	right.add_child(_scores_head("KNOCKOUTS"))
@@ -1223,13 +1225,17 @@ func _refresh_scores_tab() -> void:
 		if ta != tb:
 			return ta > tb
 		return a < b)
+	# THREE columns, sized to their contents, hugged to the left. It was
+	# four full-width columns, which left a chasm between the names and
+	# the numbers. The team is the NAME'S COLOUR now rather than a column
+	# of its own — you know what colour your team is.
 	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", _ms(12))
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", _ms(18))
 	grid.add_theme_constant_override("v_separation", _ms(4))
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	right.add_child(grid)
-	for head_text in ["Player", "Team", "This game", "Total"]:
+	for head_text in ["Player", "This game", "Total"]:
 		var head := Label.new()
 		head.text = str(head_text)
 		head.add_theme_font_size_override("font_size",
@@ -1241,22 +1247,18 @@ func _refresh_scores_tab() -> void:
 	for who: String in names:
 		var row_data: Dictionary = world.player_frags[who]
 		var team := int(row_data.get("team", -1))
-		var team_name := str(world.client_team_names[team]) \
-			if team >= 0 and team < world.client_team_names.size() else "—"
 		var tint: Color = WorldNode.TEAM_COLORS[team] \
-			if team >= 0 and team < WorldNode.TEAM_COLORS.size() else UiTheme.INK_DIM
-		for spec in [[who, HORIZONTAL_ALIGNMENT_LEFT, UiTheme.INK],
-				[team_name, HORIZONTAL_ALIGNMENT_RIGHT, tint],
-				[str(int(row_data.get("last", 0))), HORIZONTAL_ALIGNMENT_RIGHT, UiTheme.ACCENT],
-				[str(int(row_data.get("total", 0))), HORIZONTAL_ALIGNMENT_RIGHT, UiTheme.INK_DIM]]:
+			if team >= 0 and team < WorldNode.TEAM_COLORS.size() else UiTheme.INK
+		for spec in [[who, HORIZONTAL_ALIGNMENT_LEFT, tint],
+				[str(int(row_data.get("last", 0))), HORIZONTAL_ALIGNMENT_RIGHT, tint],
+				[str(int(row_data.get("total", 0))), HORIZONTAL_ALIGNMENT_RIGHT,
+					UiTheme.INK_FAINT]]:
 			var cell := Label.new()
 			cell.text = str(spec[0])
 			cell.horizontal_alignment = spec[1]
 			cell.add_theme_font_size_override("font_size",
 				UiTheme.px(UiTheme.T_LABEL, _menu_scale))
 			cell.add_theme_color_override("font_color", spec[2])
-			if spec[1] == HORIZONTAL_ALIGNMENT_LEFT:
-				cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			grid.add_child(cell)
 
 func _scores_head(text: String) -> Label:
@@ -1274,6 +1276,8 @@ var _map_tex: TextureRect
 var _map_label: Label
 var _map_centre := Vector2.ZERO
 var _map_zoom := 2.0          # blocks per pixel
+## The zoom that exactly fits the world: the furthest you may pull out.
+var _map_fit := 2.0
 var _map_tick := 0.0
 
 func _build_map_tab() -> void:
@@ -1297,9 +1301,9 @@ func _build_map_tab() -> void:
 			_map_centre -= event.relative * _map_zoom
 		elif event is InputEventMouseButton and event.pressed:
 			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-				_map_zoom = clampf(_map_zoom * 0.8, 0.5, 8.0)
+				_map_zoom = clampf(_map_zoom * 0.8, _map_fit * 0.12, _map_fit)
 			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-				_map_zoom = clampf(_map_zoom * 1.25, 0.5, 8.0))
+				_map_zoom = clampf(_map_zoom * 1.25, _map_fit * 0.12, _map_fit))
 	box.add_child(_map_tex)
 	_map_label = Label.new()
 	_map_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1316,10 +1320,14 @@ func _poll_map_nav(input: InputSlot, delta: float) -> void:
 		_map_centre += pan * _map_zoom * 260.0 * delta
 	var zoom := input.get_move_vector()
 	if absf(zoom.y) > 0.35:
-		_map_zoom = clampf(_map_zoom * (1.0 + zoom.y * delta * 1.6), 0.5, 8.0)
+		_map_zoom = clampf(_map_zoom * (1.0 + zoom.y * delta * 1.6),
+			_map_fit * 0.12, _map_fit)
+	# Redrawn several times a second: it is a 320x320 image built from a
+	# cached heightmap, which is cheap, and a map that lags behind the
+	# stick feels broken.
 	_map_tick -= delta
 	if _map_tick <= 0.0:
-		_map_tick = 0.25
+		_map_tick = 0.08
 		_draw_big_map()
 
 func _draw_big_map() -> void:
@@ -1362,7 +1370,7 @@ func _map_blip(image: Image, at: Vector3, tint: Color, size_px: int,
 		mine: bool) -> void:
 	var px := size_px / 2 + int((at.x - _map_centre.x) / _map_zoom)
 	var py := size_px / 2 + int((at.z - _map_centre.y) / _map_zoom)
-	var r := 3 if mine else 2
+	var r := 5 if mine else 4
 	for dy in range(-r, r + 1):
 		for dx in range(-r, r + 1):
 			if dx * dx + dy * dy > r * r:
@@ -1440,12 +1448,12 @@ func _update_radar() -> void:
 	# The client has a ChunkView, not the server's store, so the world's
 	# extent comes from the battle config it was told about.
 	var half_world: int = int(world.client_size) / 2
-	# BLOCKS PER PIXEL, and it follows your VIEW zoom. Zooming in means
-	# you are looking further away, so the radar pulls BACK to cover more
-	# ground — about a third more at full zoom. It also starts wider than
-	# it used to (2.0 rather than 1.5), because at 192 blocks across you
-	# could not see enough of what was around you to be worth glancing at.
-	var span := 2.0 * (1.0 + 0.33 * (float(player.fp_zoom) / 3.0))
+	# BLOCKS PER PIXEL, following your VIEW zoom. Zooming in means you are
+	# looking further away, so the radar pulls BACK to cover more ground.
+	# The TIGHT end is the normal view — that is where you spend your
+	# time and where you want detail — and full zoom is a third wider.
+	# Anchored the other way round it was too zoomed out to read at rest.
+	var span := 1.5 + 0.5 * (float(player.fp_zoom) / 3.0)
 	var image := Image.create(128, 128, false, Image.FORMAT_RGB8)
 	for py in 128:
 		for px in 128:
