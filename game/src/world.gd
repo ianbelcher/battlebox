@@ -163,7 +163,22 @@ var team_names: Array = TEAM_NAMES.slice(0, 4)
 var match_phase := "IDLE"
 ## Soft edge for players: the world's hard chunk bound plus a splash of
 ## swimmable ocean — nobody drifts into the infinite procedural sea.
+## A FIXED number, and nothing to do with how big this world is. Kept
+## only for the ocean backdrop's draw distance. Do not use it to decide
+## where a player may walk — see world_half().
 var world_radius := float(ChunkStore.WORLD_RADIUS_CHUNKS) * 16.0 + 16.0
+
+## Half the playable slab, in blocks, as the CLIENT knows it.
+##
+## The world is a SQUARE `client_size` on a side centred on the origin,
+## and this is the only thing that should decide how far you can walk.
+## Players used to be stopped by a CIRCLE of `world_radius` — a constant
+## of 250 or 400 whatever the map's real size — so on any smaller world
+## you strolled straight past the terrain, and the server, seeing you
+## outside the map, put you back at the spawn. Walking to the edge of a
+## 250-block world teleported you to the middle of it.
+func world_half() -> float:
+	return maxf(8.0, float(int(client_size) / 2))
 var match_seconds := 0.0
 var storm_radius := 0.0
 var storm_center := Vector3.ZERO
@@ -254,6 +269,7 @@ func _process(delta: float) -> void:
 		_server_tick_bombs()
 		_server_tick_smoke()
 		_server_tick_resize_test(delta)
+		_server_tick_kick_test(delta)
 		_server_tick_match(delta)
 		_server_tick_bots(delta)
 		_water_accum += delta
@@ -403,13 +419,22 @@ func sv_pos(slot: int, pos: Vector3, yaw: float, anim: int) -> void:
 	if not Game.roster.has(id):
 		return
 	# People send their OWN position, so a client still running in the
-	# world that was just replaced will report coordinates from it. Do not
-	# take their word for it: anything outside the map gets put back and
-	# the client is told where it now is.
-	if not store.inside_world(floori(pos.x), floori(pos.z), 2):
+	# world that was just replaced will report coordinates from it.
+	#
+	# But WALKING INTO THE EDGE IS NORMAL and must not be punished. This
+	# used to teleport anyone a couple of blocks past the limit back to
+	# the spawn, so reaching the boundary of your own map threw you into
+	# the middle of it. A position just outside is quietly clamped — per
+	# axis, so you slide along the wall — and only one WILDLY outside is
+	# treated as a stale world and reset.
+	var half := float(store.half_extent())
+	if absf(pos.x) > half + 32.0 or absf(pos.z) > half + 32.0:
 		pos = store.safe_stand(Vector3(spawn_pos), 6.0)
 		cl_where.rpc_id(peer, slot, pos,
 			int(_player_state.get(id, {}).get("treasures", 0)))
+	else:
+		pos.x = clampf(pos.x, -half, half)
+		pos.z = clampf(pos.z, -half, half)
 	var state: Dictionary = _player_state.get(id, {"pos": pos, "treasures": 0,
 		"name": str(Game.roster[id].name)})
 	state.pos = pos
@@ -817,6 +842,28 @@ func _server_tick_resize_test(delta: float) -> void:
 				floori(at.x), floori(at.z), half,
 				"OK" if inside else "*** OFF THE MAP ***"])
 		print("RESIZETEST %d of %d off the map" % [bad, _player_state.size()])
+
+## WORLD_KICK_TEST=1: kick the first human after 15s. Proves that the ✕
+## in the world menu actually gives up that player's SEAT on their own
+## machine — the split screen drops to fewer cells, and if they were the
+## last one there the join prompt comes back.
+var _kick_test_t := 0.0
+var _kick_test_done := false
+
+func _server_tick_kick_test(delta: float) -> void:
+	if OS.get_environment("WORLD_KICK_TEST") != "1":
+		return
+	_kick_test_t += delta
+	if _kick_test_done or _kick_test_t < 15.0:
+		return
+	for id: String in Game.roster.keys():
+		if bool(Game.roster[id].get("bot", false)):
+			continue
+		_kick_test_done = true
+		print("KICKTEST kicking %s (%s)" % [
+			str(Game.roster[id].get("name", "?")), id])
+		Game.sv_kick_player(id)
+		return
 
 func _server_tick_smoke() -> void:
 	if _smoke_marker.is_empty():
@@ -1669,7 +1716,8 @@ func _server_tick_bots(delta: float) -> void:
 		# per bot per tick — and it means no future placement path can
 		# strand one where Ian has to find it.
 		var bpos: Vector3 = bot.pos
-		if not store.inside_world(floori(bpos.x), floori(bpos.z), 2):
+		if absf(bpos.x) > float(store.half_extent()) + 32.0 \
+				or absf(bpos.z) > float(store.half_extent()) + 32.0:
 			var rescued := store.safe_stand(Vector3(spawn_pos), 10.0)
 			bot.pos = rescued
 			bot.goal = rescued

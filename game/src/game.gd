@@ -402,8 +402,51 @@ func _save_local_profiles() -> void:
 @rpc("authority", "call_local", "reliable")
 func cl_roster(new_roster: Dictionary) -> void:
 	roster = new_roster
+	_drop_kicked_seats()
 	_save_local_profiles()
 	roster_changed.emit()
+
+signal all_local_left
+
+## A player on THIS machine who is no longer in the roster has been kicked
+## — most likely by somebody hitting the ✕ next to their name in the world
+## menu. Give up their seat.
+##
+## Without this the seat stayed: the split screen kept their quadrant, the
+## controller kept steering a player the server had forgotten, and nothing
+## brought a three-player game back down to two. Dropping the seat here
+## makes a kick do what it looks like it does.
+## Slots this machine has actually seen confirmed in a roster broadcast.
+## A seat is only ever given up if it was CONFIRMED and then vanished.
+var _seen_seats: Dictionary = {}
+
+func _drop_kicked_seats() -> void:
+	if multiplayer.multiplayer_peer == null or local_inputs.is_empty():
+		return
+	var me := multiplayer.get_unique_id()
+	var lost := false
+	for slot: int in local_inputs.keys():
+		var id := player_id(me, slot)
+		if roster.has(id):
+			_seen_seats[slot] = true
+			continue
+		# NOT YET CONFIRMED is not the same as KICKED. Registration is a
+		# round trip, and the server sends the roster on connect — before
+		# this machine's players are in it. Dropping seats on that first
+		# broadcast wiped every one of them the moment anybody was
+		# kicked, or on a slow join.
+		if not _seen_seats.has(slot):
+			continue
+		local_inputs.erase(slot)
+		profile_keys.erase(slot)
+		_seen_seats.erase(slot)
+		lost = true
+	if not lost:
+		return
+	if local_inputs.is_empty():
+		# Nobody from this machine is playing any more. Back to the
+		# "press Ⓐ to join" screen rather than a world with no one in it.
+		all_local_left.emit()
 
 # ------------------------------------------------------------------
 # Peer lifecycle (server)
@@ -457,6 +500,7 @@ func select_profile(slot: int, key: String) -> void:
 func reset_to_disconnected() -> void:
 	roster = {}
 	local_inputs = {}
+	_seen_seats.clear()
 	# Clear the device->profile claims too. Leaving them behind made every
 	# reconnect hand the same controller a "#1" key, so the kid came back
 	# as a stranger with a random name and character.

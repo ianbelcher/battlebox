@@ -96,6 +96,14 @@ func _ready() -> void:
 	Net.connection_failed.connect(_on_connect_failed)
 	Net.server_disconnected.connect(_on_server_lost)
 	Game.roster_changed.connect(_on_roster_changed)
+	# Kicked the last local player (the ✕ in the world menu): tear the
+	# split screen down and put the join prompt back up. The connection
+	# stays — this machine is still watching the world, it just has
+	# nobody in it.
+	Game.all_local_left.connect(func() -> void:
+		if _split != null:
+			_split.update_layout()
+		_show_banner("You left the game — press Ⓐ or Space to join again", true))
 	_show_screen(_connect_screen)
 	# Straight into the world: no screen to read, no button to find.
 	var auto_url := OS.get_environment("WORLD_AUTOCONNECT")
@@ -899,10 +907,16 @@ func _process(_delta: float) -> void:
 		return
 	if world.match_phase == "LOBBY" or world.match_phase == "COUNTDOWN":
 		world.match_seconds = maxf(0.0, world.match_seconds - _delta)
-	# Friendly hop-in hint while it's just one player pottering about.
+	# Friendly hop-in hint while it's just one player pottering about —
+	# and ALWAYS when nobody from this machine is playing, because then
+	# it is the only thing telling you how to get back in.
 	if _join_hint != null:
-		_join_hint.visible = Game.local_inputs.size() == 1 \
-			and world.match_phase == "IDLE" and not Input.get_connected_joypads().is_empty()
+		var nobody := Game.local_inputs.is_empty()
+		_join_hint.visible = nobody or (Game.local_inputs.size() == 1
+			and world.match_phase == "IDLE"
+			and not Input.get_connected_joypads().is_empty())
+		_join_hint.text = "Press Ⓐ or Space to join the game" if nobody \
+			else "🎮  New player?  Press Ⓐ on another controller to hop in!"
 	# The per-player red warning lives in each PlayerHud now.
 	_storm_tint.color.a = 0.0
 	var clock: float = world.clock

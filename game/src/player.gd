@@ -668,13 +668,17 @@ func _local_move(delta: float) -> void:
 			blocked_h = true
 		else:
 			next = attempt
-	# Soft world edge: the ocean goes on forever visually, but players
-	# stop a little past the island so nobody swims off and gets lost.
-	var edge := Vector2(next.x, next.z)
-	if edge.length() > world.world_radius:
-		edge = edge.normalized() * world.world_radius
-		next.x = edge.x
-		next.z = edge.y
+	# The world edge. The slab is SQUARE, so clamp each axis on its own —
+	# which is also what makes you SLIDE along the wall when you walk into
+	# it at an angle, instead of stopping dead in the corner.
+	#
+	# This used to be a CIRCLE of world.world_radius, a fixed 250 or 400
+	# whatever the map's real size. On any smaller world you walked
+	# straight off the terrain, and the server then put you back at the
+	# spawn for being outside the map.
+	var half: float = world.world_half()
+	next.x = clampf(next.x, -half, half)
+	next.z = clampf(next.z, -half, half)
 	# Kid-friendly auto-hop: walking into a single block steps you up it —
 	# and swimming into a bank hops you out of the water.
 	if blocked_h and (on_floor or in_water) and dir.length_squared() > 0.01:

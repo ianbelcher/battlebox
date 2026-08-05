@@ -116,10 +116,11 @@ position, so one still running in the world that was just replaced will
 send coordinates from it. Neither is a substitute for placing them
 properly; they are there so no future path can strand anyone.
 
-**Test hook:** `WORLD_RESIZE_TEST=<size>` spawns four computer players,
+**Test hooks:** `WORLD_RESIZE_TEST=<size>` spawns four computer players,
 resizes the world after 12s, then logs every player's position and
-whether it is on the map. It is the only way to check the whole sequence
-without a person driving the menu.
+whether it is on the map. `WORLD_KICK_TEST=1` kicks the first human after
+15s. Both exist because these are whole-sequence behaviours that cannot
+be checked without a person driving the menu otherwise.
 
 **`ChunkStore.safe_stand()` is the only thing allowed to decide where a
 person ends up.** Joining, respawning, a match starting, a world reset —
@@ -138,6 +139,36 @@ falls back to it.
 truncates towards zero, so `int(-45.5)` is `-45` — a different column
 from the one `-45.5` sits in. Every coordinate west or north of the
 origin is off by one if you get this wrong, which is half the map.
+
+## The edge of the map
+
+**The slab is SQUARE, and each axis is clamped on its own** — which is
+what makes you SLIDE along the wall instead of stopping dead when you
+walk into it at an angle. `WorldNode.world_half()` is the only thing
+that decides how far you can walk.
+
+Players used to be stopped by a CIRCLE of `world_radius`, a fixed 250 or
+400 whatever the map's real size, so on any smaller world you strolled
+past the terrain — and the server, seeing somebody outside the map,
+teleported them to the spawn. Walking to the edge of your own world threw
+you into the middle of it. `world_radius` still exists for the ocean
+backdrop's draw distance; do not use it for anything else.
+
+`sv_pos()` quietly clamps a position just outside and only resets one
+WILDLY outside (32+ blocks), which is a stale world rather than a walk.
+
+## Leaving the game
+
+**The ✕ in the world menu gives up that player's SEAT on their own
+machine.** Three players become two, the split screen rebuilds, and if
+they were the last one there the join prompt comes back over a spectator
+view — the connection stays up.
+
+`Game._drop_kicked_seats()` only drops a seat it has SEEN confirmed in a
+roster broadcast and then watched vanish. Registration is a round trip
+and the server sends the roster on connect, before this machine's players
+are in it, so dropping seats on any missing id wiped every one of them
+the moment anybody was kicked.
 
 ## The look of the menus
 
