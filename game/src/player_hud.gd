@@ -23,6 +23,8 @@ var _death_flash: ColorRect
 var _death_t := 0.0
 var _was_down := false
 var _was_out := false
+## Set once the whole team is out and we have been lifted clear.
+var _team_gone_lifted := false
 var _heart_cells: Array = []
 var _selected_label: Label
 var _picker: BlockPicker
@@ -1438,10 +1440,16 @@ func _update_radar() -> void:
 	# The client has a ChunkView, not the server's store, so the world's
 	# extent comes from the battle config it was told about.
 	var half_world: int = int(world.client_size) / 2
+	# BLOCKS PER PIXEL, and it follows your VIEW zoom. Zooming in means
+	# you are looking further away, so the radar pulls BACK to cover more
+	# ground — about a third more at full zoom. It also starts wider than
+	# it used to (2.0 rather than 1.5), because at 192 blocks across you
+	# could not see enough of what was around you to be worth glancing at.
+	var span := 2.0 * (1.0 + 0.33 * (float(player.fp_zoom) / 3.0))
 	var image := Image.create(128, 128, false, Image.FORMAT_RGB8)
 	for py in 128:
 		for px in 128:
-			var off := Vector2(px - 64, py - 64).rotated(-yaw) * 1.5
+			var off := Vector2(px - 64, py - 64).rotated(-yaw) * span
 			var wx := int(center.x + off.x)
 			var wz := int(center.z + off.y)
 			# Off the edge of the world is BLACK. Both sources will
@@ -1470,7 +1478,7 @@ func _update_radar() -> void:
 		for angle_i in 200:
 			var a := angle_i * TAU / 200.0
 			var rs := Vector2(world.storm_center.x + cos(a) * ring - center.x,
-				world.storm_center.z + sin(a) * ring - center.z).rotated(yaw) / 1.5
+				world.storm_center.z + sin(a) * ring - center.z).rotated(yaw) / span
 			var rx := 64 + int(rs.x)
 			var ry := 64 + int(rs.y)
 			for ro in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]:
@@ -1490,8 +1498,8 @@ func _update_radar() -> void:
 				else Color("ff4426")
 			if team == my_team and my_team >= 0:
 				blip_color = blip_color.lightened(0.4)
-			_blip(image, center, yaw, child.position, blip_color, true)
-	_blip(image, center, yaw, player.position, Color.WHITE, true)
+			_blip(image, center, yaw, child.position, blip_color, true, span)
+	_blip(image, center, yaw, player.position, Color.WHITE, true, span)
 	_radar.texture = ImageTexture.create_from_image(image)
 	_update_clock()
 
@@ -1504,8 +1512,8 @@ func _update_clock() -> void:
 	_clock.text = "%s %02d:00 · %d playing" % ["☾" if night else "☀", hour, Game.roster.size()]
 
 func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color,
-		big := false) -> void:
-	var s := Vector2(pos.x - center.x, pos.z - center.z).rotated(yaw) / 1.5
+		big := false, span := 2.0) -> void:
+	var s := Vector2(pos.x - center.x, pos.z - center.z).rotated(yaw) / span
 	var px := 64 + int(s.x)
 	var py := 64 + int(s.y)
 	var r := 2 if big else 1
@@ -2192,6 +2200,29 @@ func _process(_delta: float) -> void:
 				else "⛑  DOWNED — a teammate can revive you!"
 		_was_down = down_now
 		_was_out = out_now
+		# WHOLE TEAM OUT? Then you are gone from the world entirely —
+		# lifted clear, body hidden, watching from above. While even one
+		# team-mate is still in it you stay down among them as a roaming
+		# ghost, which is the point of being able to talk each other onto
+		# a spot.
+		if out_now and not _team_gone_lifted:
+			var my_team := int(Game.roster.get(my_pid, {}).get("team", -2))
+			var mate_left := false
+			for rid: String in Game.roster.keys():
+				if rid != my_pid and int(Game.roster[rid].get("team", -2)) == my_team \
+						and world.alive_ids.has(rid):
+					mate_left = true
+					break
+			if not mate_left:
+				_team_gone_lifted = true
+				player.teleport(Vector3(player.position.x,
+					float(WorldGen.CHUNK_H) - 26.0, player.position.z))
+				player.fly_mode = true
+				player.visible = false
+		elif not out_now:
+			_team_gone_lifted = false
+			if not player.visible:
+				player.visible = true
 		_death_t = maxf(0.0, _death_t - _delta)
 		_death_note.visible = _death_t > 0.0
 		_death_flash.color.a = (minf(_death_t / 2.6, 1.0) * 0.4) if _death_t > 0.0 else 0.0

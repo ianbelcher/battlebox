@@ -24,7 +24,7 @@ From Ian, 5/8, testing a 6v6v6v6. Roughly in the order they spoil a game.
 - [x] **"N players left" disagrees with the teams.** Seven standing on
       the panel while the top line said thirteen. One definition,
       everywhere.
-- [ ] **Dead players should be able to move around and watch** —
+- [x] **Dead players should be able to move around and watch** —
       invisible, unable to shoot, free to wander back to their base and
       be revived there.
 
@@ -44,7 +44,7 @@ From Ian, 5/8, testing a 6v6v6v6. Roughly in the order they spoil a game.
       greyer — so the blips carry the picture.
 - [x] **Take the yellow dots off it** (loot, and whatever else is
       speckling it). It should read as a radar, not a satellite photo.
-- [ ] **Zooming with X/V should zoom the map too.**
+- [x] **Zooming with X/V should zoom the map too.**
 - [x] **A MAP TAB in the player menu**: pan with the right stick, zoom
       with up/down on the left.
 
@@ -60,7 +60,7 @@ From Ian, 5/8, testing a 6v6v6v6. Roughly in the order they spoil a game.
       get stuck against things and will not dig their way out.
 
 
-- [ ] **Space map — anything more?** Everything asked for is done: domes
+- [x] **Space map — anything more?** Everything asked for is done: domes
       sit on the ground, loot stays off roofs and hulls, landmarks are on
       a 56-block grid so a map gets several caverns, the cavern entrance
       is a ramped archway, ships have hulls, cockpits, fins and engines

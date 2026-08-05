@@ -741,64 +741,102 @@ func _space_landmark(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 				data[idx(lx, base + 1, lz)] = Blocks.GLOWSTONE
 		return
 	if roll < 0.72:
-		# Underground base: a proper CAVERN you climb down into, not a
-		# cupboard. A ramped entryway cut into the hillside leads to a
-		# steel-floored hall big enough to build in and get lost in.
-		var half := 26
+		# UNDERGROUND COMMAND CENTRE. Not one big square hall — that read
+		# as a warehouse and there was nothing to find in it. This is a
+		# warren: small rooms three to four blocks high, four-by-three at
+		# the smallest, joined by corridors, spread over THREE levels
+		# with stepped shafts between them (one step down every two
+		# blocks, so you walk rather than fall).
+		#
+		# The layout is a pure function of the anchor, like every other
+		# landmark here, so it generates the same across chunk borders
+		# without anything needing to remember it.
+		var half := 30
 		if absi(dx) > half or absi(dz) > half:
 			return
-		var floor_y := 6
-		var roof_y := floor_y + 15
-		var edge := maxi(absi(dx), absi(dz))
-		# The entry: a trench sloping down from the surface on the north
-		# side, opening into the hall.
-		if absi(dx) <= 5 and dz < 0:
-			var t := float(-dz) / float(half)      # 0 at the hall, 1 outside
-			# The FLOOR slopes: a ramp you walk down, not a shaft you
-			# fall into. It used to be a flat trench with the roof cut
-			# away, which read as a hole rather than an entrance.
-			var ramp := int(lerpf(float(floor_y), float(h), t))
-			var head := ramp + 6
+		var deck_gap := 7             # vertical spacing between levels
+		var top_deck := 22            # floor height of the top level
+		# Only where there is enough rock ON TOP. Carve this into low
+		# ground and the upper rooms come out above the surface as
+		# floating steel platforms, which is not an underground base.
+		if height_at(cx, cz) < top_deck + 8:
+			return
+		# Which level does this column belong to? Rooms are laid out on a
+		# 10-block grid, and each grid cell picks its own level so the
+		# place steps up and down as you walk through it.
+		var gx := floori(float(dx + half) / 10.0)
+		var gz := floori(float(dz + half) / 10.0)
+		var cell_roll := hash01(cx + gx * 37, cz + gz * 91, 610)
+		if cell_roll < 0.22:
+			return                     # solid rock: not every cell is a room
+		var level := int(hash01(cx + gx * 13, cz + gz * 57, 611) * 3.0)
+		var floor_y := top_deck - level * deck_gap
+		# THE WAY IN: a stepped cut from the surface on the north side,
+		# down to the top deck, with a ribbed arch over it so it reads as
+		# a built entrance from a long way off. Without this the whole
+		# place is sealed and there is no point to any of it.
+		if dz < -half + 14 and absi(dx) <= 5:
+			var run := float(dz + half) / 14.0        # 0 outside, 1 at the rooms
+			var step_y := int(lerpf(float(h) + 1.0, float(top_deck), run))
+			# One tread every two blocks, not a slide.
+			step_y -= posmod(step_y, 1)
 			if absi(dx) <= 3:
-				for y in range(mini(ramp, CHUNK_H), mini(head, CHUNK_H)):
+				for y in range(mini(step_y, CHUNK_H), mini(step_y + 6, CHUNK_H)):
 					data[idx(lx, y, lz)] = Blocks.AIR
-				if ramp - 1 > 0:
-					data[idx(lx, ramp - 1, lz)] = Blocks.STEEL
-				# A ribbed ARCH over the cut, every few blocks, so it
-				# reads as a built entrance from a long way off.
+				if step_y - 1 > 0:
+					data[idx(lx, step_y - 1, lz)] = Blocks.STEEL
 				if posmod(dz, 5) == 0:
-					var span := 3 - absi(dx)
-					var arc := head - 1 + span
+					var arc := step_y + 5 + (3 - absi(dx))
 					if arc < CHUNK_H:
 						data[idx(lx, arc, lz)] = Blocks.STEEL
-					if absi(dx) == 3 and ramp + 2 < CHUNK_H:
-						data[idx(lx, ramp + 2, lz)] = Blocks.GLOWSTONE
+					if absi(dx) == 3 and step_y + 2 < CHUNK_H:
+						data[idx(lx, step_y + 2, lz)] = Blocks.GLOWSTONE
 			elif posmod(dz, 5) == 0:
-				# The shoulders of the arch: solid piers either side.
-				for y in range(mini(ramp, CHUNK_H), mini(head + 1, CHUNK_H)):
+				for y in range(mini(step_y, CHUNK_H), mini(step_y + 7, CHUNK_H)):
 					data[idx(lx, y, lz)] = Blocks.STEEL
 			return
-		if edge > half - 2:
-			return                                  # solid rock wall
-		# The hall itself: hollow it out and floor it.
-		for y in range(floor_y, mini(roof_y + 1, CHUNK_H)):
-			data[idx(lx, y, lz)] = Blocks.AIR
-		if floor_y - 1 > 0:
-			data[idx(lx, floor_y - 1, lz)] = Blocks.STEEL
-		data[idx(lx, roof_y, lz)] = Blocks.STONE
-		# Pillars holding the roof up, and lights between them.
-		if posmod(dx, 9) == 0 and posmod(dz, 9) == 0:
-			for y in range(floor_y, roof_y):
-				data[idx(lx, y, lz)] = Blocks.STEEL
-		elif posmod(dx + 4, 9) == 0 and posmod(dz + 4, 9) == 0 \
-				and roof_y - 1 < CHUNK_H:
-			data[idx(lx, roof_y - 1, lz)] = Blocks.GLOWSTONE
-		# A glowing core at the very centre — somewhere to head for.
-		if absi(dx) <= 2 and absi(dz) <= 2 and floor_y + 3 < CHUNK_H:
-			data[idx(lx, floor_y, lz)] = Blocks.CRYSTAL_BLUE
-			if absi(dx) <= 1 and absi(dz) <= 1:
-				data[idx(lx, floor_y + 1, lz)] = Blocks.GLOWSTONE
+		# Position inside this 10-block cell.
+		var ix := posmod(dx + half, 10)
+		var iz := posmod(dz + half, 10)
+		# The ROOM: 6x5 of the 10, leaving a 4-block wall between cells
+		# that the corridors punch through.
+		var in_room: bool = ix >= 2 and ix <= 7 and iz >= 2 and iz <= 6
+		# CORRIDORS: a 2-wide way out of each room on both axes.
+		var in_hall_x: bool = iz >= 4 and iz <= 5
+		var in_hall_z: bool = ix >= 4 and ix <= 5
+		var head := 3 + int(hash01(cx + gx, cz + gz, 612) * 2.0)   # 3 or 4 high
+		if in_room or in_hall_x or in_hall_z:
+			for y in range(floor_y, mini(floor_y + head + 1, CHUNK_H)):
+				data[idx(lx, y, lz)] = Blocks.AIR
+			if floor_y - 1 > 0:
+				data[idx(lx, floor_y - 1, lz)] = Blocks.STEEL
+			if floor_y + head + 1 < CHUNK_H:
+				data[idx(lx, floor_y + head + 1, lz)] = Blocks.STONE
+			# Lights down the middle of the corridors and in room corners.
+			if in_room and (ix == 2 or ix == 7) and (iz == 2 or iz == 6) \
+					and floor_y + head < CHUNK_H:
+				data[idx(lx, floor_y + head, lz)] = Blocks.GLOWSTONE
+			elif not in_room and posmod(dx + dz, 6) == 0 and floor_y + head < CHUNK_H:
+				data[idx(lx, floor_y + head, lz)] = Blocks.GLOWSTONE
+			# Consoles: a bank of screens against one wall of some rooms.
+			if in_room and iz == 2 and ix >= 3 and ix <= 6 \
+					and cell_roll > 0.72 and floor_y + 1 < CHUNK_H:
+				data[idx(lx, floor_y, lz)] = Blocks.STEEL
+				data[idx(lx, floor_y + 1, lz)] = Blocks.CRYSTAL_BLUE
+			return
+		# STEPPED SHAFTS between the levels, in the wall between cells:
+		# one step down every two blocks, so it is a staircase and not a
+		# hole. Only on the cell corners, so they are easy to find again.
+		if (ix == 0 or ix == 9) and (iz == 0 or iz == 9):
+			var step_floor := top_deck - 2 * deck_gap
+			for y in range(step_floor, mini(top_deck + 5, CHUNK_H)):
+				data[idx(lx, y, lz)] = Blocks.AIR
+			var tread := step_floor + int(float(posmod(dx + dz, 2 * deck_gap * 2)) * 0.5)
+			if tread < CHUNK_H:
+				data[idx(lx, tread, lz)] = Blocks.STEEL
+			return
 		return
+
 	# SPACESHIP parked in the sky — the thing this map is supposed to be
 	# about. The old one was a 16x6 slab with a glass lid, which read as a
 	# floating table. This one has a shape: a tapered hull, a raised

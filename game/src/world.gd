@@ -2777,9 +2777,13 @@ func cl_eliminated(id: String) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id:
 			if child.is_local:
-				# Spectate from the sky while the team fights on.
-				child.teleport(storm_center + Vector3(0.5, 70.0, 0.5))
+				# Out, but not gone: stay where you fell and wander. You
+				# can fly, you cannot touch anything, and nobody can see
+				# you — so you can go and watch a team-mate, or talk them
+				# onto the spot where you went down. Being flung seventy
+				# blocks into the sky meant "out" also meant "bored".
 				child.fly_mode = true
+				child.velocity = Vector3.ZERO
 				Sfx.play("drop", -6.0)
 			else:
 				# The fallen are invisible to everyone still playing, and
