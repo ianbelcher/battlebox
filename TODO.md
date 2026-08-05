@@ -13,15 +13,15 @@ From Ian, 5/8, testing a 6v6v6v6. Roughly in the order they spoil a game.
 
 ### The match itself
 
-- [ ] **A battle must NOT end when the last human dies.** The computer
+- [x] **A battle must NOT end when the last human dies.** The computer
       players carry on and finish it; the humans watch. Ending it there
       is why a game stopped with teams still standing.
-- [ ] **Nobody is ever removed from a team.** A whole team "disappeared"
+- [x] **Nobody is ever removed from a team.** A whole team "disappeared"
       mid-match. Only a HUMAN may leave a game.
-- [ ] **`alive / total` is wrong.** The alive number looks right; the
+- [x] **`alive / total` is wrong.** The alive number looks right; the
       total is not. Total should be the SIZE OF THE TEAM and stay put all
       match, so a wiped team reads 0/6 and is still listed.
-- [ ] **"N players left" disagrees with the teams.** Seven standing on
+- [x] **"N players left" disagrees with the teams.** Seven standing on
       the panel while the top line said thirteen. One definition,
       everywhere.
 - [ ] **Dead players should be able to move around and watch** —
@@ -30,31 +30,31 @@ From Ian, 5/8, testing a 6v6v6v6. Roughly in the order they spoil a game.
 
 ### Loot and the hotbar
 
-- [ ] **Picking loot up must not SELECT it.** Mid-fight your weapon
+- [x] **Picking loot up must not SELECT it.** Mid-fight your weapon
       switches out from under you.
-- [ ] **Never two of the same weapon in the hotbar.** Collecting a
+- [x] **Never two of the same weapon in the hotbar.** Collecting a
       duplicate still denies it to everyone else; it just does not stack
       up in the bar.
-- [ ] **The Tools tab should let you pick what you have collected.** It
+- [x] **The Tools tab should let you pick what you have collected.** It
       is currently not selectable at all in a battle.
 
 ### The map in the corner
 
-- [ ] **Bigger, and readable.** Wash the terrain out — lower contrast,
+- [x] **Bigger, and readable.** Wash the terrain out — lower contrast,
       greyer — so the blips carry the picture.
-- [ ] **Take the yellow dots off it** (loot, and whatever else is
+- [x] **Take the yellow dots off it** (loot, and whatever else is
       speckling it). It should read as a radar, not a satellite photo.
 - [ ] **Zooming with X/V should zoom the map too.**
-- [ ] **A MAP TAB in the player menu**: pan with the right stick, zoom
+- [x] **A MAP TAB in the player menu**: pan with the right stick, zoom
       with up/down on the left.
 
 ### Elsewhere
 
-- [ ] **The final scoreboard vanishes too fast.** Also wanted as a TAB in
+- [x] **The final scoreboard vanishes too fast.** Also wanted as a TAB in
       the player menu, so it can be read whenever.
-- [ ] **The sword's tip is on backwards** — the cone points back down the
+- [x] **The sword's tip is on backwards** — the cone points back down the
       blade instead of out.
-- [ ] **The paint sprayer only paints some blocks.** It should cover far
+- [x] **The paint sprayer only paints some blocks.** It should cover far
       more of them.
 - [ ] **Computer players go stupid when running from the storm** — they
       get stuck against things and will not dig their way out.

@@ -137,6 +137,20 @@ func _init(p_category := "blocks") -> void:
 ## quarter-screen cells and huge fullscreen windows both read well.
 var _chip_px := 44.0
 
+## In a battle you may only choose a weapon you are actually carrying.
+## Empty means "anything goes" (creative, and every other tab).
+var allowed_ids: Array = []
+
+func set_allowed(ids: Array) -> void:
+	allowed_ids = ids
+	if visible:
+		_refresh()
+
+func _allowed(index: int) -> bool:
+	if allowed_ids.is_empty():
+		return true
+	return int(entries[index].id) in allowed_ids
+
 func fit(avail: Vector2) -> void:
 	# Width decides the chip size (the columns must fit); running out of
 	# HEIGHT just means the grid scrolls, so chips never shrink for it.
@@ -194,6 +208,11 @@ func poll(input: InputSlot, delta: float) -> void:
 		_select()
 
 func _select() -> void:
+	if not _allowed(focus_index):
+		# Not yours: a flat click rather than the pick sound, so it is
+		# obvious nothing happened and why.
+		Sfx.play("tick", -18.0)
+		return
 	Sfx.play("pop", -4.0)
 	picked.emit(entries[focus_index])
 
@@ -228,5 +247,8 @@ func _refresh() -> void:
 			style.bg_color = UiTheme.SURFACE_2
 			style.border_color = UiTheme.LINE
 			style.set_border_width_all(1)
+		# Anything you are not carrying is greyed right back, so the ones
+		# you can actually switch to stand out.
+		chip.modulate = Color.WHITE if _allowed(i) else Color(1, 1, 1, 0.28)
 		style.set_corner_radius_all(maxi(6, int(_chip_px * 0.14)))
 		chip.add_theme_stylebox_override("panel", style)

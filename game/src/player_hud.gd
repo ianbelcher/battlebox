@@ -58,8 +58,10 @@ var _opt_tabs: TabContainer
 var _char_tabs: TabContainer
 var _video_tabs: TabContainer
 const PAGE_CHARACTER := 7
+const PAGE_SCORES := 8
+const PAGE_MAP := 9
 const _PAGES := [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6],
-	[0, 7]]
+	[0, 7], [0, 8], [0, 9]]
 var _prev_picker := false
 var _prev_menu := false
 
@@ -449,6 +451,8 @@ func _ready() -> void:
 		_pickers.append(picker)
 	_picker = _pickers[0]
 	_build_character_tab()
+	_build_scores_tab()
+	_build_map_tab()
 	# The controls line, the same shape the Escape menu uses.
 	_menu_shell.add_child(UiTheme.hint_row(["Ⓐ / Click", "Choose",
 		"LB  RB", "Tabs", "Ⓧ", "Close"], _menu_scale))
@@ -710,7 +714,17 @@ func _toggle_menu(player: Player, open_tab: int) -> void:
 		return
 	_menu.visible = true
 	_menu_dim.visible = true
-	_build_tabs.set_tab_disabled(0, world != null and world.match_phase != "IDLE")
+	# The Tools tab stays OPEN in a battle. It used to be disabled
+	# outright, so there was no way to look at — let alone switch to —
+	# the weapons you had picked up. What a battle restricts is WHICH
+	# ones you may choose: only the ones you are carrying.
+	_build_tabs.set_tab_disabled(0, false)
+	var owned: Array = []
+	if world != null and world.match_phase != "IDLE":
+		for entry_slot: Dictionary in player.slots:
+			if str(entry_slot.kind) == "weapon":
+				owned.append(int(entry_slot.id))
+	_pickers[0].set_allowed(owned)
 	_refresh_preview()
 	player.ui_locked = true
 	# picker.open() flips child visibility, which yanks the TabContainer onto
@@ -1098,6 +1112,15 @@ func _set_page(page: int) -> void:
 	_inner_tabs(spec[0]).current_tab = spec[1]
 	if page == PAGE_CHARACTER:
 		_scroll_to_character.call_deferred()
+	elif page == PAGE_MAP:
+		var me := _player()
+		if me != null:
+			_map_centre = Vector2(me.position.x, me.position.z)
+		# Open showing the WHOLE world, not an arbitrary zoom — you open
+		# the map to find out where things are.
+		if world != null:
+			_map_zoom = clampf(float(world.client_size) / 300.0, 0.4, 8.0)
+		_map_tick = 0.0
 
 func _page_disabled(page: int) -> bool:
 	var spec: Array = _PAGES[clampi(page, 0, _PAGES.size() - 1)]
@@ -1110,6 +1133,244 @@ func _add_section(tab: Control, title: String) -> void:
 	lbl.add_theme_color_override("font_color", Color("ffd166"))
 	tab.add_child(lbl)
 	tab.add_child(HSeparator.new())
+
+## The league table, in the player's OWN menu — the end-of-match panel
+## is gone in ten seconds and the Escape menu belongs to the grown-up
+## sorting the table out. This is where a kid actually looks.
+var _scores_box: VBoxContainer
+var _scores_sig := ""
+
+func _build_scores_tab() -> void:
+	var page := MarginContainer.new()
+	page.name = "Scores"
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		page.add_theme_constant_override(side, _ms(14))
+	_opt_tabs.add_child(page)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	page.add_child(scroll)
+	_scores_box = VBoxContainer.new()
+	_scores_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scores_box.add_theme_constant_override("separation", _ms(10))
+	scroll.add_child(_scores_box)
+
+func _refresh_scores_tab() -> void:
+	if _scores_box == null or world == null:
+		return
+	var sig := "%d|%s|%s" % [int(world.matches_played), str(world.team_wins),
+		str(world.player_frags)]
+	if sig == _scores_sig:
+		return
+	_scores_sig = sig
+	for child in _scores_box.get_children():
+		child.queue_free()
+	var split := HBoxContainer.new()
+	split.add_theme_constant_override("separation", _ms(16))
+	_scores_box.add_child(split)
+
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.add_theme_constant_override("separation", _ms(5))
+	split.add_child(left)
+	left.add_child(_scores_head("GAMES WON"))
+	var teams: Array = []
+	for t in int(world.team_count):
+		teams.append(t)
+	teams.sort_custom(func(a: int, b: int) -> bool:
+		return int(world.team_wins.get(a, 0)) > int(world.team_wins.get(b, 0)))
+	for t: int in teams:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", _ms(8))
+		left.add_child(row)
+		var team_label := Label.new()
+		team_label.text = str(world.client_team_names[t]) \
+			if t < world.client_team_names.size() else str(t + 1)
+		team_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		team_label.add_theme_font_size_override("font_size",
+			UiTheme.px(UiTheme.T_LABEL, _menu_scale))
+		if t < WorldNode.TEAM_COLORS.size():
+			team_label.add_theme_color_override("font_color", WorldNode.TEAM_COLORS[t])
+		row.add_child(team_label)
+		var wins := Label.new()
+		wins.text = str(int(world.team_wins.get(t, 0)))
+		wins.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		wins.add_theme_font_size_override("font_size",
+			UiTheme.px(UiTheme.T_BODY, _menu_scale))
+		wins.add_theme_color_override("font_color", UiTheme.ACCENT)
+		wins.custom_minimum_size = Vector2(_ms(50), 0)
+		row.add_child(wins)
+
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.size_flags_stretch_ratio = 1.5
+	right.add_theme_constant_override("separation", _ms(5))
+	split.add_child(right)
+	right.add_child(_scores_head("KNOCKOUTS"))
+	var names: Array = world.player_frags.keys()
+	if names.is_empty():
+		var none := Label.new()
+		none.text = "Nobody has knocked anybody out yet."
+		none.add_theme_font_size_override("font_size",
+			UiTheme.px(UiTheme.T_LABEL, _menu_scale))
+		none.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+		right.add_child(none)
+		return
+	names.sort_custom(func(a: String, b: String) -> bool:
+		var ta := int(world.player_frags[a].get("total", 0))
+		var tb := int(world.player_frags[b].get("total", 0))
+		if ta != tb:
+			return ta > tb
+		return a < b)
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", _ms(12))
+	grid.add_theme_constant_override("v_separation", _ms(4))
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_child(grid)
+	for head_text in ["Player", "Team", "This game", "Total"]:
+		var head := Label.new()
+		head.text = str(head_text)
+		head.add_theme_font_size_override("font_size",
+			UiTheme.px(UiTheme.T_NOTE, _menu_scale))
+		head.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+		if head_text != "Player":
+			head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		grid.add_child(head)
+	for who: String in names:
+		var row_data: Dictionary = world.player_frags[who]
+		var team := int(row_data.get("team", -1))
+		var team_name := str(world.client_team_names[team]) \
+			if team >= 0 and team < world.client_team_names.size() else "—"
+		var tint: Color = WorldNode.TEAM_COLORS[team] \
+			if team >= 0 and team < WorldNode.TEAM_COLORS.size() else UiTheme.INK_DIM
+		for spec in [[who, HORIZONTAL_ALIGNMENT_LEFT, UiTheme.INK],
+				[team_name, HORIZONTAL_ALIGNMENT_RIGHT, tint],
+				[str(int(row_data.get("last", 0))), HORIZONTAL_ALIGNMENT_RIGHT, UiTheme.ACCENT],
+				[str(int(row_data.get("total", 0))), HORIZONTAL_ALIGNMENT_RIGHT, UiTheme.INK_DIM]]:
+			var cell := Label.new()
+			cell.text = str(spec[0])
+			cell.horizontal_alignment = spec[1]
+			cell.add_theme_font_size_override("font_size",
+				UiTheme.px(UiTheme.T_LABEL, _menu_scale))
+			cell.add_theme_color_override("font_color", spec[2])
+			if spec[1] == HORIZONTAL_ALIGNMENT_LEFT:
+				cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			grid.add_child(cell)
+
+func _scores_head(text: String) -> Label:
+	var head := Label.new()
+	head.text = text
+	head.add_theme_font_size_override("font_size",
+		UiTheme.px(UiTheme.T_HEADING, _menu_scale))
+	head.add_theme_color_override("font_color", UiTheme.INK_DIM)
+	return head
+
+## A BIG map you can move around: pan with the right stick (or drag),
+## zoom with up/down on the left stick. The corner radar only ever shows
+## what is right around you; this is for working out where to go.
+var _map_tex: TextureRect
+var _map_label: Label
+var _map_centre := Vector2.ZERO
+var _map_zoom := 2.0          # blocks per pixel
+var _map_tick := 0.0
+
+func _build_map_tab() -> void:
+	var page := MarginContainer.new()
+	page.name = "Map"
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		page.add_theme_constant_override(side, _ms(14))
+	_opt_tabs.add_child(page)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", _ms(8))
+	page.add_child(box)
+	_map_tex = TextureRect.new()
+	_map_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_map_tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_map_tex.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_map_tex.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_map_tex.mouse_filter = Control.MOUSE_FILTER_STOP
+	_map_tex.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseMotion \
+				and event.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			_map_centre -= event.relative * _map_zoom
+		elif event is InputEventMouseButton and event.pressed:
+			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+				_map_zoom = clampf(_map_zoom * 0.8, 0.5, 8.0)
+			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				_map_zoom = clampf(_map_zoom * 1.25, 0.5, 8.0))
+	box.add_child(_map_tex)
+	_map_label = Label.new()
+	_map_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_map_label.add_theme_font_size_override("font_size",
+		UiTheme.px(UiTheme.T_NOTE, _menu_scale))
+	_map_label.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+	_map_label.text = "Right stick moves · left stick up/down zooms · drag to pan"
+	box.add_child(_map_label)
+
+## Stick control while the map page is open.
+func _poll_map_nav(input: InputSlot, delta: float) -> void:
+	var pan := input.get_look_vector()
+	if pan.length() > 0.15:
+		_map_centre += pan * _map_zoom * 260.0 * delta
+	var zoom := input.get_move_vector()
+	if absf(zoom.y) > 0.35:
+		_map_zoom = clampf(_map_zoom * (1.0 + zoom.y * delta * 1.6), 0.5, 8.0)
+	_map_tick -= delta
+	if _map_tick <= 0.0:
+		_map_tick = 0.25
+		_draw_big_map()
+
+func _draw_big_map() -> void:
+	if _map_tex == null or world == null or world.chunks == null:
+		return
+	var size_px := 320
+	var image := Image.create(size_px, size_px, false, Image.FORMAT_RGB8)
+	var half := float(int(world.client_size) / 2)
+	for py in size_px:
+		for px in size_px:
+			var wx := int(_map_centre.x + float(px - size_px / 2) * _map_zoom)
+			var wz := int(_map_centre.y + float(py - size_px / 2) * _map_zoom)
+			image.set_pixel(px, py, _map_ground(wx, wz, half))
+	# Everyone playing, as a fat blip — this is a radar, the ground is
+	# only there so you can tell where the blips ARE.
+	for child in world.players.get_children():
+		if child is Player and not world.ghost_ids.has(child.player_id):
+			var team := int(Game.roster.get(child.player_id, {}).get("team", -1))
+			var tint: Color = WorldNode.TEAM_COLORS[team] if team >= 0 \
+				else Color.WHITE
+			_map_blip(image, child.position, tint, size_px, child.is_local)
+	_map_tex.texture = ImageTexture.create_from_image(image)
+
+func _map_ground(wx: int, wz: int, half: float) -> Color:
+	if absf(float(wx)) > half or absf(float(wz)) > half:
+		return Color(0.03, 0.035, 0.05)
+	var block: int = world.chunks.top_block(wx, wz)
+	if block <= 0:
+		block = world.overview_block(wx, wz)
+	if block <= 0:
+		return Color(0.07, 0.08, 0.11)
+	# Washed right out: a low-contrast grey-blue wash of the terrain, so
+	# the coloured blips are the only strong thing on it. At full colour
+	# the map was a speckled mess nobody could read.
+	var raw := Blocks.top_color_of(block)
+	var grey := raw.get_luminance()
+	return Color(grey * 0.42 + 0.10, grey * 0.44 + 0.11, grey * 0.48 + 0.14)
+
+func _map_blip(image: Image, at: Vector3, tint: Color, size_px: int,
+		mine: bool) -> void:
+	var px := size_px / 2 + int((at.x - _map_centre.x) / _map_zoom)
+	var py := size_px / 2 + int((at.z - _map_centre.y) / _map_zoom)
+	var r := 3 if mine else 2
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			if dx * dx + dy * dy > r * r:
+				continue
+			var x := px + dx
+			var y := py + dy
+			if x < 0 or x >= size_px or y < 0 or y >= size_px:
+				continue
+			var edge: bool = dx * dx + dy * dy > (r - 1) * (r - 1)
+			image.set_pixel(x, y, Color.BLACK if edge else tint)
 
 func _refresh_preview() -> void:
 	if _preview_viewport == null:
@@ -1193,10 +1454,16 @@ func _update_radar() -> void:
 				block = world.chunks.top_block(wx, wz)
 				if block <= 0:
 					block = world.overview_block(wx, wz)
+			# WASHED OUT ON PURPOSE. At full colour, with per-block noise
+			# on top, this was a speckled mess you could not read anything
+			# off. The ground is now a low-contrast grey-blue wash — enough
+			# to make out coastlines and buildings — so the only strong
+			# colours on the radar are the players.
 			var color := Color(0.06, 0.07, 0.1)
 			if block > 0:
-				color = Blocks.top_color_of(block).darkened(
-					WorldGen.hash01(wx, wz, 9) * 0.22)
+				var grey := Blocks.top_color_of(block).get_luminance()
+				color = Color(grey * 0.42 + 0.10, grey * 0.44 + 0.11,
+					grey * 0.48 + 0.14)
 			image.set_pixel(px, py, color)
 	if world.match_phase == "BATTLE" and world.storm_radius > 0.0:
 		var ring: float = world.storm_radius
@@ -1209,10 +1476,10 @@ func _update_radar() -> void:
 			for ro in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]:
 				if rx + ro.x >= 0 and rx + ro.x < 128 and ry + ro.y >= 0 and ry + ro.y < 128:
 					image.set_pixel(rx + ro.x, ry + ro.y, Color(1.0, 0.25, 0.2))
-	if world.crates != null:
-		for crate in world.crates.get_children():
-			if crate is Node3D:
-				_blip(image, center, yaw, crate.position, Color("ffd166"))
+	# NO LOOT ON THE RADAR. Every crate drew a gold dot, and with loot
+	# rationed by map area that is a screenful of yellow speckle you
+	# cannot pick a player out of. Crates carry a coloured beam in the
+	# world itself; that is where you look for them.
 	var my_team := int(Game.roster.get(Game.player_id(multiplayer.get_unique_id(), slot),
 		{}).get("team", -1))
 	for child in world.players.get_children():
@@ -1470,22 +1737,19 @@ func _refresh_team_panel() -> void:
 		child.queue_free()
 	var names: Array = world.client_team_names
 	for t in names.size():
-		# "standing / still in the game". A DOWNED player is still in
-		# alive_ids — they can be revived — so counting that alone left
-		# every team reading 8/8 however many you had put on the floor.
-		# Anyone eliminated or gone drops out of both numbers, so a team
-		# of eight that loses one reads 5/7, not 5/8: the first number is
-		# who can shoot back, the second is how many you still have to
-		# put down to finish them.
+		# STANDING / TEAM SIZE. The second number is how many are ON the
+		# team and does not move all match, so a wiped team reads 0/6 and
+		# STAYS LISTED — counting only the survivors made whole teams
+		# vanish from the panel, which read as players being dropped from
+		# the game. The first number is who can still shoot back: not
+		# downed, not eliminated.
 		var alive := 0
 		var total := 0
 		for rid: String in Game.roster.keys():
 			if int(Game.roster[rid].get("team", -1)) != t:
 				continue
-			if not world.alive_ids.has(rid):
-				continue
 			total += 1
-			if not world.client_downed.has(rid):
+			if world.alive_ids.has(rid) and not world.client_downed.has(rid):
 				alive += 1
 		if total == 0:
 			continue
@@ -1795,6 +2059,10 @@ func _process(_delta: float) -> void:
 				_pickers[page].poll(input, _delta)
 			elif page == PAGE_CHARACTER:
 				_poll_character_nav(input, _delta)
+			elif page == PAGE_MAP:
+				_poll_map_nav(input, _delta)
+			elif page == PAGE_SCORES:
+				_refresh_scores_tab()
 			else:
 				_poll_page_nav(input, _delta)
 	if not _menu.visible and player.ui_locked:
@@ -1941,28 +2209,38 @@ func _process(_delta: float) -> void:
 			# from both, so a team of four that loses one reads 2/3, not
 			# 2/4: the number tells you how many you'd have to drop to
 			# finish the team off.
+			# ONE definition of "alive", used here and on the team panel:
+			# standing means still in the match AND not downed. Your team's
+			# second number is the SIZE OF THE TEAM, and "players left"
+			# counts standing players everywhere.
+			#
+			# These used to measure three different things — your team's
+			# survivors, your team's still-in, and the whole match's
+			# still-in — so the panel could show seven while the line said
+			# thirteen, with nothing on screen explaining the difference.
 			var mates_alive := 0
 			var mates_total := 0
+			var standing := 0
 			for rid: String in Game.roster.keys():
+				var up: bool = world.alive_ids.has(rid) \
+					and not world.client_downed.has(rid)
+				if up:
+					standing += 1
 				if int(Game.roster[rid].get("team", -2)) != team:
 					continue
-				if not world.alive_ids.has(rid):
-					continue          # eliminated, or left — as if never there
 				mates_total += 1
-				if not world.client_downed.has(rid):
+				if up:
 					mates_alive += 1
 			var team_name := "?"
 			if team >= 0 and team < world.client_team_names.size():
 				team_name = str(world.client_team_names[team])
-			# Players left = everyone still IN the match, downed included:
-			# they can be revived and start shooting again.
 			# The flag glyph is always red, so tint the whole label to the
 			# team's colour — a red flag over "Blue" told you nothing.
 			if team >= 0 and team < WorldNode.TEAM_COLORS.size():
 				_score_label.add_theme_color_override("font_color",
 					WorldNode.TEAM_COLORS[team])
-			_score_label.text = "%s  %d/%d alive   ·   %d players left" % [
-				team_name, mates_alive, mates_total, world.alive_ids.size()]
+			_score_label.text = "%s  %d/%d alive   ·   %d still standing" % [
+				team_name, mates_alive, mates_total, standing]
 	if _vignette != null and world != null:
 		# The hurt vignette: strongest when hearts are low, eases back as
 		# regen tops you up.
@@ -1995,7 +2273,9 @@ func _process(_delta: float) -> void:
 			_menu_scale = want_scale
 			_menu.theme = UiTheme.build(_menu_scale)
 			_menu.add_theme_stylebox_override("panel", UiTheme.panel_box(_menu_scale))
-		var map_px := clampf(size.y * 0.24, 110.0, 380.0)
+		# Bigger: a quarter of the cell's height was too small to read
+		# anything off at a glance.
+		var map_px := clampf(size.y * 0.32, 150.0, 460.0)
 		# Hotbar chips scale with the cell so small screens aren't swamped.
 		var chip_px := clampf(size.y * 0.045, 30.0, 64.0)
 		for hb_frame in _chips:

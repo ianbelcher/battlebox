@@ -266,8 +266,12 @@ static func build(kind: String, id: int) -> Node3D:
 			root.add_child(_box(Vector3(0.085, 0.028, 0.30), Color("dfe6f0"), Vector3(0, 0, -0.19)))
 			root.add_child(_box(Vector3(0.068, 0.030, 0.26), Color("eef3fa"), Vector3(0, 0, -0.46)))
 			root.add_child(_box(Vector3(0.026, 0.034, 0.52), Color("ffffff"), Vector3(0, 0, -0.32), true))
-			# The point.
-			root.add_child(_cyl(0.0, 0.034, 0.13, Color("f7fafd"), Vector3(0, 0, -0.65), Vector3(90, 0, 0)))
+			# The point. The cone's ZERO radius has to be the end furthest
+			# from the grip — built the other way round it reads as a
+			# funnel stuck on the end of the blade, which is exactly what
+			# it looked like.
+			root.add_child(_cyl(0.034, 0.0, 0.13, Color("f7fafd"),
+				Vector3(0, 0, -0.65), Vector3(90, 0, 0)))
 		18:  # Paint sprayer: a pressure canister with a gauge, a hose and
 			# a proper trigger handle.
 			root.add_child(_cyl(0.085, 0.085, 0.3, Color("60d394"), Vector3(0, 0.08, 0.02), Vector3(90, 0, 0)))

@@ -679,10 +679,7 @@ func sv_shot(slot: int, cell: Vector3i, kind: int) -> void:
 						if Vector3(dx, dy, dz).length() > 3.2:
 							continue
 						var pos: Vector3i = cell + Vector3i(dx, dy, dz)
-						var block := store.get_block(pos)
-						if block != Blocks.AIR and Blocks.is_breakable(block) \
-								and Blocks.hardness(block) == 0 and not Blocks.is_liquid(block) \
-								and not Blocks.is_cross(block):
+						if _paintable(pos):
 							var wool: int = wools[randi() % wools.size()]
 							store.set_block(pos, wool)
 							pairs.append([pos, wool])
@@ -977,9 +974,15 @@ func _team_wool(id: String) -> int:
 ## anyone built out of a hard material.
 func _paintable(pos: Vector3i) -> bool:
 	var block := store.get_block(pos)
-	return block != Blocks.AIR and Blocks.is_breakable(block) \
-		and Blocks.hardness(block) == 0 and not Blocks.is_liquid(block) \
-		and not Blocks.is_cross(block)
+	if block == Blocks.AIR or Blocks.is_liquid(block) or Blocks.is_cross(block):
+		return false
+	if not Blocks.is_breakable(block):
+		return false
+	# Anything you could dig. It used to insist on hardness 0, which is
+	# soil and sand and not much else — so the sprayer did nothing on
+	# stone, cobble, planks, brick or any of the things people actually
+	# build with, which is most of what you would want to mark.
+	return Blocks.hardness(block) < 3
 
 ## Shave a crater's lip until you can walk out of it.
 ##
@@ -2512,15 +2515,11 @@ func _check_match_win() -> void:
 			teams_alive[int(Game.roster[id].get("team", 0))] = true
 	if match_phase != "BATTLE":
 		return
-	var humans_alive := false
-	for id: String in _match_alive.keys():
-		if Game.roster.has(id) and not bool(Game.roster[id].get("bot", false)) \
-				and not _downed_ids.has(id):
-			humans_alive = true
-			break
-	if not humans_alive:
-		_server_match_end(-2)  # every human is out: nobody wins
-		return
+	# A battle is NOT over because the people are out of it. The computer
+	# players finish what they started and somebody actually wins; the
+	# humans watch. Stopping here is what ended games with three teams
+	# still standing, and it meant the computer players never got to
+	# build a score.
 	if teams_alive.size() <= 1:
 		var winner := -1
 		for t in teams_alive.keys():
@@ -2529,7 +2528,9 @@ func _check_match_win() -> void:
 
 func _server_match_end(winner: int) -> void:
 	match_phase = "END"
-	_match_timer = 10.0
+	# Long enough to actually READ the table. Ten seconds was gone before
+	# anyone had found their own name on it.
+	_match_timer = 22.0
 	print("Battle royale over: team %d" % winner)
 	_record_result(winner)
 	cl_match_end.rpc(winner)
@@ -3051,19 +3052,35 @@ func cl_crates(payload: Array) -> void:
 func cl_crate_taken(id: String, weapon: int) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id and child.is_local:
-			# Into the first non-weapon slot (or replace the last slot).
-			var target := 7
+			# ALREADY HAVE ONE? The crate is still yours — nobody else
+			# gets it — but the bar does not fill up with three of the
+			# same shooter.
+			var have := false
 			for i in 8:
-				if child.slots[i].kind == "empty":
-					target = i
+				var slot_here: Dictionary = child.slots[i]
+				if str(slot_here.kind) == "weapon" and int(slot_here.id) == weapon:
+					have = true
 					break
-			if target == 7 and child.slots[7].kind != "empty":
+			if not have:
+				# Into the first empty slot, else over the first thing
+				# that is not a weapon.
+				var target := -1
 				for i in 8:
-					if child.slots[i].kind != "weapon":
+					if str(child.slots[i].kind) == "empty":
 						target = i
 						break
-			child.slots[target] = {"kind": "weapon", "id": weapon}
-			child.selected_slot = target
+				if target < 0:
+					for i in 8:
+						if str(child.slots[i].kind) != "weapon":
+							target = i
+							break
+				if target < 0:
+					target = 7
+				child.slots[target] = {"kind": "weapon", "id": weapon}
+			# ...and it does NOT become what you are holding. Switching
+			# somebody's weapon out from under them mid-fight, because
+			# they happened to run over a crate, is how you lose a fight
+			# holding a party popper.
 			Sfx.play("collect")
 	if crates != null:
 		update_crates_after_take()
