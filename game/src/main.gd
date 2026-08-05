@@ -498,6 +498,11 @@ func _on_connected() -> void:
 			if winner < world.client_team_names.size():
 				team_label = str(world.client_team_names[winner]).to_upper()
 			message = "🏆  TEAM %s WINS THE BATTLE!  🏆" % team_label
+			# ...and how they stand on this map. The full table is under
+			# Escape → Scores.
+			var won := int(world.team_wins.get(winner, 0))
+			if won > 1:
+				message += "\n%d wins on this map" % won
 			Sfx.play("cheer", -4.0)
 		elif winner == -2:
 			message = "Everyone's out — no winner this time!"

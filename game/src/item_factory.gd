@@ -218,12 +218,20 @@ static func build(kind: String, id: int) -> Node3D:
 				var fin := _box(Vector3(0.02, 0.1, 0.12), Color("7d251a"), Vector3(0, 0.1, 0.12))
 				fin.rotation_degrees = Vector3(0, 0, fin_a + 45.0)
 				root.add_child(fin)
-		12:  # Digger: threaded drill cone + grip
-			root.add_child(_box(Vector3(0.12, 0.14, 0.2), Color("8a6a42"), Vector3(0, 0.05, 0.02)))
-			root.add_child(_cyl(0.0, 0.09, 0.3, Color("b5975f"), Vector3(0, 0.08, -0.24), Vector3(90, 0, 0)))
-			root.add_child(_cyl(0.065, 0.065, 0.03, Color("7d6540"), Vector3(0, 0.08, -0.2), Vector3(90, 0, 0)))
-			root.add_child(_cyl(0.045, 0.045, 0.03, Color("7d6540"), Vector3(0, 0.08, -0.28), Vector3(90, 0, 0)))
-			root.add_child(_box(Vector3(0.06, 0.12, 0.07), Color("4a4c54"), Vector3(0, -0.04, 0.08)))
+		12:  # Digger: a real auger — motor housing, ribbed shaft, spiral
+			# flighting and a bit. It used to be a cone on a box.
+			root.add_child(_box(Vector3(0.15, 0.16, 0.22), Color("6b573a"), Vector3(0, 0.06, 0.06)))
+			root.add_child(_box(Vector3(0.17, 0.07, 0.1), Color("4a4c54"), Vector3(0, 0.13, 0.04)))
+			root.add_child(_cyl(0.055, 0.055, 0.34, Color("8a7654"), Vector3(0, 0.06, -0.2), Vector3(90, 0, 0)))
+			# Spiral flighting: discs stepping round the shaft.
+			for turn in range(6):
+				var blade := _box(Vector3(0.15, 0.022, 0.05), Color("b5975f"),
+					Vector3(0, 0.06, -0.08 - float(turn) * 0.055))
+				blade.rotation_degrees = Vector3(0, 0, float(turn) * 55.0)
+				root.add_child(blade)
+			root.add_child(_cyl(0.0, 0.055, 0.12, Color("d8c489"), Vector3(0, 0.06, -0.42), Vector3(90, 0, 0)))
+			root.add_child(_box(Vector3(0.06, 0.15, 0.07), Color("35363c"), Vector3(0, -0.06, 0.1)))
+			root.add_child(_box(Vector3(0.05, 0.04, 0.04), Color("ffd166"), Vector3(0, 0.15, -0.02), true))
 		16:  # X-Ray Goggles: teal visor
 			root.add_child(_box(Vector3(0.34, 0.12, 0.08), Color("7de8e0"), Vector3(0, 0.04, 0)))
 			root.add_child(_box(Vector3(0.38, 0.03, 0.03), Color("35363c"), Vector3(0, 0.12, 0)))
@@ -239,38 +247,69 @@ static func build(kind: String, id: int) -> Node3D:
 		14:  # Flare gun: stubby wide-mouth pistol
 			root.add_child(_box(Vector3(0.1, 0.14, 0.1), Color("c94f4f"), Vector3(0, -0.04, 0.1)))
 			root.add_child(_cyl(0.09, 0.11, 0.2, Color("ff8ac2"), Vector3(0, 0.05, -0.06), Vector3(90, 0, 0)))
-		13:  # Sword: long bright blade with a ridge, gold guard, pommel
-			root.add_child(_box(Vector3(0.055, 0.055, 0.2), Color("4a3524"), Vector3(0, 0, 0.11)))
-			root.add_child(_cyl(0.05, 0.05, 0.05, Color("d9a832"), Vector3(0, 0, 0.23), Vector3(90, 0, 0)))
-			root.add_child(_box(Vector3(0.26, 0.06, 0.06), Color("d9a832"), Vector3(0, 0, -0.01)))
-			root.add_child(_box(Vector3(0.11, 0.035, 0.62), Color("dfe6f0"), Vector3(0, 0, -0.36)))
-			root.add_child(_box(Vector3(0.035, 0.045, 0.58), Color("f7fafd"), Vector3(0, 0, -0.34)))
-			root.add_child(_box(Vector3(0.065, 0.037, 0.12), Color("f4f8fc"), Vector3(0, 0, -0.72)))
-		18:  # Paint sprayer: a squat can with a nozzle
-			root.add_child(_cyl(0.075, 0.075, 0.26, Color("60d394"), Vector3(0, 0.06, -0.04)))
-			root.add_child(_cyl(0.025, 0.025, 0.1, Color("dfe6f0"), Vector3(0, 0.06, -0.2), Vector3(90, 0, 0)))
-			root.add_child(_box(Vector3(0.09, 0.05, 0.05), Color("3a3d45"), Vector3(0, 0.02, 0.09)))
-		19:  # Smoke bomb: a banded canister
-			root.add_child(_cyl(0.07, 0.07, 0.24, Color("9aa6c4"), Vector3(0, 0.05, -0.06)))
-			root.add_child(_cyl(0.075, 0.075, 0.05, Color("3a3d45"), Vector3(0, 0.05, -0.16)))
-			root.add_child(_cyl(0.03, 0.03, 0.05, Color("dfe6f0"), Vector3(0, 0.05, -0.2), Vector3(90, 0, 0)))
-		8:  # Paint bomb: bucket
-			root.add_child(_cyl(0.11, 0.09, 0.16, Color("b07df0"), Vector3(0, 0.04, -0.06)))
-		3:  # Freeze ray: icy emitter with a glowing crystal muzzle
-			root.add_child(_box(Vector3(0.09, 0.12, 0.26), Color("5f7d8a"), Vector3(0, 0.05, -0.02)))
-			root.add_child(_cyl(0.06, 0.09, 0.12, Color("aef7f0"), Vector3(0, 0.08, -0.22), Vector3(90, 0, 0), true))
-			root.add_child(_box(Vector3(0.07, 0.12, 0.08), Color("44525c"), Vector3(0, -0.04, 0.08)))
-		4:  # Block sucker: vacuum bell on a green rig
-			root.add_child(_box(Vector3(0.1, 0.12, 0.22), Color("4c6a44"), Vector3(0, 0.05, 0.02)))
-			root.add_child(_cyl(0.13, 0.05, 0.18, Color("62a851"), Vector3(0, 0.07, -0.2), Vector3(90, 0, 0)))
-		10:  # Grump whistle: purple pipe with a mouthpiece
-			root.add_child(_cyl(0.045, 0.045, 0.2, Color("8a5fd0"), Vector3(0, 0.05, -0.05), Vector3(90, 0, 0)))
-			root.add_child(_box(Vector3(0.1, 0.1, 0.1), Color("6a44a8"), Vector3(0, 0.03, 0.08)))
-		11:  # Wings (folded)
-			for side in [-1.0, 1.0]:
-				var wing := _box(Vector3(0.26, 0.02, 0.14), Color("eceff4"), Vector3(side * 0.16, 0.1, 0))
-				wing.rotation_degrees = Vector3(0, 0, side * 20.0)
-				root.add_child(wing)
+		13:  # Sword: tapered blade with a fuller, a swept crossguard and a
+			# wrapped grip. The old one was three flat slabs stacked up.
+			root.add_child(_cyl(0.032, 0.038, 0.22, Color("4a3524"), Vector3(0, 0, 0.12), Vector3(90, 0, 0)))
+			for wrap in [0.04, 0.10, 0.16]:
+				root.add_child(_cyl(0.042, 0.042, 0.022, Color("2f2318"),
+					Vector3(0, 0, 0.04 + wrap), Vector3(90, 0, 0)))
+			root.add_child(_cyl(0.055, 0.045, 0.06, Color("d9a832"), Vector3(0, 0, 0.25), Vector3(90, 0, 0)))
+			# Crossguard, swept forward at the tips.
+			root.add_child(_box(Vector3(0.1, 0.05, 0.055), Color("d9a832"), Vector3(0, 0, 0.0)))
+			for guard_side in [-1.0, 1.0]:
+				var quillon := _box(Vector3(0.1, 0.042, 0.05), Color("e8bd52"),
+					Vector3(guard_side * 0.095, 0, -0.012))
+				quillon.rotation_degrees = Vector3(0, guard_side * 16.0, 0)
+				root.add_child(quillon)
+			# Blade: wide at the ricasso, tapering to a point, with a
+			# bright fuller down the middle catching the light.
+			root.add_child(_box(Vector3(0.085, 0.028, 0.30), Color("dfe6f0"), Vector3(0, 0, -0.19)))
+			root.add_child(_box(Vector3(0.068, 0.030, 0.26), Color("eef3fa"), Vector3(0, 0, -0.46)))
+			root.add_child(_box(Vector3(0.026, 0.034, 0.52), Color("ffffff"), Vector3(0, 0, -0.32), true))
+			# The point.
+			root.add_child(_cyl(0.0, 0.034, 0.13, Color("f7fafd"), Vector3(0, 0, -0.65), Vector3(90, 0, 0)))
+		18:  # Paint sprayer: a pressure canister with a gauge, a hose and
+			# a proper trigger handle.
+			root.add_child(_cyl(0.085, 0.085, 0.3, Color("60d394"), Vector3(0, 0.08, 0.02), Vector3(90, 0, 0)))
+			root.add_child(_cyl(0.088, 0.088, 0.03, Color("3f9c6c"), Vector3(0, 0.08, -0.09), Vector3(90, 0, 0)))
+			root.add_child(_cyl(0.088, 0.088, 0.03, Color("3f9c6c"), Vector3(0, 0.08, 0.11), Vector3(90, 0, 0)))
+			# Gauge on the shoulder.
+			root.add_child(_cyl(0.032, 0.032, 0.03, Color("dfe6f0"), Vector3(0.05, 0.16, 0.06)))
+			# Barrel and flared nozzle.
+			root.add_child(_cyl(0.022, 0.022, 0.2, Color("cfd6e2"), Vector3(0, 0.09, -0.24), Vector3(90, 0, 0)))
+			root.add_child(_cyl(0.05, 0.022, 0.06, Color("9aa3b2"), Vector3(0, 0.09, -0.36), Vector3(90, 0, 0)))
+			# Grip and trigger.
+			root.add_child(_box(Vector3(0.055, 0.13, 0.07), Color("35363c"), Vector3(0, -0.02, 0.06)))
+			root.add_child(_box(Vector3(0.02, 0.05, 0.02), Color("6c6f78"), Vector3(0, 0.03, 0.0)))
+		19:  # Smoke bomb: a ribbed canister with a lever, a pin ring and
+			# vent holes — something you can see is about to be thrown.
+			root.add_child(_cyl(0.062, 0.062, 0.26, Color("9aa6c4"), Vector3(0, 0.09, -0.02), Vector3(90, 0, 0)))
+			for band in [-0.09, 0.0, 0.09]:
+				root.add_child(_cyl(0.068, 0.068, 0.022, Color("6f7a94"),
+					Vector3(0, 0.09, band), Vector3(90, 0, 0)))
+			# Vents at the business end.
+			root.add_child(_cyl(0.05, 0.05, 0.04, Color("454c60"), Vector3(0, 0.09, -0.16), Vector3(90, 0, 0)))
+			for vent in [-1.0, 1.0]:
+				root.add_child(_cyl(0.012, 0.012, 0.03, Color("2a2f3c"),
+					Vector3(vent * 0.025, 0.09, -0.18), Vector3(90, 0, 0)))
+			# Spoon lever down the side, and the pin ring.
+			root.add_child(_box(Vector3(0.022, 0.02, 0.19), Color("dfe6f0"), Vector3(0.058, 0.11, 0.0)))
+			root.add_child(_cyl(0.034, 0.034, 0.012, Color("d9a832"), Vector3(0.075, 0.13, 0.1), Vector3(0, 90, 0)))
+		11:  # Wings: a folded glider — a spar across your back with three
+			# swept feathers each side, not two flat paddles.
+			root.add_child(_cyl(0.022, 0.022, 0.36, Color("9aa3b2"), Vector3(0, 0.12, 0.02), Vector3(0, 0, 90)))
+			for wing_side in [-1.0, 1.0]:
+				for feather in range(3):
+					var span := 0.30 - float(feather) * 0.06
+					var quill := _box(Vector3(span, 0.016, 0.075 + float(feather) * 0.02),
+						Color("eceff4").darkened(float(feather) * 0.08),
+						Vector3(wing_side * (0.10 + span * 0.42), 0.12 - float(feather) * 0.012,
+							-0.02 + float(feather) * 0.055))
+					quill.rotation_degrees = Vector3(0, wing_side * (12.0 + float(feather) * 9.0),
+						wing_side * (16.0 - float(feather) * 4.0))
+					root.add_child(quill)
+				root.add_child(_box(Vector3(0.05, 0.05, 0.05), Color("cfd6e2"),
+					Vector3(wing_side * 0.09, 0.12, 0.02)))
 		_:
 			root.add_child(_box(Vector3(0.14, 0.14, 0.14), Weapons.spec(id).color, Vector3(0, 0.08, 0), true))
 	return root

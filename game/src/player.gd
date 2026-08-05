@@ -64,15 +64,8 @@ var _prev_jump := false
 var _last_jump_ms := -10000
 var _launch_latched := false
 var _shoot_hold := 0.0
-## Sky-drop at match start: fall gently until touching down.
-var drop_glide := false
-var _glide_grace := 0.0
-
-## Match drop: glide down. The grace period stops the glide from being
-## canceled by the stale on_floor flag from before the teleport.
-func start_drop_glide() -> void:
-	drop_glide = true
-	_glide_grace = 1.2
+# The sky-drop is gone: matches now START players standing on the ground
+# beside their team so they can build. See WorldNode._team_start_spot().
 
 var _team_light: OmniLight3D = null
 
@@ -375,7 +368,7 @@ func _physics_process(delta: float) -> void:
 		# size of 50 means x and z both run -25..+25. Nothing is generated
 		# outside it, so this is a hard wall, not a nudge: you simply
 		# cannot walk off the edge of the world.
-		if world != null and world.match_phase != "DROP":
+		if world != null and world.match_phase != "SETUP":
 			var edge := float(world.client_size) * 0.5
 			if edge > 8.0:
 				var stopped := false
@@ -593,7 +586,7 @@ func _local_move(delta: float) -> void:
 	var fly_ok: bool = world.client_fly
 	if fly_mode and (world.survival_active or not fly_ok) and not is_out:
 		fly_mode = false  # no flying away from raids or matches (ghosts may)
-	if world != null and world.match_phase == "DROP":
+	if world != null and world.match_phase == "SETUP":
 		dropping = true
 	if fly_mode:
 		var vert := 0.0
@@ -621,14 +614,6 @@ func _local_move(delta: float) -> void:
 		velocity.x *= 1.5
 		velocity.z *= 1.5
 		anim = Anim.FLY
-	elif drop_glide:
-		velocity.y = maxf(velocity.y - GRAVITY * delta * 0.1, -3.5)
-		velocity.x *= 1.2
-		velocity.z *= 1.2
-		anim = Anim.FLY
-		_glide_grace = maxf(0.0, _glide_grace - delta)
-		if on_floor and _glide_grace <= 0.0:
-			drop_glide = false
 	else:
 		velocity.y -= GRAVITY * delta
 		if jump_now and on_floor:

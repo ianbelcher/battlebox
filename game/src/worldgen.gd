@@ -237,20 +237,29 @@ func _carve_caves(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: 
 ## than one chunk generate seamlessly: hollow desert pyramids you can
 ## explore, castle walls in castle-lands, wooden ships among the isles.
 func _landmark_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int, h: int) -> void:
-	var ax := floori(wx / 96.0)
-	var az := floori(wz / 96.0)
+	# Space packs its landmarks tighter. On the 96-block grid a 250-block
+	# world only has room for two or three anchors, and with domes, ships
+	# and caverns sharing them you would get exactly one cavern on the
+	# whole map — which is what Ian found.
+	var grid := 56.0 if theme == "space" else 96.0
+	var ax := floori(wx / grid)
+	var az := floori(wz / grid)
 	var roll := hash01(ax, az, 900)
-	var cx := ax * 96 + 48
-	var cz := az * 96 + 48
+	var cx := ax * int(grid) + int(grid) / 2
+	var cz := az * int(grid) + int(grid) / 2
 	var dx := wx - cx
 	var dz := wz - cz
-	if Vector2(cx, cz).length() > ISLAND_RADIUS - 30.0:
+	# Landmarks are bounded by the WORLD, not by a fixed island radius —
+	# that constant says nothing about how big this map is.
+	if not in_bounds(cx, cz):
+		return
+	if theme != "space" and Vector2(cx, cz).length() > ISLAND_RADIUS - 30.0:
 		return
 	if theme == "city":
 		_city_column(data, lx, lz, wx, wz, h)
 		return
 	if theme == "space":
-		_space_landmark(data, lx, lz, wx, wz, h, ax, az, roll, dx, dz)
+		_space_landmark(data, lx, lz, wx, wz, h, cx, cz, roll, dx, dz)
 		return
 	if theme == "castles":
 		_megacastle_column(data, lx, lz, wx, wz, h)
@@ -663,12 +672,26 @@ func _space_column(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 		if hash01(wx, wz, 76) < 0.4:
 			data[idx(lx, h + 2, lz)] = gem
 
+## The lowest ground anywhere under a circular footprint. Sampled on a
+## coarse ring rather than every column — this is called per column while
+## generating, so it has to stay cheap, and terrain at this scale does
+## not change fast enough for the difference to show.
+func _lowest_under(cx: int, cz: int, radius: int) -> int:
+	var low := height_at(cx, cz)
+	var steps := 12
+	for ring in [radius / 2, radius]:
+		for i in steps:
+			var a := TAU * float(i) / float(steps)
+			low = mini(low, height_at(cx + int(cos(a) * float(ring)),
+				cz + int(sin(a) * float(ring))))
+	return low
+
 ## The things you fly to and explore: domes on the surface, bunkers under
 ## it, and ships hanging in the sky. Laid out on the same 96-block anchor
 ## grid the other themes' landmarks use, so they generate seamlessly
 ## across chunk borders.
 func _space_landmark(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
-		h: int, ax: int, az: int, roll: float, dx: int, dz: int) -> void:
+		h: int, cx: int, cz: int, roll: float, dx: int, dz: int) -> void:
 	if roll < 0.42:
 		# Biosphere dome: a glass hemisphere on a steel ring, with a way in
 		# and a floor of proper grass — the only green on the whole map.
@@ -676,9 +699,18 @@ func _space_landmark(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 		var flat := Vector2(dx, dz).length()
 		if flat > radius + 1.0:
 			return
-		var base := height_at(ax * 96 + 48, az * 96 + 48)
+		# SIT ON THE GROUND. This used to take the height at the dome's
+		# centre column and level everything to that, so on any slope the
+		# downhill half of the dome — ring, floor and all — hung in the
+		# air with a drop underneath it. Take the LOWEST ground anywhere
+		# under the footprint instead, and fill up to it: the dome is
+		# then buried into the hill on the high side and flush with the
+		# ground on the low side, which is what a building does.
+		var base := _lowest_under(cx, cz, int(radius) + 1)
 		if flat <= radius:
-			# Level the ground inside and carpet it.
+			# Fill any hollow beneath, then level and carpet.
+			for y in range(mini(h + 1, CHUNK_H), mini(base, CHUNK_H)):
+				data[idx(lx, y, lz)] = Blocks.STONE
 			for y in range(base, mini(h + 1, CHUNK_H)):
 				data[idx(lx, y, lz)] = Blocks.AIR
 			if base < CHUNK_H:
@@ -720,15 +752,31 @@ func _space_landmark(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 		var edge := maxi(absi(dx), absi(dz))
 		# The entry: a trench sloping down from the surface on the north
 		# side, opening into the hall.
-		if absi(dx) <= 3 and dz < 0:
+		if absi(dx) <= 5 and dz < 0:
 			var t := float(-dz) / float(half)      # 0 at the hall, 1 outside
-			var mouth := int(lerpf(float(roof_y), float(h + 2), t))
-			for y in range(floor_y, mini(mouth + 1, CHUNK_H)):
-				data[idx(lx, y, lz)] = Blocks.AIR
-			if floor_y - 1 > 0:
-				data[idx(lx, floor_y - 1, lz)] = Blocks.STEEL
-			if absi(dx) == 3 and posmod(dz, 6) == 0 and floor_y + 2 < CHUNK_H:
-				data[idx(lx, floor_y + 2, lz)] = Blocks.GLOWSTONE
+			# The FLOOR slopes: a ramp you walk down, not a shaft you
+			# fall into. It used to be a flat trench with the roof cut
+			# away, which read as a hole rather than an entrance.
+			var ramp := int(lerpf(float(floor_y), float(h), t))
+			var head := ramp + 6
+			if absi(dx) <= 3:
+				for y in range(mini(ramp, CHUNK_H), mini(head, CHUNK_H)):
+					data[idx(lx, y, lz)] = Blocks.AIR
+				if ramp - 1 > 0:
+					data[idx(lx, ramp - 1, lz)] = Blocks.STEEL
+				# A ribbed ARCH over the cut, every few blocks, so it
+				# reads as a built entrance from a long way off.
+				if posmod(dz, 5) == 0:
+					var span := 3 - absi(dx)
+					var arc := head - 1 + span
+					if arc < CHUNK_H:
+						data[idx(lx, arc, lz)] = Blocks.STEEL
+					if absi(dx) == 3 and ramp + 2 < CHUNK_H:
+						data[idx(lx, ramp + 2, lz)] = Blocks.GLOWSTONE
+			elif posmod(dz, 5) == 0:
+				# The shoulders of the arch: solid piers either side.
+				for y in range(mini(ramp, CHUNK_H), mini(head + 1, CHUNK_H)):
+					data[idx(lx, y, lz)] = Blocks.STEEL
 			return
 		if edge > half - 2:
 			return                                  # solid rock wall
@@ -751,27 +799,66 @@ func _space_landmark(data: PackedByteArray, lx: int, lz: int, wx: int, wz: int,
 			if absi(dx) <= 1 and absi(dz) <= 1:
 				data[idx(lx, floor_y + 1, lz)] = Blocks.GLOWSTONE
 		return
-	# Spaceship parked in the sky: a glowing hull you fly up to.
-	var ship_y := 52 + int(roll * 14.0)
-	var length := 16
-	var width := 6
-	if absi(dx) > length or absi(dz) > width:
+	# SPACESHIP parked in the sky — the thing this map is supposed to be
+	# about. The old one was a 16x6 slab with a glass lid, which read as a
+	# floating table. This one has a shape: a tapered hull, a raised
+	# cockpit, swept fins and lit engines, in three sizes so a map does
+	# not repeat itself.
+	var kind := int(hash01(cx, cz, 901) * 3.0)
+	var length: int = [13, 19, 26][kind]
+	var width: int = [5, 7, 9][kind]
+	var ship_y := 46 + int(roll * 20.0)
+	if absi(dx) > length + 2 or absi(dz) > width + 3:
 		return
-	var taper := 1.0 - float(absi(dx)) / float(length)
-	var beam := int(width * taper)
-	if absi(dz) > beam:
+	if ship_y + 9 >= CHUNK_H:
 		return
-	if ship_y + 3 >= CHUNK_H:
+	var t := float(dx) / float(length)            # -1 aft .. +1 nose
+	# Hull half-width: full amidships, drawn to a point at the nose, cut
+	# square at the stern.
+	var beam := float(width)
+	if t > 0.0:
+		beam = float(width) * sqrt(maxf(0.0, 1.0 - t * t * 0.92))
+	else:
+		beam = float(width) * (0.55 + 0.45 * (1.0 + t))
+	var half_beam := int(round(beam))
+	var inside: bool = absi(dx) <= length and absi(dz) <= half_beam
+
+	# Swept fins: blades off the stern, angled out and up.
+	if not inside:
+		if dx < -length / 3 and absi(dz) > half_beam \
+				and absi(dz) <= half_beam + int(float(-dx - length / 3) * 0.8) \
+				and posmod(dx, 2) == 0:
+			var fin_y: int = ship_y + 2 + (absi(dz) - half_beam) / 2
+			if fin_y < CHUNK_H:
+				data[idx(lx, fin_y, lz)] = Blocks.STEEL
 		return
-	# Hull, a lit deck inside, and glow strips along the flanks.
+
+	var deck := ship_y + 1
+	var roof := ship_y + 3
+	# Belly, deck and hull sides.
 	data[idx(lx, ship_y, lz)] = Blocks.STEEL
-	data[idx(lx, ship_y + 1, lz)] = Blocks.AIR
-	data[idx(lx, ship_y + 2, lz)] = Blocks.STEEL if absi(dz) == beam \
-		else Blocks.GLASS
-	if absi(dz) == beam and posmod(dx, 4) == 0:
-		data[idx(lx, ship_y + 1, lz)] = Blocks.GLOWSTONE
-	if absi(dx) > length - 3:
-		data[idx(lx, ship_y + 1, lz)] = Blocks.CRYSTAL_BLUE
+	for y in range(deck, roof):
+		data[idx(lx, y, lz)] = Blocks.STEEL if absi(dz) == half_beam else Blocks.AIR
+	data[idx(lx, roof, lz)] = Blocks.STEEL
+	# Windows down the flanks.
+	if absi(dz) == half_beam and posmod(dx, 3) == 0 and t > -0.7:
+		data[idx(lx, deck, lz)] = Blocks.GLASS
+	# Cockpit: a glass blister up front, standing proud of the roof.
+	if t > 0.35 and absi(dz) <= maxi(half_beam - 1, 1):
+		var dome_r := float(maxi(half_beam - 1, 1))
+		var cd := Vector2(float(dx) - float(length) * 0.55, float(dz)).length()
+		if cd <= dome_r:
+			data[idx(lx, roof, lz)] = Blocks.AIR
+			if roof + 1 < CHUNK_H:
+				data[idx(lx, roof + 1, lz)] = Blocks.GLASS
+	# Engines: lit blocks at the stern.
+	if dx < -length + 3 and absi(dz) <= half_beam - 1:
+		data[idx(lx, deck, lz)] = Blocks.CRYSTAL_BLUE
+		if dx < -length + 2:
+			data[idx(lx, ship_y, lz)] = Blocks.GLOWSTONE
+	# Landing lights along the keel, so it reads from the ground at night.
+	if posmod(dx, 5) == 0 and dz == 0 and ship_y - 1 > 0:
+		data[idx(lx, ship_y - 1, lz)] = Blocks.GLOWSTONE
 
 ## Cheap deterministic "is this cell lit" test for bunker ceilings.
 func y_lit(wx: int, wz: int) -> bool:

@@ -497,7 +497,7 @@ func _ready() -> void:
 		world.battle_config_changed.connect(_refresh_battle_highlights)
 		world.match_score_changed.connect(_refresh_team_panel)
 		world.match_changed.connect(func() -> void:
-			if world.match_phase == "DROP" and _feed_box != null:
+			if world.match_phase == "SETUP" and _feed_box != null:
 				for old_line in _feed_box.get_children():
 					old_line.queue_free())
 		world.knockout.connect(func(attacker: String, attacker_team: int,
@@ -1287,7 +1287,7 @@ func _on_match_changed() -> void:
 	_refresh_identity()
 	if world.match_phase == "LOBBY":
 		_refresh_team_box()
-	elif _menu.visible and world.match_phase == "DROP":
+	elif _menu.visible and world.match_phase == "SETUP":
 		_close_menu()
 
 ## The selected battle options glow gold so everyone can see the setup.
@@ -1709,7 +1709,7 @@ func _refresh_identity() -> void:
 	var id := Game.player_id(multiplayer.get_unique_id(), slot)
 	var hearts_on: bool = world != null and (world.survival_active \
 		or world.client_mode == "battle" \
-		or world.match_phase in ["DROP", "BATTLE"])
+		or world.match_phase in ["SETUP", "BATTLE"])
 	var hp: int = int(world.hearts.get(id, 8)) if world != null else 8
 	for i in _heart_cells.size():
 		(_heart_cells[i] as Label).modulate.a = 0.0 if not hearts_on \

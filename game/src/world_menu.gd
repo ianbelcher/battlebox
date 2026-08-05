@@ -185,6 +185,7 @@ func _ready() -> void:
 	_build_map_tab()
 	_build_game_tab()
 	_build_players_tab()
+	_build_scores_tab()
 	_build_video_tab()
 	_build_help_tab()
 	_build_credits_tab()
@@ -763,6 +764,151 @@ func _team_cell(id: String, t: int, current: int, cell_w: int) -> Button:
 	return cell
 
 # ------------------------------------------------------------------
+# Scores — who is winning, across every game on this map
+# ------------------------------------------------------------------
+
+var _scores_box: VBoxContainer
+var _scores_sig := ""
+
+func _build_scores_tab() -> void:
+	var box := _tab("Scores")
+	_heading(box, "The table", "Games won and knockouts, for as long as "
+		+ "everyone stays on this map. Changing the map starts it over.")
+	_scores_box = VBoxContainer.new()
+	_scores_box.add_theme_constant_override("separation", _s(14))
+	box.add_child(_scores_box)
+
+func _refresh_scores() -> void:
+	if _scores_box == null or world == null:
+		return
+	# Same rule as the roster: rebuild only when the numbers actually
+	# changed, never on a timer.
+	var sig := "%d|%s|%s" % [int(world.matches_played),
+		str(world.team_wins), str(world.player_frags)]
+	if sig == _scores_sig:
+		return
+	_scores_sig = sig
+	for child in _scores_box.get_children():
+		child.queue_free()
+	var split := HBoxContainer.new()
+	split.add_theme_constant_override("separation", _s(14))
+	_scores_box.add_child(split)
+	split.add_child(_teams_table())
+	split.add_child(_players_table())
+
+## Left: teams by games won.
+func _teams_table() -> Control:
+	var wrap := VBoxContainer.new()
+	wrap.add_theme_constant_override("separation", _s(8))
+	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var title := Label.new()
+	title.text = "GAMES WON"
+	title.add_theme_color_override("font_color", UiTheme.INK_DIM)
+	wrap.add_child(_font(title, UiTheme.T_HEADING))
+	var card := _card(wrap)
+	var teams: Array = []
+	var count: int = world.team_count
+	for t in count:
+		teams.append(t)
+	teams.sort_custom(func(a: int, b: int) -> bool:
+		return int(world.team_wins.get(a, 0)) > int(world.team_wins.get(b, 0)))
+	if world.matches_played == 0:
+		var none := Label.new()
+		none.text = "No games finished yet."
+		none.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+		card.add_child(_font(none, UiTheme.T_LABEL))
+		return wrap
+	for t: int in teams:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", _s(10))
+		card.add_child(row)
+		var swatch := PanelContainer.new()
+		swatch.add_theme_stylebox_override("panel", UiTheme.flat(
+			WorldNode.TEAM_COLORS[t], 6, _last_scale if _last_scale > 0.0 else _scale()))
+		_min(swatch, 22, 22)
+		swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(swatch)
+		var name_label := Label.new()
+		name_label.text = _team_name(t)
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(_font(name_label, UiTheme.T_LABEL))
+		var wins := Label.new()
+		wins.text = str(int(world.team_wins.get(t, 0)))
+		wins.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		wins.add_theme_color_override("font_color", UiTheme.ACCENT)
+		_min(wins, 44, 0)
+		row.add_child(_font(wins, UiTheme.T_BODY))
+	var played := Label.new()
+	played.text = "%d game%s played" % [int(world.matches_played),
+		"" if int(world.matches_played) == 1 else "s"]
+	played.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+	card.add_child(_font(played, UiTheme.T_NOTE))
+	return wrap
+
+## Right: players by TOTAL knockouts, with what they got in the last one.
+func _players_table() -> Control:
+	var wrap := VBoxContainer.new()
+	wrap.add_theme_constant_override("separation", _s(8))
+	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrap.size_flags_stretch_ratio = 1.3
+	var title := Label.new()
+	title.text = "KNOCKOUTS"
+	title.add_theme_color_override("font_color", UiTheme.INK_DIM)
+	wrap.add_child(_font(title, UiTheme.T_HEADING))
+	var card := _card(wrap)
+	var names: Array = world.player_frags.keys()
+	if names.is_empty():
+		var none := Label.new()
+		none.text = "Nobody has knocked anybody out yet."
+		none.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+		card.add_child(_font(none, UiTheme.T_LABEL))
+		return wrap
+	names.sort_custom(func(a: String, b: String) -> bool:
+		var ta := int(world.player_frags[a].get("total", 0))
+		var tb := int(world.player_frags[b].get("total", 0))
+		if ta != tb:
+			return ta > tb
+		return a < b)
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", _s(12))
+	grid.add_theme_constant_override("v_separation", _s(7))
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_child(grid)
+	for head_text in ["Player", "Team", "Total", "This game"]:
+		var head := Label.new()
+		head.text = str(head_text)
+		head.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+		if head_text != "Player":
+			head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		grid.add_child(_font(head, UiTheme.T_NOTE))
+	for who: String in names:
+		var row: Dictionary = world.player_frags[who]
+		var team := int(row.get("team", -1))
+		var name_label := Label.new()
+		name_label.text = who
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(_font(name_label, UiTheme.T_LABEL))
+		var team_label := Label.new()
+		team_label.text = _team_name(team) if team >= 0 else "—"
+		team_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		if team >= 0 and team < WorldNode.TEAM_COLORS.size():
+			team_label.add_theme_color_override("font_color",
+				WorldNode.TEAM_COLORS[team])
+		grid.add_child(_font(team_label, UiTheme.T_LABEL))
+		var total := Label.new()
+		total.text = str(int(row.get("total", 0)))
+		total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		total.add_theme_color_override("font_color", UiTheme.ACCENT)
+		grid.add_child(_font(total, UiTheme.T_LABEL))
+		var last := Label.new()
+		last.text = str(int(row.get("last", 0)))
+		last.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		last.add_theme_color_override("font_color", UiTheme.INK_DIM)
+		grid.add_child(_font(last, UiTheme.T_LABEL))
+	return wrap
+
+# ------------------------------------------------------------------
 # Video / Help / Credits
 # ------------------------------------------------------------------
 
@@ -1110,8 +1256,10 @@ func _refresh(force := false) -> void:
 	if force:
 		_maps_sig = ""
 		_roster_sig = ""
+		_scores_sig = ""
 	_refresh_maps()
 	_refresh_players()
+	_refresh_scores()
 	if world == null:
 		return
 	for key: String in _mode_btns:

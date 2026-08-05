@@ -454,7 +454,7 @@ func sv_pos(slot: int, pos: Vector3, yaw: float, anim: int) -> void:
 func sv_edit(slot: int, pos: Vector3i, block: int) -> void:
 	if not multiplayer.is_server():
 		return
-	if match_phase == "LOBBY" or match_phase == "DROP":
+	if match_phase == "LOBBY" or match_phase == "SETUP":
 		return  # pre-battle: run around, touch nothing
 	var peer := multiplayer.get_remote_sender_id()
 	var id := Game.player_id(peer, slot)
@@ -1226,7 +1226,15 @@ func sv_new_map(map_name: String) -> void:
 		return
 	_do_world_reset(map_name)
 
+## Guard: _do_world_reset() now kicks off a fresh battle when the mode is
+## battle royale, and opening a lobby can itself decide the world needs
+## resetting. Without this the two would call each other forever.
+var _resetting := false
+
 func _do_world_reset(map_name := "", new_size := 0) -> void:
+	if _resetting:
+		return
+	_resetting = true
 	var new_seed := randi() % 1000000000
 	print("WORLD RESET: new seed %d map=%s size=%d" % [new_seed, map_name,
 		new_size if new_size > 0 else store.world_size])
@@ -1247,12 +1255,50 @@ func _do_world_reset(map_name := "", new_size := 0) -> void:
 	# which is exactly the "loot way out there" Ian was looking at.
 	_crates.clear()
 	_broadcast_crates()
+	_smoke_marker.clear()
+	cl_smoke_clear.rpc()
+	# A NEW WORLD IS A CLEAN SLATE. Everything below used to survive a
+	# resize and then make no sense in the world that replaced it:
+	# positions from a map twice the size, a battle still running over
+	# terrain that no longer exists, a league table for a map nobody is
+	# playing any more.
+	#
+	# Saved positions go first, and from DISK too — restoring one into
+	# fresh terrain is what left players standing past the edge of a
+	# shrunken map, falling to bedrock.
+	_forget_saved_positions()
 	for state: Dictionary in _player_state.values():
-		state.pos = Vector3.ZERO  # everyone gets a fresh far spawn
+		state.pos = Vector3.ZERO
 	_player_state.clear()
+	# Any running battle is abandoned; the scoreboard starts again.
+	if match_phase != "IDLE":
+		match_phase = "IDLE"
+		_match_timer = 0.0
+		_match_alive.clear()
+		_downed_ids.clear()
+		storm_radius = 0.0
+		cl_match.rpc("IDLE", 0.0)
+		cl_storm.rpc(0.0, Vector3.ZERO)
+	reset_scoreboard()
 	cl_reset_result.rpc(true)
 	cl_world_info.rpc(spawn_pos, clock, source)
 	cl_world_reset.rpc()
+	# ...and if we are meant to be playing battle royale, start a fresh
+	# one on the new map rather than leaving everyone idle.
+	_resetting = false
+	if game_mode == "battle":
+		match_loop = true
+		_begin_battle_lobby()
+
+## Wipe every remembered position, in memory and on disk. They belong to
+## the world that was just thrown away.
+func _forget_saved_positions() -> void:
+	var config := ConfigFile.new()
+	config.load(_player_file_path())
+	for section in config.get_sections():
+		if config.has_section_key(section, "pos"):
+			config.erase_section_key(section, "pos")
+	config.save(_player_file_path())
 
 # ------------------------------------------------------------------
 # Battle royale match
@@ -1310,6 +1356,7 @@ func _spawn_bot() -> void:
 	var start := Vector3(spawn_pos) + Vector3(randf_range(-8, 8), 2, randf_range(-8, 8))
 	_bots[id] = {"slot": slot, "pos": start, "yaw": 0.0, "think": 0.0,
 		"weapon": 13, "shoot_cd": 0.0, "goal": start}
+	_apply_bot_skill(_bots[id])
 	_player_state[id] = {"pos": start, "treasures": 0, "name": Game.roster[id].name, "hp": 5}
 	_redistribute_bots()
 
@@ -1541,12 +1588,17 @@ func _bot_pick_goal(id: String, bot: Dictionary) -> Vector3:
 			if best_crate != Vector3.INF:
 				return best_crate
 		# Hunt — swordsmen close in, shooters hold their preferred range.
-		var enemy := _bot_nearest_enemy(id, pos, 28.0)
-		if enemy != "":
+		# NERVE decides whether they commit: a rookie mostly mills about
+		# near the fight, a deadly one comes straight at you.
+		var nerve: float = float(bot.get("nerve", 0.6))
+		var enemy := _bot_nearest_enemy(id, pos, lerpf(16.0, 34.0, nerve))
+		if enemy != "" and randf() < 0.35 + nerve * 0.65:
 			var epos: Vector3 = _player_state[enemy].pos
-			var standoff := 1.2 if int(bot.weapon) == 13 else randf_range(9.0, 14.0)
+			var standoff := 1.2 if int(bot.weapon) == 13 \
+				else randf_range(9.0, 14.0) * lerpf(1.35, 0.8, nerve)
+			var jitter := lerpf(7.0, 1.5, nerve)
 			return epos + (pos - epos).normalized() * standoff \
-				+ Vector3(randf_range(-4, 4), 0, randf_range(-4, 4))
+				+ Vector3(randf_range(-jitter, jitter), 0, randf_range(-jitter, jitter))
 	# Otherwise wander somewhere nearby.
 	return pos + Vector3(randf_range(-14, 14), 0, randf_range(-14, 14))
 
@@ -1561,11 +1613,50 @@ func _bot_step_ok(pos: Vector3, dir: Vector2) -> bool:
 func _water_at(wx: int, wz: int) -> bool:
 	return store.get_block(Vector3i(wx, WorldGen.SEA_LEVEL, wz)) == Blocks.WATER
 
+## HOW GOOD IS THIS COMPUTER PLAYER?
+##
+## They were all identical: the same aim wobble, the same 1.1s between
+## shots, the same 48-block eyesight, the same speed. A table of six
+## clones is not a game — you learn one opponent and you have learned all
+## of them.
+##
+## Each one now rolls a skill from 0 (hopeless) to 1 (nasty), and every
+## number that matters is derived from it. The roll is deliberately
+## spread across the range rather than clustered in the middle, so a
+## table of six really does get a couple of pushovers and a couple you
+## have to take seriously.
+##
+##   spread     how wide they miss by
+##   cadence    seconds between shots
+##   sight      how far away they notice you
+##   speed      how fast they move
+##   nerve      how likely they are to close in rather than mill about
+const BOT_SKILL_NAMES := ["Rookie", "Steady", "Sharp", "Deadly"]
+
+## Older saves have bots with no skill on them; give them one on sight so
+## a restarted server does not field a table of identical clones.
+func _ensure_bot_skill(bot: Dictionary) -> void:
+	if not bot.has("skill"):
+		_apply_bot_skill(bot)
+
+func _apply_bot_skill(bot: Dictionary) -> void:
+	# Flat-ish across [0,1]: randf() alone bunches up once it is used to
+	# drive several derived numbers at once.
+	var skill := clampf((randf() + randf() * 0.6) / 1.6, 0.0, 1.0)
+	bot.skill = skill
+	bot.spread = lerpf(0.115, 0.012, skill)     # radians of slop
+	bot.cadence = lerpf(2.1, 0.55, skill)       # seconds between shots
+	bot.sight = lerpf(22.0, 55.0, skill)        # blocks
+	bot.speed = lerpf(2.7, 4.1, skill)          # blocks per second
+	bot.nerve = lerpf(0.15, 0.9, skill)
+	bot.tier = BOT_SKILL_NAMES[clampi(int(skill * 4.0), 0, 3)]
+
 func _server_tick_bots(delta: float) -> void:
 	for id: String in _bots.keys():
 		if not Game.roster.has(id):
 			continue
 		var bot: Dictionary = _bots[id]
+		_ensure_bot_skill(bot)
 		bot.send_t = float(bot.get("send_t", 0.0)) - delta
 		bot.shoot_cd = maxf(0.0, float(bot.shoot_cd) - delta)
 		bot.think = float(bot.think) - delta
@@ -1595,8 +1686,9 @@ func _server_tick_bots(delta: float) -> void:
 					bot.think = randf_range(0.6, 1.2)
 					dir = Vector2.ZERO
 			if dir != Vector2.ZERO:
-				pos.x += dir.x * 3.4 * delta
-				pos.z += dir.y * 3.4 * delta
+				var pace: float = float(bot.get("speed", 3.4))
+				pos.x += dir.x * pace * delta
+				pos.z += dir.y * pace * delta
 				bot.yaw = atan2(-dir.x, -dir.y)
 			# Barely moving while far from the goal means wedged — re-think.
 			bot.moved = float(bot.get("moved", 0.0)) + pos.distance_to(Vector3(bot.get("last_pos", pos)))
@@ -1622,7 +1714,7 @@ func _server_tick_bots(delta: float) -> void:
 			state.pos = pos
 		# Fight whatever is in range.
 		if match_phase == "BATTLE" and _match_alive.has(id) and not downed:
-			var enemy := _bot_nearest_enemy(id, pos, 48.0)
+			var enemy := _bot_nearest_enemy(id, pos, float(bot.get("sight", 48.0)))
 			if enemy != "" and bot.shoot_cd <= 0.0:
 				var epos: Vector3 = _player_state[enemy].pos
 				var muzzle := pos + Vector3(0, 1.4, 0)
@@ -1630,12 +1722,15 @@ func _server_tick_bots(delta: float) -> void:
 				# Only take the shot if there's something to shoot at —
 				# firing into a wall is just noise.
 				if int(bot.weapon) != 13 and _clear_shot(muzzle, aim):
-					bot.shoot_cd = 1.1
+					bot.shoot_cd = float(bot.get("cadence", 1.1)) * randf_range(0.85, 1.2)
 					var dir := (aim - muzzle).normalized()
-					# Aim is imperfect, so a moving target is a harder one.
-					dir = (dir + Vector3(randf_range(-0.03, 0.03), 
-						randf_range(-0.02, 0.02),
-						randf_range(-0.03, 0.03))).normalized()
+					# Aim is imperfect, and HOW imperfect is what mostly
+					# separates a rookie from a deadly one. A rookie's
+					# rockets land near you; a deadly one's land on you.
+					var slop: float = float(bot.get("spread", 0.03))
+					dir = (dir + Vector3(randf_range(-slop, slop),
+						randf_range(-slop * 0.7, slop * 0.7),
+						randf_range(-slop, slop))).normalized()
 					cl_orb.rpc(id, muzzle, dir, int(bot.weapon))
 					# ...and the orb this fires is REAL: the server flies it
 					# at the weapon's own speed and it only hurts what it
@@ -1652,7 +1747,7 @@ func _server_tick_bots(delta: float) -> void:
 					_spawn_bot_orb(id, muzzle, dir, int(bot.weapon))
 				elif int(bot.weapon) == 13 and pos.distance_to(epos) < 2.6:
 					# Sword range: close enough to actually swing at you.
-					bot.shoot_cd = 0.8
+					bot.shoot_cd = float(bot.get("cadence", 1.1)) * 0.7
 					cl_pos.rpc(id, pos, bot.yaw, 9)
 					_match_hurt(enemy, 1, pos, id)
 		if bot.send_t <= 0.0:
@@ -1861,7 +1956,7 @@ func _server_tick_match(delta: float) -> void:
 		"LOBBY":
 			if _match_timer <= 0.0:
 				_server_match_drop()
-		"DROP":
+		"SETUP":
 			if _match_timer <= 0.0:
 				match_phase = "BATTLE"
 				_match_timer = storm_minutes * 60.0
@@ -1915,14 +2010,15 @@ func _server_match_drop() -> void:
 	if not riding_map.is_empty():
 		riding_map.clear()
 		cl_riding.rpc(riding_map)
-	match_phase = "DROP"
+	match_phase = "SETUP"
 	_match_timer = 6.0
 	_match_alive.clear()
 	_downed_ids.clear()
 	_revive_progress.clear()
 	_bot_orbs.clear()
-	_team_drop_angle.clear()
+	_team_site.clear()
 	_team_drop_taken.clear()
+	_start_new_scorecard()
 	var counts: Array[int] = []
 	counts.resize(team_count)
 	for id: String in Game.roster.keys():
@@ -1951,8 +2047,8 @@ func _server_match_drop() -> void:
 		state.hp = MATCH_HP
 		cl_hearts.rpc(id, MATCH_HP)
 		var team_i := int(entry.get("team", 0))
-		var drop := _team_drop_spot(team_i)
-		cl_drop.rpc(id, drop, loot_only)
+		var drop := _team_start_spot(team_i)
+		cl_stand.rpc(id, drop, loot_only)
 		if _bots.has(id):
 			_bots[id].pos = drop
 			# WORLD_BOT_WEAPON=<id>: hand every computer player that weapon
@@ -1977,9 +2073,7 @@ func _server_match_drop() -> void:
 		var lx2 := int(cos(langle2) * ldist2)
 		var lz2 := int(sin(langle2) * ldist2)
 		var ly2 := store.surface_y(lx2, lz2)
-		if store.inside_world(lx2, lz2) and ly2 > 2 and ly2 < WorldGen.CHUNK_H - 6 \
-				and store.get_block(Vector3i(lx2, ly2, lz2)) != Blocks.WATER \
-				and (store.theme != "sky" or ly2 > WorldGen.SEA_LEVEL + 6):
+		if _crate_ground_ok(lx2, lz2, ly2):
 			var crate_here := Vector3(lx2 + 0.5, ly2 + 1.0, lz2 + 0.5)
 			var near_weapon := -1
 			var too_close := false
@@ -2011,7 +2105,7 @@ func _server_match_drop() -> void:
 	clock = randf()  # every battle gets its own time of day
 	clock = 0.79  # dusk falls as the match starts: hunt loot in the dark
 	cl_clock.rpc(clock)
-	cl_match.rpc("DROP", 6.0)
+	cl_match.rpc("SETUP", 6.0)
 	print("Battle royale: dropping %d players" % _match_alive.size())
 
 func _storm_damage() -> void:
@@ -2094,6 +2188,11 @@ func _match_eliminate(id: String, attacker := "") -> void:
 ## One feed line per knockout — downs included (that IS the kill as far
 ## as the scrap that caused it goes; bleed-outs don't double-report).
 func _emit_feed(id: String, attacker := "") -> void:
+	# Only an ENEMY knockout scores. Falling in the storm, or a teammate's
+	# stray rocket, is nobody's point.
+	if not attacker.is_empty() and attacker != id and _teams_differ(attacker, id):
+		_credit_frag(attacker)
+		_broadcast_scoreboard()
 	var victim_name := str(Game.roster.get(id, {}).get("name", "?"))
 	var attacker_name := str(Game.roster.get(attacker, {}).get("name", ""))
 	cl_feed.rpc(attacker_name, int(Game.roster.get(attacker, {}).get("team", -1)),
@@ -2101,32 +2200,31 @@ func _emit_feed(id: String, attacker := "") -> void:
 
 ## Out-of-combat healing: untouched for 8s, a heart every 3s.
 var _last_regen_ms: Dictionary = {}
-var _team_drop_angle: Dictionary = {}
+## The spot each team starts the match standing on, chosen once per
+## match. Cleared with everything else when a match begins.
+var _team_site: Dictionary = {}
 ## How many of each team have been given a landing spot this battle, so
 ## the next one gets the next slot in the huddle.
 var _team_drop_taken: Dictionary = {}
 
-## Where one player of `team_i` lands.
+## Where one player of `team_i` STARTS. On the ground, beside their team.
 ##
-## Teams drop TOGETHER. Each team gets its own bearing from the centre —
-## spread as evenly around the compass as there are teams, so nobody
-## lands on top of anybody else — and its players are packed into a tight
-## spiral around that spot, one block apart, so a squad starts the match
-## looking at each other and can fly out from there together. Before
-## this, every player got an independent random angle and distance and
-## teams were scattered across the whole map from the first second.
-func _team_drop_spot(team_i: int) -> Vector3:
-	if not _team_drop_angle.has(team_i):
-		# Evenly spaced bearings, with a small jitter so the same team
-		# doesn't land in the same field every single battle.
-		var slot := _team_drop_angle.size()
-		_team_drop_angle[team_i] = (TAU * float(slot) / float(maxi(team_count, 1))
-			+ randf_range(-0.18, 0.18))
-	var angle := float(_team_drop_angle[team_i])
-	var dist := float(store.half_extent()) * randf_range(0.45, 0.62)
-	var centre := Vector3(cos(angle) * dist, 0.0, sin(angle) * dist)
-	# Ring-by-ring spiral: 1 in the middle, then 6, then 12 … all one
-	# block apart, so even a team of seventeen lands in one huddle.
+## There is no sky drop any more. This is a building game first: a squad
+## that starts standing together on solid ground can dig in and put up
+## something defensible before anyone finds them, and a first round where
+## a team does nothing but build a fort is a perfectly good round. Being
+## scattered out of the sky made that impossible.
+##
+## Each team gets its own quarter of the compass, and a SITE is chosen
+## once per team per match — flat, dry, inside the world — then everyone
+## on that team is packed into a one-block spiral around it and stood on
+## whatever the ground turns out to be underneath them.
+func _team_start_spot(team_i: int) -> Vector3:
+	if not _team_site.has(team_i):
+		_team_site[team_i] = _find_team_site(_team_site.size())
+	var centre: Vector3 = _team_site[team_i]
+	# Ring by ring: 1 in the middle, then 6, then 12 … all one block
+	# apart, so even a team of seventeen starts in one huddle.
 	var n := int(_team_drop_taken.get(team_i, 0))
 	_team_drop_taken[team_i] = n + 1
 	var offset := Vector3.ZERO
@@ -2140,8 +2238,52 @@ func _team_drop_spot(team_i: int) -> Vector3:
 		var around := TAU * float(index) / float(ring * 6)
 		offset = Vector3(cos(around), 0.0, sin(around)) * float(ring)
 	var spot := store.clamp_inside(centre + offset, 6)
-	spot.y = WorldGen.CHUNK_H - 4
+	# Stand them ON the ground wherever the spiral put them, not at the
+	# site's height — a hut on a slope would otherwise bury half a team.
+	spot.y = float(store.surface_y(int(spot.x), int(spot.z))) + 1.0
 	return spot
+
+## A place for a whole team to stand: out on its own bearing, on dry
+## level-ish ground, as far from the other teams' sites as we can manage
+## in a handful of tries.
+func _find_team_site(slot: int) -> Vector3:
+	var bearing := TAU * float(slot) / float(maxi(team_count, 1)) \
+		+ randf_range(-0.25, 0.25)
+	var best := Vector3.ZERO
+	var best_score := -1e9
+	for attempt in 40:
+		var angle := bearing + randf_range(-0.45, 0.45)
+		var dist := float(store.half_extent()) * randf_range(0.42, 0.72)
+		var wx := int(cos(angle) * dist)
+		var wz := int(sin(angle) * dist)
+		if not store.inside_world(wx, wz, 10):
+			continue
+		var y := store.surface_y(wx, wz)
+		if y <= WorldGen.SEA_LEVEL or y >= WorldGen.CHUNK_H - 10:
+			continue
+		if Blocks.is_liquid(store.get_block(Vector3i(wx, y, wz))):
+			continue
+		# Prefer flat: a team standing on a staircase is no use to anyone.
+		var roughness := 0
+		for off in [Vector2i(3, 0), Vector2i(-3, 0), Vector2i(0, 3),
+				Vector2i(0, -3), Vector2i(2, 2), Vector2i(-2, -2)]:
+			roughness += absi(store.surface_y(wx + off.x, wz + off.y) - y)
+		var apart := 1e9
+		for other: Vector3 in _team_site.values():
+			apart = minf(apart, Vector2(wx - other.x, wz - other.z).length())
+		if apart > 1e8:
+			apart = float(store.half_extent())
+		var score := apart - float(roughness) * 4.0
+		if score > best_score:
+			best_score = score
+			best = Vector3(wx, float(y) + 1.0, wz)
+	if best == Vector3.ZERO:
+		# Nowhere nice: anywhere inside the world beats nowhere at all.
+		var fallback := store.clamp_inside(Vector3(cos(bearing), 0.0,
+			sin(bearing)) * float(store.half_extent()) * 0.5, 10)
+		fallback.y = float(store.surface_y(int(fallback.x), int(fallback.z))) + 1.0
+		return fallback
+	return best
 
 @rpc("authority", "reliable")
 func cl_hit_ok() -> void:
@@ -2330,7 +2472,69 @@ func _server_match_end(winner: int) -> void:
 	match_phase = "END"
 	_match_timer = 10.0
 	print("Battle royale over: team %d" % winner)
+	_record_result(winner)
 	cl_match_end.rpc(winner)
+
+# ------------------------------------------------------------------
+# The scoreboard
+#
+# Two tallies that live across matches: how many games each TEAM has won,
+# and how many knockouts each PLAYER has. Both belong to the map they
+# were set on, so both are wiped when the world is reset — see
+# _do_world_reset(). Players coming and going does NOT reset them.
+# ------------------------------------------------------------------
+
+## team index -> games won
+var team_wins: Dictionary = {}
+## player name -> {"total": int, "last": int, "team": int}
+##
+## Keyed by NAME, not by peer id: a kid who drops out and rejoins gets a
+## new id and would otherwise lose their record mid-session.
+var player_frags: Dictionary = {}
+var matches_played := 0
+
+func reset_scoreboard() -> void:
+	team_wins.clear()
+	player_frags.clear()
+	matches_played = 0
+	_broadcast_scoreboard()
+
+## One knockout, for the board.
+func _credit_frag(attacker_id: String) -> void:
+	if attacker_id.is_empty() or not Game.roster.has(attacker_id):
+		return
+	var who := str(Game.roster[attacker_id].get("name", ""))
+	if who.is_empty():
+		return
+	var row: Dictionary = player_frags.get(who, {"total": 0, "last": 0, "team": -1})
+	row.total = int(row.total) + 1
+	row.last = int(row.last) + 1
+	row.team = int(Game.roster[attacker_id].get("team", -1))
+	player_frags[who] = row
+
+func _record_result(winner: int) -> void:
+	matches_played += 1
+	if winner >= 0:
+		team_wins[winner] = int(team_wins.get(winner, 0)) + 1
+	_broadcast_scoreboard()
+
+## Everyone's "this game" column goes back to zero as the next one opens.
+func _start_new_scorecard() -> void:
+	for who: String in player_frags.keys():
+		player_frags[who].last = 0
+	_broadcast_scoreboard()
+
+func _broadcast_scoreboard() -> void:
+	cl_scoreboard.rpc(team_wins, player_frags, matches_played)
+
+@rpc("authority", "call_local", "reliable")
+func cl_scoreboard(wins: Dictionary, frags: Dictionary, played: int) -> void:
+	team_wins = wins
+	player_frags = frags
+	matches_played = played
+	scoreboard_changed.emit()
+
+signal scoreboard_changed
 
 ## Match damage between enemies (orbs and blast splash call this).
 func _match_hurt(id: String, amount: int, from_pos: Vector3, attacker := "") -> void:
@@ -2393,7 +2597,7 @@ var alive_ids: Dictionary = {}
 func cl_match(phase: String, seconds: float) -> void:
 	match_phase = phase
 	match_seconds = seconds
-	if phase == "DROP":
+	if phase == "SETUP":
 		ghost_ids.clear()
 		client_downed.clear()
 		revive_progress.clear()
@@ -2422,7 +2626,7 @@ func cl_match(phase: String, seconds: float) -> void:
 	if chunks != null:
 		chunks.match_mode = phase != "IDLE"
 	match_changed.emit()
-	if phase == "DROP":
+	if phase == "SETUP":
 		Sfx.play("whoosh")
 	elif phase == "BATTLE":
 		Sfx.play("boom", -8.0)
@@ -2434,12 +2638,15 @@ func cl_storm(radius: float, center: Vector3 = Vector3.ZERO) -> void:
 	storm_changed.emit()
 
 @rpc("authority", "reliable")
-func cl_drop(id: String, pos: Vector3, loot := false) -> void:
+func cl_stand(id: String, pos: Vector3, loot := false) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id and child.is_local:
+			# Stood on the ground beside your team, not dropped out of the
+			# sky. See _team_start_spot(): this is a building game, and a
+			# squad that starts together can put up a fort.
 			child.teleport(pos)
-			child.start_drop_glide()
 			child.fly_mode = false
+			child.velocity = Vector3.ZERO
 			# Everyone drops with the same small kit — a sword to fight
 			# with and the two team markers, so a squad can talk to each
 			# other from the first second. Everything else is loot.
@@ -2678,6 +2885,31 @@ func _spawn_monster(alive: Array) -> void:
 var _crates: Dictionary = {}
 var _next_crate_id := 1
 
+## Is this a spot a crate can actually sit on? The surface has to be
+## SOLID GROUND — not a dome roof, not a ship's hull, not the lid of a
+## bunker — and not perched high in the air above the local terrain.
+## Space is full of things whose top face is 40 blocks up, and a crate
+## placed on one reads as floating.
+func _crate_ground_ok(wx: int, wz: int, y: int) -> bool:
+	if y <= 2 or y >= WorldGen.CHUNK_H - 6:
+		return false
+	if not store.inside_world(wx, wz):
+		return false
+	var under := store.get_block(Vector3i(wx, y, wz))
+	if under == Blocks.WATER or Blocks.is_liquid(under):
+		return false
+	# Glass and steel are what the domes, ships and bunkers are made of.
+	if under == Blocks.GLASS or under == Blocks.STEEL:
+		return false
+	if store.theme == "sky":
+		return y > WorldGen.SEA_LEVEL + 6
+	if store.theme == "space":
+		# Must be the actual regolith, not something built on top of it:
+		# anything more than a few blocks above the raw terrain height is
+		# a roof.
+		return y <= store.gen.height_at(wx, wz) + 2
+	return true
+
 ## How much loot this world should be carrying.
 ##
 ## Rationed to the AREA of the map first — a big map needs more crates to
@@ -2712,9 +2944,7 @@ func _server_tick_crates() -> void:
 		var wx := int(anchor.x + cos(angle) * dist)
 		var wz := int(anchor.z + sin(angle) * dist)
 		var y := store.surface_y(wx, wz)
-		if store.inside_world(wx, wz) and y > 2 and y < WorldGen.CHUNK_H - 6 \
-				and store.get_block(Vector3i(wx, y, wz)) != Blocks.WATER \
-				and (store.theme != "sky" or y > WorldGen.SEA_LEVEL + 6):
+		if _crate_ground_ok(wx, wz, y):
 			# Rarer weapons show up less often.
 			var pool := [1, 1, 1, 2, 9, 9, 11, 12, 12, 15, 15, 19]
 			_crates[_next_crate_id] = {"weapon": pool[randi() % pool.size()],
@@ -3127,7 +3357,7 @@ func send_edit(slot: int, pos: Vector3i, block: int) -> void:
 	# synchronous remesh of its chunk) instead of waiting for the server
 	# echo to fight through the mesh queue. The echo re-applies the same
 	# value, which is a no-op visually.
-	if match_phase == "LOBBY" or match_phase == "DROP":
+	if match_phase == "LOBBY" or match_phase == "SETUP":
 		return  # pre-battle lockdown: the server would refuse anyway
 	if chunks != null:
 		chunks.apply_edit_now(pos, block)

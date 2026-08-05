@@ -27,6 +27,12 @@ Everything below came from Ian in one go on 4/8/2026, in priority order
 as agreed: bugs that spoil a game first, then the things that make it a
 better game. Tick them off here as they ship.
 
+### Resizing the world
+
+- [x] **Resizing restarts EVERYTHING** — new terrain, new loot, players
+      re-placed, any running battle abandoned and re-opened, scoreboard
+      wiped, saved positions forgotten (on disk too).
+
 ### Bounds — things leaving the play area
 
 - [x] **Nothing may be placed outside the world size.** Crates, kits,
@@ -84,8 +90,11 @@ better game. Tick them off here as they ship.
       playing.** Two players on a huge map should not be hunting ten
       crates between them.
 
-### Drops
+### Starts (was: drops)
 
+- [x] **No sky drop at all.** Teams START on the ground, standing
+      together, so they can dig in and build something defensible. Loot
+      moves every game.
 - [x] **Drop teams TOGETHER** — a team of four (or seventeen) lands as a
       group with about one block between them, so they start together and
       can fly out from there. **Spread the groups well across the map** so
@@ -93,40 +102,43 @@ better game. Tick them off here as they ship.
 
 ### Space map
 
-- [ ] **Biodomes must sit on the ground.** Sample every block under the
+- [x] **Biodomes must sit on the ground.** Sample every block under the
       dome's circular footprint and set it at the LOWEST of them, instead
       of leaving it hanging in the air.
-- [ ] **Weapons/loot still spawn floating high in the air** on this map.
-- [ ] **More than one cavern.** A large space world currently gets one.
-- [ ] **An angled archway leading down into a cavern**, rather than the
+- [x] **Weapons/loot still spawn floating high in the air** on this map.
+- [x] **More than one cavern.** A large space world currently gets one.
+- [x] **An angled archway leading down into a cavern**, rather than the
       bare hole it is now.
-- [ ] **Better spaceships.** They are meant to be the floating-island
+- [x] **Better spaceships.** They are meant to be the floating-island
       feature of this map and they look terrible.
 
 ### Scoreboard
 
-- [ ] **Track games won per team.** The end of a match announces "Team
+- [x] **Track games won per team.** The end of a match announces "Team
       Blue wins", and there is a leaderboard.
-- [ ] **The board has two sides**: teams by games won on one, players by
+- [x] **The board has two sides**: teams by games won on one, players by
       TOTAL frags on the other — with each player's team, their running
       total, and what they got in the game just finished.
-- [ ] **Resets when the map changes.** Players coming and going does not
+- [x] **Resets when the map changes.** Players coming and going does not
       reset it.
 
 ### Bots
 
-- [ ] **Better bot play, with a spread of skill** — some genuinely good
+- [x] **Better bot play, with a spread of skill** — some genuinely good
       players, some genuinely bad ones.
 
 ### Older items
 
-- [ ] **Space map, second pass.** The generator exists now (grey ground,
-      glass biosphere domes with grass inside, steel bunkers with lit
-      shafts, glowing ships parked in the sky). Beyond the fixes listed
-      above, Ian should say what else it needs — interiors, something to
-      find.
-- [ ] **3D held tool models** "kind of suck" — improve them. The icons
-      are fine.
+- [ ] **Space map, third pass — needs Ian to say what.** Everything he
+      listed is done: domes sit on the ground, loot stays off roofs and
+      hulls, landmarks are on a 56-block grid so a map gets several
+      caverns, the cavern entrance is a ramped archway, and the ships
+      have hulls, cockpits, fins and engines in three sizes. Anything
+      further (interiors, something to FIND in there) needs a steer.
+- [x] **3D held tool models** — the five that are hand-built rather than
+      Kenney imports (sword, digger, wings, paint sprayer, smoke bomb)
+      were slabs and cylinders; they now have shape. The other seven are
+      Kenney blaster models and were always fine.
 - [ ] **More kits — needs Ian to pick.** The importer now reads all three
       formats those sites hand out (see "Adding more kits"), so this is
       pure sourcing: download the builds you want, drop them in a folder,
