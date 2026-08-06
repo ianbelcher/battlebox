@@ -100,9 +100,9 @@ static func shot_ray(eye: Vector3, dir: Vector3, fp: bool, kind: int) -> Array:
 	side = side.normalized() if side.length() > 0.01 else Vector3.ZERO
 	return [eye + Vector3(0, -0.34, 0) + side * 0.3 + dir * 0.3, dir]
 
-## HOW LONG THE SHOT IS DRAWN OFF ITS TRUE PATH, in seconds — about five
+## HOW LONG THE SHOT IS DRAWN OFF ITS TRUE PATH, in seconds — about ten
 ## frames — and how far to the side and below it starts.
-const MUZZLE_LEAD := 0.09
+const MUZZLE_LEAD := 0.18
 const MUZZLE_SIDE := 0.30
 const MUZZLE_DROP := 0.30
 
