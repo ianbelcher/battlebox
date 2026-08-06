@@ -142,6 +142,23 @@ moved. Stuck is invisible in a screenshot, so it needs a number — and
 the number only counts bots that are alive and not downed, or it means
 nothing.
 
+## Aiming
+
+**Shots converge on what the crosshair actually HITS**, found by tracing
+the sight ray (`OrbView._aim_distance`). They leave a muzzle that is down
+and to the right of the eye, so they must be angled inwards to cross the
+line of sight — which means there is exactly one range at which they are
+dead on, and it is whatever range the code converges them at.
+
+That used to be a fixed 40 blocks: a rifle zeroed at 40m. Dead on there,
+wrong everywhere else, and past it the shot has already crossed the sight
+line and keeps going. Measured by `tests/aim_convergence.gd`: 1.26 blocks
+off at 150 and 2.40 at 250, against a player about 0.6 blocks wide.
+
+If you ever change the muzzle offset, update the constants at the top of
+that test to match — it is pure geometry and knows nothing about the
+game otherwise.
+
 ## Tweens
 
 **`create_tween()` binds the tween to the node that CALLS it, not to the
