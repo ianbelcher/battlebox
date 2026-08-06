@@ -9,22 +9,12 @@ any tool) can pick the work up cold.
 
 ## Open work
 
-**One manual step, and browser play is live.** Everything is built,
-deployed and verified; the only thing missing is the Service port, and
-`_configurations/` is applied by hand, never by CI:
+Nothing outstanding. Ian will say what is next.
 
-```
-kubectl apply -f deployments/_configurations/world.yaml
-```
-
-That adds nodePort 30812 (https) to `world-web`, and mounts the data
-volume on the web container so the certificate survives deploys. Then
-`https://10.0.0.200:30812/play/` is the game — accept the browser's
-certificate warning once.
-
-Until it is applied, nginx is already serving https on 8443 inside the
-pod; there is simply no route to it from the LAN. Nothing else is
-waiting on it.
+Browser play is live and applied: `https://10.0.0.200:30812/play/`,
+accepting the certificate warning once. If that Service is ever
+recreated, remember `_configurations/` is applied by hand, never by CI —
+`kubectl apply -f deployments/_configurations/world.yaml`.
 
 ---
 
