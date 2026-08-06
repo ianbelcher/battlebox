@@ -60,12 +60,32 @@ RUN apt-get update \
 # like a game bug, not a packaging one.
 RUN grep -q "application/wasm" /etc/nginx/mime.types
 
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Check the config against THIS nginx, at build time.
+#
+# A config that is valid on a newer nginx and invalid here does not fail
+# quietly: nginx refuses to start, the web container crash-loops, the pod
+# never becomes ready, and Kubernetes then pulls the GAME SERVER out of
+# its Service as well — so a typo in a web server config takes the whole
+# game offline. That happened with "http2 on;", which is 1.25.1+ while
+# this image is on 1.24.
+#
+# nginx -t needs the certificate files to exist, so mint a throwaway pair
+# purely for the test and delete them; the real one is created at startup
+# on the shared volume.
+RUN mkdir -p /opt/world/tls \
+    && openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+       -keyout /opt/world/tls/world.key -out /opt/world/tls/world.crt \
+       -subj "/CN=config check" >/dev/null 2>&1 \
+    && nginx -t \
+    && rm -f /opt/world/tls/world.crt /opt/world/tls/world.key
+
 COPY --from=build /game/build/server /opt/world/server
 COPY maps /opt/world/maps
 COPY --from=build /game/build/downloads /opt/world/web/downloads
 COPY --from=build /game/build/play /opt/world/web/play
 COPY web/index.html /opt/world/web/index.html
-COPY nginx.conf /etc/nginx/nginx.conf
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh /opt/world/server/world-server.x86_64
 
