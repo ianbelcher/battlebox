@@ -266,7 +266,7 @@ func _process(delta: float) -> void:
 		if player == null:
 			continue
 		var input: InputSlot = Game.local_inputs.get(cell.slot)
-		# First-person toggle (T / gamepad Y); Esc also exits on keyboard.
+		# First-person toggle (T / gamepad Y).
 		if input != null:
 			var view := input.is_view_toggle_pressed()
 			if view and not cell.prev_view:

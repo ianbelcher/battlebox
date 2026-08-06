@@ -113,11 +113,66 @@ var host_peer := 0
 ## Which saved character (characters.cfg section) each local slot is using.
 var profile_keys: Dictionary = {}
 
+## Fonts covering the symbols the UI is built out of — hearts, the ⒶⒷⓍⓎ
+## button caps, the weather and trophy icons.
+##
+## The game never shipped a font: on a desktop Godot quietly borrows
+## glyphs it lacks from the operating system's own fonts, and every one of
+## these came from there. A browser has no system fonts to borrow, so all
+## 51 of them turned into empty boxes with their code point printed inside
+## — the hearts read as "2665".
+##
+## Three, because no one of them has the lot: DejaVu has the box-drawing
+## and card suits, Noto Sans Symbols has the circled letters (and ONLY it
+## does — Symbols 2 does not, despite the name), Noto Emoji has the rest.
+const WEB_FONTS := [
+	"res://assets/fonts/DejaVuSans.ttf",
+	"res://assets/fonts/NotoSansSymbols-Regular.ttf",
+	"res://assets/fonts/NotoEmoji-Regular.ttf",
+]
+
+## The wrapped font, once built — null on desktop, where it isn't needed.
+var ui_font: Font = null
+
 func _ready() -> void:
+	_install_fallback_fonts()
 	load_video()
 	video_changed.connect(save_video)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+
+## Web only, deliberately. On a desktop the system fonts already do this
+## job and do it better — macOS draws these in colour — so bundling ours
+## ahead of them would be a downgrade nobody asked for.
+func _install_fallback_fonts() -> void:
+	if not OS.has_feature("web"):
+		return
+	var extra: Array[Font] = []
+	for path: String in WEB_FONTS:
+		var font := load(path) as Font
+		if font != null:
+			extra.append(font)
+	if extra.is_empty():
+		push_warning("No fallback fonts loaded — symbols will show as boxes.")
+		return
+	# Wrap rather than mutate: the default font is a built-in resource, and
+	# a FontVariation keeps the game's existing typeface as the base while
+	# adding somewhere to look for the glyphs it doesn't have.
+	var wrapper := FontVariation.new()
+	wrapper.base_font = ThemeDB.fallback_font
+	wrapper.fallbacks = extra
+	ui_font = wrapper
+	# BOTH of these, and the second one is the one that actually works.
+	# ThemeDB.fallback_font alone changes nothing: it is only consulted
+	# when a theme lookup finds nothing at all, and the default theme DOES
+	# define a font, so the lookup succeeds and never reaches the fallback.
+	# Setting the default theme's own font is what every Control without
+	# an explicit font override actually reads. fallback_font still matters
+	# for Label3D, which asks for it directly.
+	ThemeDB.fallback_font = wrapper
+	var default_theme := ThemeDB.get_default_theme()
+	if default_theme != null:
+		default_theme.default_font = wrapper
 
 ## Creates /root/Game/World (identical path on every peer, for RPC routing).
 func create_world() -> Node:

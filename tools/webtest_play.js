@@ -50,6 +50,14 @@ const SECONDS = parseInt(process.argv[3] || '90', 10);
   await page.keyboard.press('Space');
   await new Promise(r => setTimeout(r, 8000));
   await page.screenshot({ path: (process.argv[4] || 'shot.png').replace('.png', '-joined.png') });
+
+  // Open the world menu with ` (NOT Escape — a browser keeps Escape for
+  // releasing the mouse). This shot is also how the bundled symbol fonts
+  // get checked: with no fonts, every icon in here draws as an empty box
+  // with its code point in it.
+  await page.keyboard.press('Backquote');
+  await new Promise(r => setTimeout(r, 3000));
+  await page.screenshot({ path: (process.argv[4] || 'shot.png').replace('.png', '-menu.png') });
   const joined = await page.evaluate(() => ({
     pointerLocked: document.pointerLockElement !== null,
   }));

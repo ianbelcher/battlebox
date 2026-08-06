@@ -477,7 +477,7 @@ func _on_connected() -> void:
 				if Game.world != null and Game.world.chunks != null:
 					Game.world.chunks.prefetch(radius)))
 	# The world menu belongs to the table, not to one player: full screen,
-	# keyboard and mouse only, Escape to open.
+	# keyboard and mouse only, ` to open.
 	if _world_menu == null:
 		_world_menu = WorldMenu.new()
 		_game_screen.add_child(_world_menu)
@@ -720,10 +720,23 @@ func _update_minimap() -> void:
 ## Applies the video settings (Game.video) everywhere. Each setting maps
 ## to exactly one thing — no presets, no automatic overrides.
 func _unhandled_input(event: InputEvent) -> void:
-	# Escape belongs to the world menu now. Controllers never reach it —
-	# their Start button opens each player's own build menu instead.
-	if event is InputEventKey and event.pressed and not event.echo \
-			and (event as InputEventKey).keycode == KEY_ESCAPE:
+	# ` opens the world menu — NOT Escape. In a browser Escape is the
+	# browser's own key for releasing the mouse: pressing it dropped you
+	# out of mouse-look and handed you a menu you never asked for, and
+	# the game cannot take that key back. ` sits just below Escape, means
+	# nothing else in the game, and no browser claims it.
+	#
+	# Escape still CLOSES the menu, because backing out with it is
+	# universal and by then the cursor is already free either way.
+	# Controllers never reach any of this — their Start button opens each
+	# player's own build menu instead.
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	var key := (event as InputEventKey).keycode
+	var open_menu := key == KEY_QUOTELEFT
+	var close_menu := key == KEY_ESCAPE and _world_menu != null \
+		and _world_menu.visible
+	if open_menu or close_menu:
 		if _world_menu != null:
 			_world_menu.toggle()
 			# Hand the cursor back while it's open, and only then.
@@ -841,7 +854,7 @@ var _banner_sticky := false
 ## THE FINAL SCORE, on screen, the moment a battle ends.
 ##
 ## The end of a match only ever announced who won. The table itself was
-## tucked away under Escape → Scores, which nobody is going to open in
+## tucked away under ` → Scores, which nobody is going to open in
 ## the ten seconds between battles — so as far as anyone playing was
 ## concerned there were no player stats at all. It now comes up by
 ## itself, and goes away when the next battle starts.
@@ -898,7 +911,7 @@ func _show_final_scores(winner: int) -> void:
 	split.add_child(_final_players(world, sc))
 
 	var hint := Label.new()
-	hint.text = "The full table is under Esc → Scores"
+	hint.text = "The full table is under ` → Scores"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_NOTE, sc))
 	hint.add_theme_color_override("font_color", UiTheme.INK_FAINT)
@@ -1072,13 +1085,16 @@ func _process(_delta: float) -> void:
 	# Friendly hop-in hint while it's just one player pottering about —
 	# and ALWAYS when nobody from this machine is playing, because then
 	# it is the only thing telling you how to get back in.
+	# Only the "room for one more" nudge lives here. When NOBODY from this
+	# machine is playing, the split-screen view already fills the screen
+	# with a much bigger VOXEL BATTLE / "press SPACE to jump in" prompt —
+	# printing a second, smaller copy of the same instruction underneath
+	# it just read as the game saying everything twice.
 	if _join_hint != null:
-		var nobody := Game.local_inputs.is_empty()
-		_join_hint.visible = nobody or (Game.local_inputs.size() == 1
-			and world.match_phase == "IDLE"
-			and not Input.get_connected_joypads().is_empty())
-		_join_hint.text = "Press Ⓐ or Space to join the game" if nobody \
-			else "🎮  New player?  Press Ⓐ on another controller to hop in!"
+		_join_hint.visible = Game.local_inputs.size() == 1 \
+			and world.match_phase == "IDLE" \
+			and not Input.get_connected_joypads().is_empty()
+		_join_hint.text = "🎮  New player?  Press Ⓐ on another controller to hop in!"
 	# The per-player red warning lives in each PlayerHud now.
 	_storm_tint.color.a = 0.0
 	var clock: float = world.clock
