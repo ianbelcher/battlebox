@@ -272,6 +272,7 @@ func _process(delta: float) -> void:
 		_server_tick_kick_test(delta)
 		_server_tick_win_test(delta)
 		_server_tick_bot_watch(delta)
+		_server_tick_smoke_test(delta)
 		_server_tick_match(delta)
 		_server_tick_bots(delta)
 		_water_accum += delta
@@ -895,6 +896,24 @@ func _server_tick_kick_test(delta: float) -> void:
 ## screenshot, so it needs a number.
 var _bot_watch_t := 0.0
 var _bot_watch_from: Dictionary = {}
+
+## WORLD_SMOKE_TEST=1: throw a smoke bomb every second, forever. Each one
+## takes the last one down, which is exactly the path that used to strand
+## a dozen infinite tweens per bomb on every client and grind them to a
+## halt after a few throws.
+var _smoke_test_t := 0.0
+
+func _server_tick_smoke_test(delta: float) -> void:
+	if OS.get_environment("WORLD_SMOKE_TEST") != "1":
+		return
+	_smoke_test_t += delta
+	if _smoke_test_t < 1.0:
+		return
+	_smoke_test_t = 0.0
+	var at := store.safe_stand(Vector3(spawn_pos), 12.0)
+	_smoke_marker = {"pos": at, "team": randi() % 4,
+		"until": Time.get_ticks_msec() + SMOKE_MSEC}
+	cl_smoke.rpc(at, int(_smoke_marker.team))
 
 func _server_tick_bot_watch(delta: float) -> void:
 	if OS.get_environment("WORLD_BOT_DEBUG") != "1":
@@ -2734,11 +2753,20 @@ func _check_match_win() -> void:
 			teams_alive[int(Game.roster[id].get("team", 0))] = true
 	if match_phase != "BATTLE":
 		return
-	# A battle is NOT over because the people are out of it. The computer
-	# players finish what they started and somebody actually wins; the
-	# humans watch. Stopping here is what ended games with three teams
-	# still standing, and it meant the computer players never got to
-	# build a score.
+	# A battle is NOT over because the people are out of it — the computer
+	# players finish what they started and somebody actually wins, while
+	# the humans watch. But being DEAD and being GONE are different: if
+	# there is nobody connected at all there is nobody to watch, and
+	# leaving a match grinding away for its full length means anyone
+	# coming back is locked out until it finishes.
+	var anyone_here := false
+	for id: String in Game.roster.keys():
+		if not bool(Game.roster[id].get("bot", false)):
+			anyone_here = true
+			break
+	if not anyone_here:
+		_server_match_end(-2)
+		return
 	if teams_alive.size() <= 1:
 		var winner := -1
 		for t in teams_alive.keys():
@@ -3983,6 +4011,10 @@ func cl_flare(pos: Vector3, team: int) -> void:
 		else Color("ff9ac0")
 	orbs._spawn_flare(pos + Vector3(0.5, 0.5, 0.5), tint)
 
+## The marker's drift, kept so it can be killed explicitly as well as
+## dying with the node it is bound to.
+var _smoke_tween: Tween = null
+
 ## The one smoke marker. Putting a new one up takes the old one down,
 ## wherever it was and whoever threw it, so there is never any question
 ## about which spot the team is being pointed at.
@@ -3990,9 +4022,7 @@ var _smoke_node: Node3D = null
 
 @rpc("authority", "call_local", "reliable")
 func cl_smoke(pos: Vector3, team: int) -> void:
-	if is_instance_valid(_smoke_node):
-		_smoke_node.queue_free()
-	_smoke_node = null
+	_drop_smoke_marker()
 	if chunks == null:
 		return
 	var tint: Color = TEAM_COLORS[team] if team >= 0 and team < TEAM_COLORS.size() \
@@ -4012,7 +4042,7 @@ func cl_smoke(pos: Vector3, team: int) -> void:
 	puff_mat.emission = tint
 	puff_mat.emission_energy_multiplier = 1.6
 	puff_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	for i in 14:
+	for i in 12:
 		var puff := MeshInstance3D.new()
 		var sphere := SphereMesh.new()
 		sphere.radius = 0.9 + float(i) * 0.10
@@ -4022,11 +4052,19 @@ func cl_smoke(pos: Vector3, team: int) -> void:
 		puff.position = Vector3(randf_range(-0.7, 0.7), float(i) * 1.15,
 			randf_range(-0.7, 0.7))
 		marker.add_child(puff)
-		var drift := create_tween().set_loops()
-		drift.tween_property(puff, "position:y",
-			puff.position.y + 0.55, 1.6 + randf() * 0.7)
-		drift.tween_property(puff, "position:y",
-			puff.position.y, 1.6 + randf() * 0.7)
+	# ONE tween, bound to the MARKER, and killed with it.
+	#
+	# This used to be fourteen infinite tweens created with the WORLD's
+	# create_tween() — so they were bound to the world, not to the puffs.
+	# Clearing the marker freed the puffs and left every one of those
+	# tweens alive, looping forever over objects that no longer existed,
+	# for every smoke bomb anyone had ever thrown. Godot reports each
+	# invalid step, and printing errors with backtraces is slow enough
+	# that a few bombs' worth brought the client to a halt. Both machines
+	# locked up together because both were sent the same cl_smoke.
+	_smoke_tween = marker.create_tween().set_loops()
+	_smoke_tween.tween_property(marker, "position:y", centre.y + 0.5, 1.9)
+	_smoke_tween.tween_property(marker, "position:y", centre.y, 1.9)
 	var beam := OmniLight3D.new()
 	beam.omni_range = 26.0
 	beam.light_energy = 2.2
@@ -4038,6 +4076,14 @@ func cl_smoke(pos: Vector3, team: int) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func cl_smoke_clear() -> void:
+	_drop_smoke_marker()
+
+## Take the marker down, tween and all. Freeing the node alone is what
+## left orphaned tweens running over dead objects.
+func _drop_smoke_marker() -> void:
+	if _smoke_tween != null and _smoke_tween.is_valid():
+		_smoke_tween.kill()
+	_smoke_tween = null
 	if is_instance_valid(_smoke_node):
 		_smoke_node.queue_free()
 	_smoke_node = null

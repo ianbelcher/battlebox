@@ -142,6 +142,24 @@ moved. Stuck is invisible in a screenshot, so it needs a number — and
 the number only counts bots that are alive and not downed, or it means
 nothing.
 
+## Tweens
+
+**`create_tween()` binds the tween to the node that CALLS it, not to the
+node it animates.** Get that backwards with `.set_loops()` and you have
+an immortal tween stepping over a freed object for the rest of the
+session.
+
+That is what locked up both machines mid-game: the smoke marker built
+fourteen infinite tweens with the WORLD's `create_tween()`, so taking
+the marker down freed the puffs and left every tween alive and looping,
+for every bomb anyone had ever thrown. Godot reports each invalid step,
+and printing errors with backtraces is slow enough to stop a client
+dead. Measured with `WORLD_SMOKE_TEST=1` (a bomb a second): 672 client
+errors in a minute with the bug, 0 with one tween bound to the marker.
+
+Call `create_tween()` **on the node being animated**, and kill it
+explicitly when you tear that node down.
+
 ## Weapon icons
 
 `assets/ui/weapons/w<id>.png` is a render of that weapon's HELD MODEL,
