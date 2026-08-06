@@ -72,6 +72,11 @@ const SECONDS = parseInt(process.argv[3] || '90', 10);
   console.log('canvas         :', state.canvas);
   console.log('pointerLocked  :', joined.pointerLocked);
   console.log('connected      :', connected, `(after ${Math.round((Date.now()-started)/1000)}s)`);
+  // Chunks are meshed on worker threads. A handful of stalls under a
+  // software rasterizer is normal; a stall for every chunk means the
+  // threads are not running at all and everything is limping along on
+  // the synchronous fallback.
+  console.log('mesh stalls    :', log.filter(l => /Mesh worker stalled/.test(l)).length);
   console.log('--- console (last 40) ---');
   console.log(log.slice(-40).join('\n') || '(nothing)');
   if (errors.length) {

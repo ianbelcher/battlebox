@@ -26,7 +26,20 @@ ensure_cert() {
     openssl req -x509 -newkey rsa:2048 -nodes \
       -keyout "$TLS_STORE/world.key" -out "$TLS_STORE/world.crt" \
       -days 3650 -subj "/CN=Voxel Battle" \
-      -addext "subjectAltName=$TLS_HOSTS" >/dev/null 2>&1
+      -addext "subjectAltName=$TLS_HOSTS" >/dev/null 2>&1 || true
+  fi
+  # Say so plainly if that did not work. nginx will refuse to start
+  # without these two files, and this container also serves the downloads
+  # page — so a silent failure here takes the native players down too,
+  # with nothing in the log but a missing-file error from cp.
+  if [ ! -s "$TLS_STORE/world.crt" ] || [ ! -s "$TLS_STORE/world.key" ]; then
+    echo "FATAL: could not create a certificate in $TLS_STORE." >&2
+    echo "  Is the volume writable? Retrying openssl with output:" >&2
+    openssl req -x509 -newkey rsa:2048 -nodes \
+      -keyout "$TLS_STORE/world.key" -out "$TLS_STORE/world.crt" \
+      -days 3650 -subj "/CN=Voxel Battle" \
+      -addext "subjectAltName=$TLS_HOSTS" >&2 || true
+    [ -s "$TLS_STORE/world.crt" ] || exit 1
   fi
   # nginx runs as www-data and the volume is NFS; copy rather than point
   # at the share so a permissions quirk there cannot stop the web server.

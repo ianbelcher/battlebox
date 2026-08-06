@@ -32,7 +32,7 @@ RUN echo "$GIT_SHA" > /game/version.txt
 # cache even when it succeeds, hence the guard.
 RUN godot --headless --path /game --import || true
 
-RUN mkdir -p /game/build/server /game/build/downloads \
+RUN mkdir -p /game/build/server /game/build/downloads /game/build/play \
     && godot --headless --path /game --export-release "Linux Server" build/server/world-server.x86_64 \
     && godot --headless --path /game --export-release "Linux Client" build/downloads/voxel-battle-linux.x86_64 \
     && godot --headless --path /game --export-release "Windows Client" build/downloads/voxel-battle-windows.exe \
