@@ -62,7 +62,13 @@ func _add_orb(shooter_id: String, origin: Vector3, dir: Vector3, mine: bool, slo
 		dir = (dir * 0.35 + Vector3.UP).normalized()
 	_orbs.append({"node": node, "vel": dir.normalized() * speed,
 		"shooter_id": shooter_id, "age": 0.0, "mine": mine, "slot": slot,
-		"kind": kind, "start": origin, "next_whoosh": 0.0})
+		"kind": kind, "start": origin, "next_whoosh": 0.0,
+		# WHERE THE SHOT REALLY IS. The node is drawn a little to the
+		# bottom-right of it for the first few frames so it appears to
+		# leave the gun rather than the middle of your face — see
+		# MUZZLE_LEAD. Everything that decides what a shot HITS reads
+		# this, never node.position, or the fudge would become real.
+		"pos": origin})
 
 func _physics_process(delta: float) -> void:
 	var world: Node = get_parent()
@@ -72,14 +78,15 @@ func _physics_process(delta: float) -> void:
 		var orb: Dictionary = _orbs[i]
 		orb.age += delta
 		var node: Node3D = orb.node
-		node.position += orb.vel * delta
+		orb.pos = (orb.pos as Vector3) + orb.vel * delta
+		node.position = orb.pos + Weapons.muzzle_lead(orb.vel, float(orb.age))
 		if orb.kind == 2:
 			# The hook whooshes while it flies and fizzles at 150 blocks —
 			# you always know whether it's still going or gave up.
 			if orb.mine and orb.age > float(orb.next_whoosh):
 				orb.next_whoosh = orb.age + 0.28
 				Sfx.play("whoosh", -14.0, randf_range(1.1, 1.3))
-			if node.position.distance_to(orb.start) > 150.0:
+			if (orb.pos as Vector3).distance_to(orb.start) > 150.0:
 				if orb.mine:
 					Sfx.play("pop", -10.0, 0.7)
 				node.queue_free()
@@ -87,15 +94,16 @@ func _physics_process(delta: float) -> void:
 				continue
 		if orb.kind == 14:
 			if orb.age > 1.1:
-				_spawn_flare(node.position, _team_tint(orb.shooter_id))
+				_spawn_flare(orb.pos, _team_tint(orb.shooter_id))
 				node.queue_free()
 				_orbs.remove_at(i)
 			continue
-		var cell := Vector3i(floori(node.position.x), floori(node.position.y), floori(node.position.z))
+		var here: Vector3 = orb.pos
+		var cell := Vector3i(floori(here.x), floori(here.y), floori(here.z))
 		# Shots never fizzle mid-air: they fly until they hit something (or
 		# leave the world), and heavy shells still detonate wherever they end.
-		var died: bool = orb.age > 6.0 or node.position.y < -4.0
-		if died and orb.mine and orb.kind > 0 and node.position.y >= -4.0:
+		var died: bool = orb.age > 6.0 or here.y < -4.0
+		if died and orb.mine and orb.kind > 0 and here.y >= -4.0:
 			world.sv_shot.rpc_id(1, orb.slot, cell, orb.kind)
 		if not died and Blocks.is_solid(world.chunks.get_block(cell)):
 			died = true
@@ -112,16 +120,16 @@ func _physics_process(delta: float) -> void:
 			# Player hits (anyone but the shooter): pellets bonk, shells boom.
 			for child in world.players.get_children():
 				if child is Player and child.player_id != orb.shooter_id \
-						and child.position.distance_to(node.position - Vector3(0, 0.8, 0)) < 1.1:
+						and child.position.distance_to(here - Vector3(0, 0.8, 0)) < 1.1:
 					if orb.kind == 1 or orb.kind >= 5:
 						world.sv_shot.rpc_id(1, orb.slot, cell, orb.kind)
 					else:
-						world.sv_orb_hit.rpc_id(1, orb.slot, child.player_id, node.position)
+						world.sv_orb_hit.rpc_id(1, orb.slot, child.player_id, here)
 					died = true
 					break
 			# Grapple a DRAGON and you climb aboard.
 			if not died and orb.kind == 2:
-				var dragon: int = world.critter_view.nearest_id(node.position, 3.5)
+				var dragon: int = world.critter_view.nearest_id(here, 3.5)
 				if dragon >= 0 and world.critter_view.is_dragon(dragon):
 					for child in world.players.get_children():
 						if child is Player and child.player_id == orb.shooter_id:
@@ -130,20 +138,20 @@ func _physics_process(delta: float) -> void:
 					died = true
 			# Critters poof when shot (kind 0 pellets only — be humane-ish).
 			if not died and orb.kind == 0:
-				var critter: int = world.critter_view.nearest_id(node.position, 1.2)
+				var critter: int = world.critter_view.nearest_id(here, 1.2)
 				if critter >= 0:
 					world.sv_shoot_critter.rpc_id(1, orb.slot, critter)
 					world.critter_view.pop(critter)
 					died = true
 			# Direct Grump hits (shell splash is handled server-side).
 			if not died and world.survival_active and orb.kind == 0:
-				var monster: int = world.monster_view.nearest_to(node.position, 1.1)
+				var monster: int = world.monster_view.nearest_to(here, 1.1)
 				if monster >= 0:
 					world.sv_zap.rpc_id(1, orb.slot, monster)
 					world.monster_view.hit(monster, false)
 					died = true
 		if died:
-			_poof(node.position)
+			_poof(here)
 			node.queue_free()
 			_orbs.remove_at(i)
 

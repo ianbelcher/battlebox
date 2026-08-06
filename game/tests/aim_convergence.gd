@@ -46,6 +46,7 @@ func _initialize() -> void:
 	]
 	for look: Vector3 in looks:
 		_check(look)
+	_check_lead_is_cosmetic()
 	print("  (for the record — a muzzle 0.3 to the side, converged on the "
 		+ "target, strays %.2f blocks from the sight line half way to a "
 		% _legacy_stray(80.0) + "target at 80)")
@@ -83,6 +84,43 @@ func _check(look: Vector3) -> void:
 			if _failures <= 8:
 				print("  look %s at %.0f blocks: %.3f off the sight line"
 					% [look, travelled, stray])
+
+## The muzzle lead is a DRAWING trick and must stay one.
+##
+## OrbView draws the first few frames of a shot down and to the right, so
+## it looks like it left the gun rather than the middle of your face. The
+## shot's real position must be untouched by that — the moment the offset
+## leaks into the simulation it is the muzzle-offset bug again, with all
+## the same consequences.
+##
+## This checks the offset decays to nothing and never exceeds what it
+## claims, so even the drawn mesh cannot wander somewhere silly.
+func _check_lead_is_cosmetic() -> void:
+	var fwd := Vector3(0, 0, -1)
+	# It must be gone by the time it claims to be gone...
+	_checks += 1
+	var after: Vector3 = Weapons.muzzle_lead(fwd, Weapons.MUZZLE_LEAD)
+	if after.length() > 0.0001:
+		_failures += 1
+		print("  muzzle lead still %.4f blocks at %.3fs, should be nothing"
+			% [after.length(), Weapons.MUZZLE_LEAD])
+	# ...it must never be big enough to look like a different shot...
+	_checks += 1
+	var biggest := 0.0
+	var t := 0.0
+	while t < Weapons.MUZZLE_LEAD * 3.0:
+		biggest = maxf(biggest, (Weapons.muzzle_lead(fwd, t) as Vector3).length())
+		t += 0.005
+	if biggest > 0.5:
+		_failures += 1
+		print("  muzzle lead peaks at %.2f blocks — too far to be cosmetic"
+			% biggest)
+	# ...and it must actually DO something at the start, or the whole
+	# point of it is missing and this test is watching nothing.
+	_checks += 1
+	if (Weapons.muzzle_lead(fwd, 0.0) as Vector3).length() < 0.1:
+		_failures += 1
+		print("  muzzle lead does nothing at the muzzle — is it wired up?")
 
 ## What a side-mounted muzzle converging on its target costs HALF WAY
 ## there — the part the endpoint-only test could not see.

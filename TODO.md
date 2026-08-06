@@ -160,11 +160,20 @@ slips round the edge of cover the crosshair is looking past — 0.45 blocks
 off the line at a range of ONE block, which is worse up close, not
 better. Third person keeps the hip muzzle because it has no crosshair.
 
+The first few frames ARE drawn down and to the right, so a shot appears
+to leave the gun rather than the middle of your face
+(`Weapons.muzzle_lead`). That moves the MESH ONLY — the orb carries its
+true position in `orb.pos`, and everything deciding what a shot hits
+reads that, never `node.position`. Do not let the two merge.
+
 `tests/aim_convergence.gd` samples the whole PATH, not the endpoint — an
 endpoint-only test passed the converged version happily. It calls
 `Weapons.shot_ray()` rather than reimplementing it, and it FAILS if it
 measured nothing: its first version printed "PASS — 0 samples" when the
-function it was testing could not even be loaded.
+function it was testing could not even be loaded. That has now happened
+TWICE, both times because the test reached for something on a script
+that references autoloads — which a `--script` run cannot load. Anything
+a test needs to check lives on `Weapons` for that reason.
 
 ## Tweens
 

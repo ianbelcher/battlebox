@@ -99,3 +99,31 @@ static func shot_ray(eye: Vector3, dir: Vector3, fp: bool, kind: int) -> Array:
 	var side := dir.cross(Vector3.UP)
 	side = side.normalized() if side.length() > 0.01 else Vector3.ZERO
 	return [eye + Vector3(0, -0.34, 0) + side * 0.3 + dir * 0.3, dir]
+
+## HOW LONG THE SHOT IS DRAWN OFF ITS TRUE PATH, in seconds — about five
+## frames — and how far to the side and below it starts.
+const MUZZLE_LEAD := 0.09
+const MUZZLE_SIDE := 0.30
+const MUZZLE_DROP := 0.30
+
+## A shot that starts in the dead centre of the screen looks like it came
+## out of your face. This draws the first few frames down and to the
+## right, where the gun is, and blends to nothing.
+##
+## IT MOVES THE MESH ONLY. The shot's real position — what it hits, what
+## it passes, where it lands — never sees this. Aim is the sight line and
+## nothing is allowed to bend it, cosmetics least of all.
+##
+## Here on Weapons rather than on OrbView so tests can load it: a script
+## that references autoloads cannot be loaded by a `--script` test run,
+## and a test that cannot reach what it is checking passes vacuously.
+static func muzzle_lead(vel: Vector3, age: float) -> Vector3:
+	var lead := 1.0 - age / MUZZLE_LEAD
+	if lead <= 0.0:
+		return Vector3.ZERO
+	var fwd := vel.normalized()
+	var side := fwd.cross(Vector3.UP)
+	side = side.normalized() if side.length() > 0.01 else Vector3.RIGHT
+	# Eased, so it slides back onto the line rather than snapping.
+	lead = lead * lead
+	return (side * MUZZLE_SIDE + Vector3(0, -MUZZLE_DROP, 0)) * lead
