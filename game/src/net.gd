@@ -69,5 +69,21 @@ func go_offline() -> void:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 
+## In a browser the address is NOT ours to choose: go back to whatever
+## origin served the page, on /ws.
+##
+## This has to be the same scheme, host AND port as the page, and that is
+## not tidiness — it is the only arrangement that works. The certificate
+## is self-signed, so the browser refuses it until someone clicks through
+## the warning, and it only ever offers that click for the PAGE. A socket
+## to any other origin is refused with no warning and no way to accept it,
+## so the game would sit on "Finding the world…" forever with nothing to
+## click. nginx proxies /ws through to this same server binary.
 func default_server_url() -> String:
+	if OS.has_feature("web"):
+		var host := str(JavaScriptBridge.eval("window.location.host", true))
+		if not host.is_empty():
+			var secure := str(JavaScriptBridge.eval(
+				"window.location.protocol", true)) == "https:"
+			return "%s://%s/ws" % ["wss" if secure else "ws", host]
 	return "ws://%s:%d" % [DEFAULT_LAN_HOST, LAN_NODE_PORT]

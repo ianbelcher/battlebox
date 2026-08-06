@@ -13,6 +13,44 @@ Nothing outstanding. Ian will say what is next.
 
 ---
 
+## Playing in a browser
+
+There is a fourth export, **Web**, served at
+`https://10.0.0.200:30812/play/` alongside the native downloads. Same
+source, same server, same world — desktop players and browser players
+share one game.
+
+Four things about it are load-bearing and all four look optional:
+
+- **It must be https.** Godot's browser build meshes chunks on real
+  threads, which needs `SharedArrayBuffer`, which browsers only hand to a
+  *cross-origin isolated* page: the two `Cross-Origin-*` headers in
+  `nginx.conf`, and those only count in a secure context. Serve it over
+  plain http and it downloads in full and then dies on startup.
+- **The websocket is proxied through the same https port** as `/ws`, not
+  dialled on 30810. The certificate is self-signed, and a browser only
+  offers the "accept this" click for a page you navigate to — a socket to
+  any other origin is refused silently, leaving the game on "Finding the
+  world…" with nothing to click. Same origin, one acceptance, both work.
+- **The certificate lives on the shared volume** (`/data/tls`), generated
+  once by `entrypoint.sh`. Generate it into the image instead and it is a
+  new certificate every deploy, so every player re-accepts the warning
+  every time we ship.
+- **`project.godot` sets `renderer/rendering_method.web`** to
+  `gl_compatibility`. A browser has no Vulkan; without that override the
+  web build inherits Forward+ and renders nothing.
+
+Anything calling `OS.create_process` / `OS.execute` has to be hidden on
+web — a browser has no such thing. That is the self-updater (already
+gated to Windows/Linux) and the Lite/Full renderer switch (gated on
+`OS.has_feature("web")` in both menus).
+
+To test it for real rather than guess: `tools/webtest.sh` exports the
+build, serves it over local https with the production nginx config, and
+drives it in headless Chrome — asserting the page is isolated, threads
+are on, and it actually reaches the world. A run that merely fails to
+crash proves nothing.
+
 ## Nothing is persisted
 
 **The server keeps NOTHING on disk about a game in progress** — not

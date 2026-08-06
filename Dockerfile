@@ -1,7 +1,10 @@
 # Build stage: export the Godot project several times from the same source —
-# a headless Linux server binary plus native desktop clients (Linux, Windows,
-# macOS) that the web role serves as downloads. There is no browser build:
-# the clients use the Forward+ renderer, which the web export can't do.
+# a headless Linux server binary, native desktop clients (Linux, Windows,
+# macOS) that the web role serves as downloads, and a browser build.
+#
+# The browser build renders with gl_compatibility (WebGL2) rather than the
+# Forward+ the desktop clients use; project.godot sets that per-platform,
+# so it is the same source with no separate configuration.
 FROM ubuntu:24.04 AS build
 
 ARG GODOT_VERSION=4.7.1
@@ -34,26 +37,38 @@ RUN mkdir -p /game/build/server /game/build/downloads \
     && godot --headless --path /game --export-release "Linux Client" build/downloads/voxel-battle-linux.x86_64 \
     && godot --headless --path /game --export-release "Windows Client" build/downloads/voxel-battle-windows.exe \
     && godot --headless --path /game --export-release "macOS Client" build/downloads/voxel-battle-macos.zip \
-    && cp /game/version.txt /game/build/downloads/version.txt
+    && godot --headless --path /game --export-release "Web" build/play/index.html \
+    && cp /game/version.txt /game/build/downloads/version.txt \
+    && cp /game/version.txt /game/build/play/version.txt
 
 # Runtime stage: one image, two roles. The k8s deployment runs two containers
 # from this image — `server` (the world) and `web` (nginx serving the
-# downloads page). Plain http is fine: there's no browser game needing a
-# secure context, just file downloads.
+# downloads page over http, and the browser game over https).
+#
+# The browser game MUST be https: it needs SharedArrayBuffer for Godot's
+# worker threads, and browsers only grant that to a "cross-origin isolated"
+# page, which requires a secure context. openssl is here to mint the
+# self-signed certificate that provides one (see entrypoint.sh).
 FROM ubuntu:24.04
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nginx ca-certificates libfontconfig1 \
+    && apt-get install -y --no-install-recommends nginx openssl ca-certificates libfontconfig1 \
     && rm -rf /var/lib/apt/lists/*
+
+# The browser build is served as application/wasm or it will not start.
+# Assert it rather than trust it: a silently-wrong content type would look
+# like a game bug, not a packaging one.
+RUN grep -q "application/wasm" /etc/nginx/mime.types
 
 COPY --from=build /game/build/server /opt/world/server
 COPY maps /opt/world/maps
 COPY --from=build /game/build/downloads /opt/world/web/downloads
+COPY --from=build /game/build/play /opt/world/web/play
 COPY web/index.html /opt/world/web/index.html
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh /opt/world/server/world-server.x86_64
 
-EXPOSE 9081 8081
+EXPOSE 9081 8081 8443
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["server"]

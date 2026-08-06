@@ -33,6 +33,16 @@
   button to hop in.</p>
 
   <div class="card">
+    <p style="margin:0 0 10px"><b>Play right here, no download</b></p>
+    <a class="button" id="play" href="/play/">▶  Play in the browser</a>
+    <p class="small">Your browser will warn you the connection isn't
+    private, because the server signs its own certificate. Click
+    <b>Advanced &rarr; Proceed</b> — it only asks once. First load is about
+    35&nbsp;MB. Best on a computer with a keyboard and mouse.</p>
+  </div>
+
+  <div class="card">
+    <p style="margin:0 0 10px"><b>Or install it — runs faster</b></p>
     <a class="button" href="downloads/voxel-battle-macos.zip">macOS</a>
     <a class="button" href="downloads/voxel-battle-windows.exe">Windows</a>
     <a class="button" href="downloads/voxel-battle-linux.x86_64">Linux</a>
@@ -65,5 +75,11 @@
   the cluster &middot; the world is saved, so whatever you build is still
   there tomorrow.</p>
 </main>
+<script>
+  // The browser game is on the https port, whatever address this page was
+  // reached on — so it works from any machine without hard-coding an IP.
+  var play = document.getElementById('play');
+  if (play) { play.href = 'https://' + location.hostname + ':30812/play/'; }
+</script>
 </body>
 </html>

@@ -28,6 +28,10 @@ window/stretch/mode="disabled"
 [rendering]
 
 renderer/rendering_method="forward_plus"
+; A browser has one renderer: WebGL2, which Godot calls gl_compatibility.
+; Without this override the web export inherits forward_plus and renders
+; nothing at all.
+renderer/rendering_method.web="gl_compatibility"
 ; If Vulkan can't initialize (some Linux driver stacks), fall back to
 ; OpenGL instead of crashing on startup; effects auto-degrade.
 rendering_device/fallback_to_opengl3=true

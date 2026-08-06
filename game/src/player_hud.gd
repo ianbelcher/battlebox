@@ -1916,16 +1916,19 @@ func _build_video_tab() -> void:
 		upd_btn.text = "🔄  Check for updates"
 		upd_btn.pressed.connect(func() -> void: _updater_step(upd_btn))
 		tab.add_child(upd_btn)
-	var lite_btn := Button.new()
-	lite_btn.focus_mode = Control.FOCUS_NONE
-	lite_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	lite_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lite_btn.add_theme_font_size_override("font_size", _us(20))
-	lite_btn.text = "🎨  Renderer: " + ("Lite" if is_lite else "Full") \
-		+ " (restart required)"
-	lite_btn.pressed.connect(func() -> void:
-		Game.relaunch_with_renderer(not is_lite))
-	tab.add_child(lite_btn)
+	# Not in a browser — see the same guard in world_menu.gd. A browser has
+	# one renderer and no way to relaunch itself.
+	if not OS.has_feature("web"):
+		var lite_btn := Button.new()
+		lite_btn.focus_mode = Control.FOCUS_NONE
+		lite_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		lite_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lite_btn.add_theme_font_size_override("font_size", _us(20))
+		lite_btn.text = "🎨  Renderer: " + ("Lite" if is_lite else "Full") \
+			+ " (restart required)"
+		lite_btn.pressed.connect(func() -> void:
+			Game.relaunch_with_renderer(not is_lite))
+		tab.add_child(lite_btn)
 
 func _add_video_slider(tab: Control, label_text: String, key: String,
 		minv: int, maxv: int, step: int, suffix: String) -> void:

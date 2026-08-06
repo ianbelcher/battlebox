@@ -52,6 +52,12 @@ const VIDEO_PATH := "user://video.cfg"
 ## and is only ever changed from the world menu (or the rescue box that
 ## appears when the client can't reach anything).
 func server_url() -> String:
+	# In a browser there is nothing to choose: the page came from the
+	# machine running the world, so that is the world we join. A saved
+	# address would be a LAN one typed on someone's desktop, and following
+	# it would leave the tab unable to connect to anything.
+	if OS.has_feature("web"):
+		return Net.default_server_url()
 	var config := ConfigFile.new()
 	if config.load(VIDEO_PATH) == OK:
 		var saved := str(config.get_value("net", "server", ""))

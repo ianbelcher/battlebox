@@ -933,13 +933,18 @@ func _build_video_tab() -> void:
 		_toggle(effects, str(specs[i][1]), str(specs[i][0]))
 
 	var system := _section(box, "This machine")
-	var is_lite := RenderingServer.get_rendering_device() == null
-	var renderer_btn := _button(("Lite" if is_lite else "Full") + "  —  switch",
-		func() -> void: Game.relaunch_with_renderer(not is_lite))
-	_min(renderer_btn, 220, 46)
-	_setting_row(system, "Renderer",
-		"Switching restarts the game. Lite runs on machines without Vulkan.",
-		renderer_btn)
+	# No renderer switch in a browser: there is only one renderer there
+	# (WebGL2, which IS Lite), and switching relaunches the game with
+	# OS.create_process, which a browser has no such thing as. Offering the
+	# button would give a dead control that looks broken.
+	if not OS.has_feature("web"):
+		var is_lite := RenderingServer.get_rendering_device() == null
+		var renderer_btn := _button(("Lite" if is_lite else "Full") + "  —  switch",
+			func() -> void: Game.relaunch_with_renderer(not is_lite))
+		_min(renderer_btn, 220, 46)
+		_setting_row(system, "Renderer",
+			"Switching restarts the game. Lite runs on machines without Vulkan.",
+			renderer_btn)
 	if not OS.has_feature("editor") and (OS.has_feature("windows") or OS.has_feature("linux")):
 		system.add_child(HSeparator.new())
 		_update_btn = _button("Check", func() -> void: _updater_step())
