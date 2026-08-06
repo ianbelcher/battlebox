@@ -499,8 +499,13 @@ func _on_connected() -> void:
 	world.match_changed.connect(func() -> void:
 		if Game.world == null:
 			return
-		# The final table stands until the next battle actually gets going.
-		if Game.world.match_phase in ["LOBBY", "SETUP", "BATTLE"]:
+		# The final table belongs to the END phase and to nothing else.
+		# This used to name the phases it hid FOR — LOBBY, SETUP, BATTLE —
+		# and so missed the one that actually happens when a battle
+		# finishes and no new one follows: END times out into IDLE when
+		# the loop is off or the last human has left. The table then sat
+		# there for good, with nothing on it to press.
+		if not MatchUi.final_table_shows(str(Game.world.match_phase)):
 			_hide_final_scores()
 		if Game.world.match_phase == "COUNTDOWN":
 			_show_banner("Next battle starting soon — fresh map incoming!"))
@@ -733,15 +738,22 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
 	var key := (event as InputEventKey).keycode
+	# The end-of-battle table goes first: while it is up, Space, Enter and
+	# Escape all dismiss it. Its Close button holds focus and would catch
+	# Enter on its own, but focus is one grab_focus away from being
+	# somewhere else, and this screen must never be a dead end.
+	if is_instance_valid(_final_panel) \
+			and key in [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
+		_hide_final_scores()
+		get_viewport().set_input_as_handled()
+		return
 	var open_menu := key == KEY_QUOTELEFT
 	var close_menu := key == KEY_ESCAPE and _world_menu != null \
 		and _world_menu.visible
 	if open_menu or close_menu:
 		if _world_menu != null:
 			_world_menu.toggle()
-			# Hand the cursor back while it's open, and only then.
-			if _split != null:
-				_split.world_menu_open = _world_menu.visible
+			_update_cursor_release()
 			get_viewport().set_input_as_handled()
 
 func _apply_video() -> void:
@@ -917,6 +929,27 @@ func _show_final_scores(winner: int) -> void:
 	hint.add_theme_color_override("font_color", UiTheme.INK_FAINT)
 	box.add_child(hint)
 
+	# A way out that is always on the panel. Every other route off this
+	# screen depends on something else happening — the next battle
+	# starting, somebody resetting the map — and when none of that comes,
+	# there was nothing at all to press.
+	#
+	# It takes focus so Enter and a gamepad's Ⓐ both work through Godot's
+	# ui_accept, which is what the kids on pads will reach for. Space and
+	# Escape are handled in _unhandled_input.
+	var close := Button.new()
+	close.text = "Close  ·  Space"
+	close.custom_minimum_size = Vector2(UiTheme.px(220, sc), UiTheme.px(46, sc))
+	close.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close.pressed.connect(func() -> void:
+		Sfx.play("tick", -8.0)
+		_hide_final_scores())
+	box.add_child(close)
+	close.grab_focus.call_deferred()
+	# The mouse is held captive while you play, so nothing on this panel
+	# could be clicked. Hand the cursor back for as long as it is up.
+	_update_cursor_release()
+
 func _final_teams(world: Node, sc: float) -> Control:
 	var wrap := VBoxContainer.new()
 	wrap.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
@@ -1017,6 +1050,17 @@ func _hide_final_scores() -> void:
 	if is_instance_valid(_final_panel):
 		_final_panel.queue_free()
 	_final_panel = null
+	_update_cursor_release()
+
+## The cursor is captured for mouse-look and must be handed back while
+## ANYTHING on top needs clicking. Both callers used to set the flag
+## themselves, which is how the final table ended up with a cursor it
+## could not use — one place to decide it now.
+func _update_cursor_release() -> void:
+	if _split == null:
+		return
+	_split.world_menu_open = (_world_menu != null and _world_menu.visible) \
+		or is_instance_valid(_final_panel)
 
 func _show_banner(text: String, sticky := false) -> void:
 	_loading_label.visible = false
