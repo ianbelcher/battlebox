@@ -65,3 +65,37 @@ static func spec(id: int) -> Dictionary:
 		for w in WEAPONS:
 			_by_id[int(w.id)] = w
 	return _by_id.get(id, WEAPONS[0])
+
+## WHERE A SHOT STARTS AND WHICH WAY IT GOES. Returns [origin, dir].
+##
+## The single source of truth for it, so tests/aim_convergence.gd can
+## check the REAL rule rather than a copy. An earlier test reimplemented
+## this and happily passed a version of the code that was wrong in play.
+##
+## It lives on Weapons rather than on OrbView because OrbView references
+## autoloads, and a script that does cannot be loaded by a `--script`
+## test run. Weapons is plain data and static functions.
+##
+## FIRST PERSON: THE SHOT IS THE SIGHT LINE. It starts at the eye and
+## travels exactly where the crosshair points, so whatever the crosshair
+## is on is what gets hit. Full stop, at any range.
+##
+## Shots used to leave a muzzle down and to the right of the eye, angled
+## inwards to converge on the target. That can only ever be right at ONE
+## point: the shot travels a diagonal chord running BESIDE the sight line
+## the whole way there, so it detonates on blocks the crosshair is not
+## on, and near cover it slips round the edge the crosshair is looking
+## past. Converging on the real target rather than a fixed 40 blocks
+## fixed the long-range miss and made both of those worse, because it
+## steepened the chord. There is no offset to correct now, so there is
+## nothing left to get wrong.
+static func shot_ray(eye: Vector3, dir: Vector3, fp: bool, kind: int) -> Array:
+	if fp or kind == 17:
+		# Started just clear of the face so it cannot collide with the
+		# shooter on its first step.
+		return [eye + dir * 0.45, dir]
+	# Third person has no crosshair — aim follows the body — so the shot
+	# can come off the hip where it looks like it should.
+	var side := dir.cross(Vector3.UP)
+	side = side.normalized() if side.length() > 0.01 else Vector3.ZERO
+	return [eye + Vector3(0, -0.34, 0) + side * 0.3 + dir * 0.3, dir]

@@ -26,25 +26,10 @@ func shoot_local(player: Player, kind: int) -> void:
 		dir = player.camera_look_dir()
 	else:
 		dir = player.heading.normalized()
-	# Shots leave from the right-hand muzzle, then converge on the point the
-	# crosshair actually looks at (so aim stays true at range).
 	var eye: Vector3 = player.position + Vector3(0, Player.EYE_HEIGHT, 0)
-	var side := dir.cross(Vector3.UP)
-	side = side.normalized() if side.length() > 0.01 else Vector3.ZERO
-	if kind == 17:
-		side = Vector3.ZERO  # dragon fire pours straight from the head
-	var origin: Vector3 = eye + Vector3(0, -0.34, 0) + side * 0.3 + dir * 0.3
-	# CONVERGE ON WHAT THE CROSSHAIR IS ACTUALLY LOOKING AT.
-	#
-	# Shots leave a muzzle that is down and to the right of the eye, so
-	# they have to be angled inwards to cross the line of sight. This used
-	# to aim at a fixed point 40 blocks out — a rifle zeroed at 40m. Dead
-	# on at that range, and wrong at every other: past it the shot has
-	# already crossed the sight line and keeps going, so a long shot
-	# sailed past the crosshair and missed what you were plainly aiming
-	# at. Aiming at the point the sight ray really strikes holds true at
-	# any distance.
-	dir = (eye + dir * _aim_distance(eye, dir) - origin).normalized()
+	var ray := Weapons.shot_ray(eye, dir, player.fp_mode, kind)
+	var origin: Vector3 = ray[0]
+	dir = ray[1]
 	_add_orb(player.player_id, origin, dir, true, player.slot, kind)
 	world.sv_shoot.rpc_id(1, player.slot, origin, dir, kind)
 	if kind == 12:
@@ -55,30 +40,6 @@ func shoot_local(player: Player, kind: int) -> void:
 		Sfx.play("thoomp", -2.0)
 	else:
 		Sfx.play("whoosh", -3.0, 1.1)
-
-## How far along the line of sight the crosshair is pointing at something
-## solid. Falls back to the far distance when it is pointing at the sky,
-## which converges the shot almost parallel to the sight line — correct
-## for a shot that is never going to hit anything anyway.
-func _aim_distance(eye: Vector3, dir: Vector3) -> float:
-	var far := 300.0
-	var world_node: Node = get_parent()
-	if world_node == null or world_node.chunks == null:
-		return far
-	var chunks: Node = world_node.chunks
-	# Half-block steps: fine enough never to step over a block, coarse
-	# enough that a full-range trace is a few hundred lookups. This runs
-	# once per shot on the shooter's own machine.
-	var t := 0.6
-	while t < far:
-		var sample := eye + dir * t
-		var block: int = chunks.get_block(Vector3i(floori(sample.x),
-			floori(sample.y), floori(sample.z)))
-		if block != Blocks.AIR and not Blocks.is_liquid(block) \
-				and not Blocks.is_cross(block):
-			return t
-		t += 0.5
-	return far
 
 func _add_orb(shooter_id: String, origin: Vector3, dir: Vector3, mine: bool, slot: int, kind: int) -> void:
 	var node := MeshInstance3D.new()

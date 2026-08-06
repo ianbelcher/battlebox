@@ -144,20 +144,27 @@ nothing.
 
 ## Aiming
 
-**Shots converge on what the crosshair actually HITS**, found by tracing
-the sight ray (`OrbView._aim_distance`). They leave a muzzle that is down
-and to the right of the eye, so they must be angled inwards to cross the
-line of sight — which means there is exactly one range at which they are
-dead on, and it is whatever range the code converges them at.
+**In first person the shot IS the sight line.** It starts at the eye and
+travels along `look_dir()`, so whatever the crosshair is on is what gets
+hit — at any range, with nothing to be right at one distance and wrong at
+another. `Weapons.shot_ray()` is the single source of truth for where a
+shot starts and which way it goes.
 
-That used to be a fixed 40 blocks: a rifle zeroed at 40m. Dead on there,
-wrong everywhere else, and past it the shot has already crossed the sight
-line and keeps going. Measured by `tests/aim_convergence.gd`: 1.26 blocks
-off at 150 and 2.40 at 250, against a player about 0.6 blocks wide.
+Do not "fix" this by moving the muzzle out to the gun and angling the
+shot back in. That was tried twice. Converging on a fixed 40 blocks is a
+rifle zeroed at 40m — 1.26 blocks off at 150, 2.40 at 250, against a
+player 0.6 wide. Converging on the REAL target fixes where the shot ends
+but not where it goes: it still travels a diagonal chord beside the sight
+line the whole way, so it detonates on blocks the crosshair is not on and
+slips round the edge of cover the crosshair is looking past — 0.45 blocks
+off the line at a range of ONE block, which is worse up close, not
+better. Third person keeps the hip muzzle because it has no crosshair.
 
-If you ever change the muzzle offset, update the constants at the top of
-that test to match — it is pure geometry and knows nothing about the
-game otherwise.
+`tests/aim_convergence.gd` samples the whole PATH, not the endpoint — an
+endpoint-only test passed the converged version happily. It calls
+`Weapons.shot_ray()` rather than reimplementing it, and it FAILS if it
+measured nothing: its first version printed "PASS — 0 samples" when the
+function it was testing could not even be loaded.
 
 ## Tweens
 
