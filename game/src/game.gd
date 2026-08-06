@@ -131,9 +131,6 @@ const WEB_FONTS := [
 	"res://assets/fonts/NotoEmoji-Regular.ttf",
 ]
 
-## The wrapped font, once built — null on desktop, where it isn't needed.
-var ui_font: Font = null
-
 func _ready() -> void:
 	_install_fallback_fonts()
 	load_video()
@@ -161,7 +158,6 @@ func _install_fallback_fonts() -> void:
 	var wrapper := FontVariation.new()
 	wrapper.base_font = ThemeDB.fallback_font
 	wrapper.fallbacks = extra
-	ui_font = wrapper
 	# BOTH of these, and the second one is the one that actually works.
 	# ThemeDB.fallback_font alone changes nothing: it is only consulted
 	# when a theme lookup finds nothing at all, and the default theme DOES
