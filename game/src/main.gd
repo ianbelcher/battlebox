@@ -477,7 +477,7 @@ func _on_connected() -> void:
 				if Game.world != null and Game.world.chunks != null:
 					Game.world.chunks.prefetch(radius)))
 	# The world menu belongs to the table, not to one player: full screen,
-	# keyboard and mouse only, Escape to open.
+	# keyboard and mouse only, ` to open.
 	if _world_menu == null:
 		_world_menu = WorldMenu.new()
 		_game_screen.add_child(_world_menu)
@@ -499,8 +499,13 @@ func _on_connected() -> void:
 	world.match_changed.connect(func() -> void:
 		if Game.world == null:
 			return
-		# The final table stands until the next battle actually gets going.
-		if Game.world.match_phase in ["LOBBY", "SETUP", "BATTLE"]:
+		# The final table belongs to the END phase and to nothing else.
+		# This used to name the phases it hid FOR — LOBBY, SETUP, BATTLE —
+		# and so missed the one that actually happens when a battle
+		# finishes and no new one follows: END times out into IDLE when
+		# the loop is off or the last human has left. The table then sat
+		# there for good, with nothing on it to press.
+		if not MatchUi.final_table_shows(str(Game.world.match_phase)):
 			_hide_final_scores()
 		if Game.world.match_phase == "COUNTDOWN":
 			_show_banner("Next battle starting soon — fresh map incoming!"))
@@ -720,15 +725,35 @@ func _update_minimap() -> void:
 ## Applies the video settings (Game.video) everywhere. Each setting maps
 ## to exactly one thing — no presets, no automatic overrides.
 func _unhandled_input(event: InputEvent) -> void:
-	# Escape belongs to the world menu now. Controllers never reach it —
-	# their Start button opens each player's own build menu instead.
-	if event is InputEventKey and event.pressed and not event.echo \
-			and (event as InputEventKey).keycode == KEY_ESCAPE:
+	# ` opens the world menu — NOT Escape. In a browser Escape is the
+	# browser's own key for releasing the mouse: pressing it dropped you
+	# out of mouse-look and handed you a menu you never asked for, and
+	# the game cannot take that key back. ` sits just below Escape, means
+	# nothing else in the game, and no browser claims it.
+	#
+	# Escape still CLOSES the menu, because backing out with it is
+	# universal and by then the cursor is already free either way.
+	# Controllers never reach any of this — their Start button opens each
+	# player's own build menu instead.
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	var key := (event as InputEventKey).keycode
+	# The end-of-battle table goes first: while it is up, Space, Enter and
+	# Escape all dismiss it. Its Close button holds focus and would catch
+	# Enter on its own, but focus is one grab_focus away from being
+	# somewhere else, and this screen must never be a dead end.
+	if is_instance_valid(_final_panel) \
+			and key in [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
+		_hide_final_scores()
+		get_viewport().set_input_as_handled()
+		return
+	var open_menu := key == KEY_QUOTELEFT
+	var close_menu := key == KEY_ESCAPE and _world_menu != null \
+		and _world_menu.visible
+	if open_menu or close_menu:
 		if _world_menu != null:
 			_world_menu.toggle()
-			# Hand the cursor back while it's open, and only then.
-			if _split != null:
-				_split.world_menu_open = _world_menu.visible
+			_update_cursor_release()
 			get_viewport().set_input_as_handled()
 
 func _apply_video() -> void:
@@ -841,7 +866,7 @@ var _banner_sticky := false
 ## THE FINAL SCORE, on screen, the moment a battle ends.
 ##
 ## The end of a match only ever announced who won. The table itself was
-## tucked away under Escape → Scores, which nobody is going to open in
+## tucked away under ` → Scores, which nobody is going to open in
 ## the ten seconds between battles — so as far as anyone playing was
 ## concerned there were no player stats at all. It now comes up by
 ## itself, and goes away when the next battle starts.
@@ -898,11 +923,32 @@ func _show_final_scores(winner: int) -> void:
 	split.add_child(_final_players(world, sc))
 
 	var hint := Label.new()
-	hint.text = "The full table is under Esc → Scores"
+	hint.text = "The full table is under ` → Scores"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", UiTheme.px(UiTheme.T_NOTE, sc))
 	hint.add_theme_color_override("font_color", UiTheme.INK_FAINT)
 	box.add_child(hint)
+
+	# A way out that is always on the panel. Every other route off this
+	# screen depends on something else happening — the next battle
+	# starting, somebody resetting the map — and when none of that comes,
+	# there was nothing at all to press.
+	#
+	# It takes focus so Enter and a gamepad's Ⓐ both work through Godot's
+	# ui_accept, which is what the kids on pads will reach for. Space and
+	# Escape are handled in _unhandled_input.
+	var close := Button.new()
+	close.text = "Close  ·  Space"
+	close.custom_minimum_size = Vector2(UiTheme.px(220, sc), UiTheme.px(46, sc))
+	close.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close.pressed.connect(func() -> void:
+		Sfx.play("tick", -8.0)
+		_hide_final_scores())
+	box.add_child(close)
+	close.grab_focus.call_deferred()
+	# The mouse is held captive while you play, so nothing on this panel
+	# could be clicked. Hand the cursor back for as long as it is up.
+	_update_cursor_release()
 
 func _final_teams(world: Node, sc: float) -> Control:
 	var wrap := VBoxContainer.new()
@@ -1004,6 +1050,17 @@ func _hide_final_scores() -> void:
 	if is_instance_valid(_final_panel):
 		_final_panel.queue_free()
 	_final_panel = null
+	_update_cursor_release()
+
+## The cursor is captured for mouse-look and must be handed back while
+## ANYTHING on top needs clicking. Both callers used to set the flag
+## themselves, which is how the final table ended up with a cursor it
+## could not use — one place to decide it now.
+func _update_cursor_release() -> void:
+	if _split == null:
+		return
+	_split.world_menu_open = (_world_menu != null and _world_menu.visible) \
+		or is_instance_valid(_final_panel)
 
 func _show_banner(text: String, sticky := false) -> void:
 	_loading_label.visible = false
@@ -1072,13 +1129,16 @@ func _process(_delta: float) -> void:
 	# Friendly hop-in hint while it's just one player pottering about —
 	# and ALWAYS when nobody from this machine is playing, because then
 	# it is the only thing telling you how to get back in.
+	# Only the "room for one more" nudge lives here. When NOBODY from this
+	# machine is playing, the split-screen view already fills the screen
+	# with a much bigger BATTLEBOX / "press SPACE to jump in" prompt —
+	# printing a second, smaller copy of the same instruction underneath
+	# it just read as the game saying everything twice.
 	if _join_hint != null:
-		var nobody := Game.local_inputs.is_empty()
-		_join_hint.visible = nobody or (Game.local_inputs.size() == 1
-			and world.match_phase == "IDLE"
-			and not Input.get_connected_joypads().is_empty())
-		_join_hint.text = "Press Ⓐ or Space to join the game" if nobody \
-			else "🎮  New player?  Press Ⓐ on another controller to hop in!"
+		_join_hint.visible = Game.local_inputs.size() == 1 \
+			and world.match_phase == "IDLE" \
+			and not Input.get_connected_joypads().is_empty()
+		_join_hint.text = "🎮  New player?  Press Ⓐ on another controller to hop in!"
 	# The per-player red warning lives in each PlayerHud now.
 	_storm_tint.color.a = 0.0
 	var clock: float = world.clock

@@ -12,7 +12,7 @@ extends RefCounted
 ## tabs — blocks, kits and your character — and quick-cycle the held item
 ## when no menu is open. E (or X/Start) opens the full picker with names.
 ## In first person the right stick looks around; on keyboard the mouse
-## looks. Esc leaves first person.
+## looks. T switches first person and overview.
 
 enum Kind { KEYBOARD_WASD, KEYBOARD_ARROWS, GAMEPAD }
 

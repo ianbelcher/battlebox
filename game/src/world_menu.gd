@@ -1,6 +1,6 @@
 class_name WorldMenu
 extends Control
-## The WORLD menu (Escape): everything belonging to the whole table rather
+## The WORLD menu (`): everything belonging to the whole table rather
 ## than to one player. Per-player things (blocks, characters) live in
 ## PlayerHud.
 ##
@@ -1051,7 +1051,7 @@ func _build_help_tab() -> void:
 	])
 	var keys := _section(box, "Keyboard and mouse")
 	_key_table(keys, [
-		["Esc", "This menu"],
+		["`", "This menu"],
 		["E", "Your own blocks, kits and character"],
 		["1 – 8", "Pick a slot on the hotbar"],
 		["Space", "Jump. Double-tap to fly (when it's allowed)"],

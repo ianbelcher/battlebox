@@ -9,7 +9,7 @@ any tool) can pick the work up cold.
 
 ## Open work
 
-Nothing outstanding.
+Nothing outstanding. Ian will say what is next.
 
 ---
 
@@ -93,6 +93,30 @@ Anything calling `OS.create_process` / `OS.execute` has to be hidden on
 web — a browser has no such thing. That is the self-updater (already
 gated to Windows/Linux) and the Lite/Full renderer switch (gated on
 `OS.has_feature("web")` in both menus).
+
+**The menu key is `` ` ``, not Escape.** A browser keeps Escape for
+releasing the mouse and will not give it up, so pressing it dropped you
+out of mouse-look and opened a menu you never asked for. Escape still
+closes the menu; only opening moved.
+
+**Fonts are bundled now, and they have to be.** The game shipped none
+for years: on a desktop Godot silently borrows missing glyphs from the
+operating system's fonts, and all 51 symbols the UI is built from came
+from there. A browser has none to borrow, so every one drew as a box
+with its code point in it — the hearts read "2665". Three fonts, because
+no one of them has the lot, and the obvious guesses are wrong: DejaVu
+lacks every circled letter (ⒶⒷⓍⓎ, the gamepad caps), and Noto Sans
+Symbols **2** does not have them either despite the name — only Noto
+Sans Symbols does. `tests/ui_glyphs.gd` scans the UI source for symbols
+and asserts a bundled font can draw each one, so adding a new emoji to a
+menu fails the test rather than shipping a box to the kids.
+
+Loading them is web-only: on a desktop the system fonts do it better
+(macOS draws them in colour). And note where it is installed —
+`ThemeDB.fallback_font` alone does nothing, because that is only
+consulted when a theme lookup finds nothing at all, and the default
+theme does define a font. `ThemeDB.get_default_theme().default_font` is
+the one Controls actually read.
 
 To test it for real rather than guess: `tools/webtest.sh` exports the
 build, serves it with the production `nginx.conf` behind a stand-in for

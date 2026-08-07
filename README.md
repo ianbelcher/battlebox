@@ -28,8 +28,8 @@ Minecraft save is never modified.
    client dials `wss://battlebox.games/ws` the moment it launches, and if
    the link ever drops it says so and keeps retrying until it's back,
    putting everyone who was playing straight back in their seat. To point
-   it at a LAN or dev server, use **Server** in the Esc menu's Map tab, or
-   set `WORLD_SERVER_URL`.
+   it at a LAN or dev server, use **Server** in the `` ` `` menu's Map tab,
+   or set `WORLD_SERVER_URL`.
 3. Press **Space** / **Enter** / gamepad **A** to jump in — up to 4 per
    machine, the screen splits automatically. Your name and character are
    remembered by your own machine; the server keeps nothing about you.
@@ -39,13 +39,13 @@ switches to the isometric overview and back.
 
 | Player   | Move       | Jump  | Break        | Place         | Throw orb    | Picker/Menu     | Cycle | Spin/Zoom (overview) | Leave (hold) |
 | -------- | ---------- | ----- | ------------ | ------------- | ------------ | --------------- | ----- | -------------------- | ------------ |
-| Keyboard | WASD       | Space | Left click/G | Right click/F | R / M-click  | E / Esc         | Tab   | Z C / X V            | Q            |
+| Keyboard | WASD       | Space | Left click/G | Right click/F | R / M-click  | E / `           | Tab   | Z C / X V            | Q            |
 | Gamepads | Left stick | A     | B            | X             | Right trigger| D-pad up / Start| Bumpers | Right stick        | Back         |
 
 **E** (or **X** / **Start** on a pad) opens the Minecraft-style picker.
 Its tabs run Tools, Build, Nature, Colors, Lights, Special, Kits and
 **You** — your character is a tab like any other — and the **bumpers**
-(Tab / Shift+Tab) step through them in either direction. **Esc** opens the
+(Tab / Shift+Tab) step through them in either direction. **`** opens the
 separate WORLD menu, which is keyboard-and-mouse only on purpose: a
 grown-up can sort out the map, the battle setup, who's playing and the
 video settings while the kids keep running around on their controllers.

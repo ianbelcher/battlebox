@@ -1834,7 +1834,7 @@ func _build_help_tab() -> void:
 		tab.add_child(pad_line)
 	_add_section(tab, "⌨  KEYBOARD + MOUSE")
 	for line in ["WASD — move      Shift — creep      Space — jump",
-			"Z / X — spin camera      E — blocks      Esc — menu",
+			"Z / X — spin camera      E — blocks      ` — menu",
 			"Click — dig      Right-click — place      1-8 — hotbar",
 			"T — camera view      F — fly (when idle)"]:
 		var key_line := Label.new()
