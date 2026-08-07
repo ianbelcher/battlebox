@@ -80,14 +80,12 @@ var _prev_slot_pick_menu := -1
 var _menu_tab_latch := false
 var _preview_viewport: SubViewport
 var _preview_avatar: Node3D
-var _preview_name: Label
 var _preview_count: Label
 var _preview_angle := PI
 var _last_tab := 1
 var _tab_guard := false
 var _radar: TextureRect
 var _radar_tick := 0
-var _clock: Label
 var _storm_tint: ColorRect
 var _water_tint: ColorRect
 var _autoopened := false
@@ -188,17 +186,35 @@ func _ready() -> void:
 		col.add_child(frame)
 		_hotbar.add_child(col)
 		_chips.append(frame)
+	# The status bar, directly under the eight slots: what you are holding,
+	# then the time and how many people are in the world.
+	#
+	# There WAS a label for the held item — it was built, positioned above
+	# the hotbar, and its text was never once assigned, so the only way to
+	# tell a Freeze Ray from a Block Sucker was the icon. And the clock and
+	# player count sat up in the top-right corner, across the screen from
+	# everything else you look at.
+	#
+	# Putting all three in one strip under the hotbar keeps the middle of
+	# the screen — which is where the game is — clear.
+	var status_panel := PanelContainer.new()
+	status_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var status_style := StyleBoxFlat.new()
+	status_style.bg_color = Color(0.04, 0.05, 0.08, 0.55)
+	status_style.set_corner_radius_all(8)
+	status_style.content_margin_left = 12
+	status_style.content_margin_right = 12
+	status_style.content_margin_top = 3
+	status_style.content_margin_bottom = 3
+	status_panel.add_theme_stylebox_override("panel", status_style)
+	status_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	bar_stack.add_child(status_panel)
 	_selected_label = Label.new()
-	_selected_label.add_theme_font_size_override("font_size", _us(15))
+	_selected_label.add_theme_font_size_override("font_size", _us(14))
 	_selected_label.add_theme_color_override("font_color", Color("ffd166"))
-	_selected_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
-	_selected_label.add_theme_constant_override("outline_size", 5)
-	_selected_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_selected_label.offset_top = -168
-	_selected_label.offset_bottom = -134
-	_selected_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_selected_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(_selected_label)
+	_selected_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	status_panel.add_child(_selected_label)
 
 	# Tabbed menu (Esc / Start), also home of the block picker (E jumps
 	# straight to the Blocks tab). Minecraft brains expected this.
@@ -245,9 +261,14 @@ func _ready() -> void:
 	_video_tabs.name = "Video"
 	# The character page is built into the SAME tab strip as the pickers.
 	_opt_tabs = _build_tabs
+	# Clicking a tab moves the TabContainer directly, without going through
+	# _set_page — so this is the ONLY place a mouse user's arrival on a
+	# page is noticed. Anything a page needs on entry has to be driven from
+	# here as well, or it silently works on a gamepad and not with a mouse.
 	var on_page_change := func(_t: int) -> void:
 		if not _tab_guard:
 			_last_tab = _current_page()
+			_on_page_entered(_last_tab)
 	_build_tabs.get_tab_bar().focus_mode = Control.FOCUS_NONE
 	# Font size comes from the shared theme — see ui_theme.gd. Overriding
 	# it here is what made the two menus' tab strips different sizes.
@@ -266,12 +287,6 @@ func _ready() -> void:
 	_water_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_water_tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_water_tint)
-	_clock = Label.new()
-	_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_clock.add_theme_font_size_override("font_size", _us(14))
-	_clock.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
-	_clock.add_theme_constant_override("outline_size", 4)
-	add_child(_clock)
 	_radar = TextureRect.new()
 	_radar.stretch_mode = TextureRect.STRETCH_SCALE
 	_radar.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -714,12 +729,29 @@ func _set_nav_focus(c: Control) -> void:
 		if p is ScrollContainer:
 			(p as ScrollContainer).ensure_control_visible(c)
 
+## Shut this player's menu from outside — the WORLD menu opening.
+func close_menu() -> void:
+	if _menu != null and _menu.visible:
+		_close_menu()
+
 func _toggle_menu(player: Player, open_tab: int) -> void:
 	if _menu.visible:
 		_close_menu()
 		return
+	# One modal at a time. Pressing E while the world menu is up used to
+	# open this UNDERNEATH it; you closed the world menu and found yourself
+	# still stuck in a second one you had forgotten opening.
+	if Game.world_menu != null and Game.world_menu.visible:
+		Game.world_menu.close()
 	_menu.visible = true
 	_menu_dim.visible = true
+	# Which pages exist depends on the mode, and the mode can change while
+	# the menu is shut, so this is settled on the way in. Guarded: hiding
+	# the tab somebody is standing on fires tab_changed, which would
+	# otherwise record the fallback page as "the tab they were last on".
+	_tab_guard = true
+	_refresh_tab_visibility()
+	_tab_guard = false
 	# The Tools tab stays OPEN in a battle. It used to be disabled
 	# outright, so there was no way to look at — let alone switch to —
 	# the weapons you had picked up. What a battle restricts is WHICH
@@ -783,7 +815,7 @@ func _menu_card() -> PanelContainer:
 ## model so they can look at the back of their own head.
 func _build_character_tab() -> void:
 	var page := MarginContainer.new()
-	page.name = "You"
+	page.name = "Character"
 	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
 		page.add_theme_constant_override(side, _ms(14))
 	_opt_tabs.add_child(page)
@@ -799,12 +831,8 @@ func _build_character_tab() -> void:
 	var grid_holder := VBoxContainer.new()
 	grid_holder.add_theme_constant_override("separation", _ms(10))
 	left.add_child(grid_holder)
-	var pick_label := Label.new()
-	pick_label.text = "CHOOSE A CHARACTER"
-	pick_label.add_theme_font_size_override("font_size",
-		UiTheme.px(UiTheme.T_HEADING, _menu_scale))
-	pick_label.add_theme_color_override("font_color", UiTheme.INK_DIM)
-	grid_holder.add_child(pick_label)
+	# No "CHOOSE A CHARACTER" heading: the tab is called Character and the
+	# page is a grid of faces. Saying it a third time only cost height.
 	var grid_scroll := ScrollContainer.new()
 	grid_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	grid_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -849,20 +877,49 @@ func _build_character_tab() -> void:
 	var char_right := VBoxContainer.new()
 	char_right.add_theme_constant_override("separation", _ms(8))
 	right.add_child(char_right)
-	_preview_name = Label.new()
-	_preview_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_preview_name.add_theme_font_size_override("font_size",
+	# Your name, and it is the FIELD — click it and type. There was no way
+	# to change a name in the game at all: this page showed it as a label,
+	# and the only rename lived in the grown-ups' menu.
+	#
+	# Committed on Enter and on losing focus, because a child who types a
+	# new name and then clicks away has plainly finished, and losing it
+	# there would be baffling.
+	_name_edit = LineEdit.new()
+	_name_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_name_edit.max_length = 14
+	_name_edit.placeholder_text = "your name"
+	_name_edit.add_theme_font_size_override("font_size",
 		UiTheme.px(UiTheme.T_BODY + 4, _menu_scale))
-	_preview_name.add_theme_color_override("font_color", UiTheme.ACCENT)
-	char_right.add_child(_preview_name)
+	_name_edit.add_theme_color_override("font_color", UiTheme.ACCENT)
+	_name_edit.tooltip_text = "Click to change your name"
+	var commit_name := func(_arg: Variant = null) -> void:
+		var typed := _name_edit.text.strip_edges()
+		if typed.is_empty():
+			# Refuse to become nameless; put the old one back.
+			var back := _entry()
+			_name_edit.text = str(back.get("name", "")) if not back.is_empty() else ""
+			return
+		if typed != str(_entry().get("name", "")):
+			Game.set_local_name(slot, typed)
+			Sfx.play("tick", -8.0)
+	_name_edit.text_submitted.connect(commit_name)
+	_name_edit.focus_exited.connect(func() -> void: commit_name.call(null))
+	char_right.add_child(_name_edit)
 	_preview_viewport = SubViewport.new()
 	_preview_viewport.own_world_3d = true
 	_preview_viewport.transparent_bg = true
-	_preview_viewport.size = Vector2i(_ms(300), _ms(400))
+	# STRETCHED, not fixed. A SubViewportContainer that does not stretch
+	# takes the viewport's size as its MINIMUM, and a minimum of 400 design
+	# units is taller than the rest of the menu's pages — so opening this
+	# tab pushed the whole panel taller than its anchors and the menu
+	# visibly changed size as you tabbed onto it, moving the tab strip out
+	# from under the mouse. Stretching lets the page fit the panel instead
+	# of the panel fit the page.
 	var holder := SubViewportContainer.new()
-	holder.stretch = false
-	holder.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	holder.size_flags_vertical = Control.SIZE_EXPAND | Control.SIZE_SHRINK_CENTER
+	holder.stretch = true
+	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	holder.custom_minimum_size = Vector2(0, _ms(150))
 	holder.add_child(_preview_viewport)
 	holder.mouse_filter = Control.MOUSE_FILTER_STOP
 	holder.gui_input.connect(func(event: InputEvent) -> void:
@@ -1123,25 +1180,69 @@ func _set_page(page: int) -> void:
 	var spec: Array = _PAGES[clampi(page, 0, _PAGES.size() - 1)]
 	_groups.current_tab = spec[0]
 	_inner_tabs(spec[0]).current_tab = spec[1]
+	_on_page_entered(page)
+
+## Whatever a page needs doing when you ARRIVE on it.
+##
+## Split out of _set_page because _set_page is only reached from the
+## keyboard and the gamepad. Clicking a tab with the mouse moves the
+## TabContainer directly and never went through any of this — which is why
+## the map opened at its default 2.0 blocks-per-pixel for anybody who used
+## a mouse, drawing the whole world as a small square adrift in black. It
+## looked like a zoom bug and was really a "this code never ran" bug.
+func _on_page_entered(page: int) -> void:
 	if page == PAGE_CHARACTER:
 		_scroll_to_character.call_deferred()
 	elif page == PAGE_MAP:
-		var me := _player()
-		if me != null:
-			_map_centre = Vector2(me.position.x, me.position.z)
-		# Open on the world FITTED to the panel — no black margin around
-		# it — and treat that as the zoomed-OUT limit. From there you
-		# zoom in. Opening wider than the world just wasted the panel on
-		# empty space.
-		if world != null:
-			_map_fit = clampf(float(world.client_size) / 320.0, 0.08, 8.0)
-			# Open twice as close as the fit. Fitting the whole world is
-			# still the furthest you may pull BACK, but starting there
-			# was too far out to make anything out.
-			_map_zoom = _map_fit * 0.5
-		_map_tick = 0.0
+		_reset_map_view()
+
+## Open the map showing the WHOLE world and nothing but the world.
+##
+## _map_fit is the blocks-per-pixel at which the world exactly fills the
+## image, and it is also the furthest you are allowed to pull back, so
+## there is never black around the edges. Centred on the middle of the
+## world rather than on the player for the same reason: centred on someone
+## standing near an edge, half the view is off the map.
+func _reset_map_view() -> void:
+	if world != null:
+		_map_fit = clampf(float(world.client_size) / float(MAP_IMAGE_PX), 0.02, 8.0)
+		_map_zoom = _map_fit
+	_map_centre = Vector2.ZERO
+	_map_tick = 0.0
+
+## Should this page be in the tab strip at all, right now?
+##
+## Written as a predicate per page rather than a flag, because the reason a
+## page appears is going to differ per page as modes are added: this
+## scoreboard is teams-and-knockouts, which means nothing while everyone is
+## just building, and the next mode will want a scoreboard of its own
+## rather than this one wearing a different hat. A new mode adds a case
+## here and a page; it does not touch anything that already works.
+func _page_visible(page: int) -> bool:
+	match page:
+		PAGE_SCORES:
+			return world != null and world.client_mode == "battle"
+		_:
+			return true
+
+## Apply _page_visible across the strip. Called whenever the menu opens and
+## whenever the mode changes, since the mode is what the answers depend on.
+func _refresh_tab_visibility() -> void:
+	var showing := _current_page()
+	for page in _PAGES.size():
+		var spec: Array = _PAGES[page]
+		var tabs := _inner_tabs(int(spec[0]))
+		var idx := int(spec[1])
+		if idx < tabs.get_tab_count():
+			tabs.set_tab_hidden(idx, not _page_visible(page))
+	# Standing on a page that just vanished leaves the panel blank, so
+	# step off it rather than leave the player looking at nothing.
+	if not _page_visible(showing):
+		_set_page(1)
 
 func _page_disabled(page: int) -> bool:
+	if not _page_visible(page):
+		return true
 	var spec: Array = _PAGES[clampi(page, 0, _PAGES.size() - 1)]
 	return _inner_tabs(spec[0]).is_tab_disabled(spec[1])
 
@@ -1288,6 +1389,9 @@ func _scores_head(text: String) -> Label:
 ## what is right around you; this is for working out where to go.
 var _map_tex: TextureRect
 var _map_label: Label
+## Side of the square image the map is drawn into. _map_fit is computed
+## from it, so the two must never disagree — hence one constant.
+const MAP_IMAGE_PX := 320
 var _map_centre := Vector2.ZERO
 var _map_zoom := 2.0          # blocks per pixel
 ## The zoom that exactly fits the world: the furthest you may pull out.
@@ -1347,7 +1451,7 @@ func _poll_map_nav(input: InputSlot, delta: float) -> void:
 func _draw_big_map() -> void:
 	if _map_tex == null or world == null or world.chunks == null:
 		return
-	var size_px := 320
+	var size_px := MAP_IMAGE_PX
 	var image := Image.create(size_px, size_px, false, Image.FORMAT_RGB8)
 	var half := float(int(world.client_size) / 2)
 	for py in size_px:
@@ -1402,17 +1506,17 @@ func _refresh_preview() -> void:
 	if _preview_avatar != null:
 		_preview_avatar.queue_free()
 	var entry := _entry()
-	# Design units, NOT a fraction of the screen. A viewport sized off the
-	# window is a minimum size the SubViewportContainer forces on its
-	# parents, and on a 1080p screen that pushed the whole menu panel
-	# taller than the screen it was anchored inside.
-	_preview_viewport.size = Vector2i(_ms(300), _ms(400))
+	# The size is the CONTAINER's business now (it stretches), so nothing
+	# here touches it. Setting it here is what used to force the menu panel
+	# taller on this tab than on any other.
 	_preview_avatar = AvatarFactory.build_character(entry.get("style", {}))
 	_preview_avatar.position = Vector3(0, 0, 0)
 	_preview_avatar.rotation.y = _preview_angle
 	_preview_viewport.add_child(_preview_avatar)
-	if _preview_name != null and not entry.is_empty():
-		_preview_name.text = str(entry.name)
+	# Don't fight someone who is mid-type: only refill the field when it is
+	# not the thing they are currently editing.
+	if _name_edit != null and not entry.is_empty() and not _name_edit.has_focus():
+		_name_edit.text = str(entry.name)
 	if _preview_count != null:
 		var all: Array = AvatarFactory.characters()
 		var who := str(AvatarFactory.normalize_style(entry.get("style")).get("who", ""))
@@ -1539,13 +1643,43 @@ func _update_radar() -> void:
 	_radar.texture = ImageTexture.create_from_image(image)
 	_update_clock()
 
-## Each player gets the clock + player count under their own radar.
+## The status strip under the hotbar: what you are holding, the time, and
+## how many people are in the world.
+##
+## The held item's NAME is the point of it. Eight icons drawn in the same
+## flat style are genuinely hard to tell apart — a Freeze Ray and a Block
+## Sucker are both a small pale thing — and until now the game never said
+## in words what was in your hand.
 func _update_clock() -> void:
-	if _clock == null or world == null:
+	if world == null:
 		return
 	var hour := int(fposmod(world.clock * 24.0, 24.0))
 	var night: bool = world.clock > 0.78 or world.clock < 0.22
-	_clock.text = "%s %02d:00 · %d playing" % ["☾" if night else "☀", hour, Game.roster.size()]
+	if _selected_label != null:
+		var parts: Array = []
+		var holding := _held_name()
+		if not holding.is_empty():
+			parts.append(holding)
+		parts.append("%s %02d:00" % ["☾" if night else "☀", hour])
+		parts.append("%d playing" % Game.roster.size())
+		_selected_label.text = "   ·   ".join(parts)
+
+## What the player is holding, in words. Empty if their hand is empty.
+func _held_name() -> String:
+	var me := _player()
+	if me == null:
+		return ""
+	var item: Dictionary = me.held()
+	match str(item.kind):
+		"weapon":
+			return str(Weapons.spec(int(item.id)).get("name", ""))
+		"block":
+			return str(Blocks.info(int(item.id)).get("name", ""))
+		"structure":
+			return str(Structures.spec(int(item.id)).get("name", ""))
+		_:
+			return ""
+
 
 func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color,
 		big := false, span := 2.0, eye_row := 64.0) -> void:
@@ -2367,13 +2501,12 @@ func _process(_delta: float) -> void:
 				"font_size", maxi(20, int(chip_px * 0.85)))
 		_radar.position = Vector2(size.x - map_px - 10, 10)
 		_radar.size = Vector2(map_px, map_px)
-		_clock.position = Vector2(size.x - map_px - 10, 12 + map_px)
-		_clock.size.x = map_px
+		# The clock and player count used to sit here, under the radar, and
+		# are in the status bar under the hotbar now — so the team panel
+		# tucks straight up under the radar with just a gap.
 		if _team_panel != null:
-			_team_panel.position = Vector2(size.x - map_px - 10,
-				12 + map_px + maxf(map_px / 8.0, _us(22)))
+			_team_panel.position = Vector2(size.x - map_px - 10, 14 + map_px)
 			_team_panel.custom_minimum_size = Vector2(map_px, 0)
-		_clock.add_theme_font_size_override("font_size", maxi(11, int(map_px / 11.0)))
 		# Split-screen: fonts are sized for the full window, so shrink the
 		# whole menu to fit this player's cell instead of spilling over.
 		var win_w := float(DisplayServer.window_get_size().x)

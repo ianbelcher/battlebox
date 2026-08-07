@@ -481,6 +481,7 @@ func _on_connected() -> void:
 	if _world_menu == null:
 		_world_menu = WorldMenu.new()
 		_game_screen.add_child(_world_menu)
+		Game.world_menu = _world_menu
 	_world_menu.world = world
 	# Once only — _on_connected runs again on every reconnect.
 	if not Game.video_changed.is_connected(_apply_video):
@@ -767,6 +768,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		and _world_menu.visible
 	if open_menu or close_menu:
 		if _world_menu != null:
+			# One modal at a time. Opening this used to draw it OVER an
+			# already-open YOUR STUFF, and closing it revealed that one
+			# still sitting there — two menus deep, both of them freezing
+			# the player, with no clue that was what had happened.
+			if not _world_menu.visible:
+				_split.close_all_menus()
 			_world_menu.toggle()
 			_update_cursor_release()
 			get_viewport().set_input_as_handled()

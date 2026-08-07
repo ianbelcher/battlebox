@@ -47,6 +47,13 @@ func any_menu_open() -> bool:
 			return true
 	return false
 
+## Shut every player's own menu. Used when the WORLD menu opens, so the
+## two are never stacked.
+func close_all_menus() -> void:
+	for cell: Dictionary in _cells:
+		if cell.hud != null and cell.hud.has_method("close_menu"):
+			cell.hud.close_menu()
+
 var _cells: Array = []   # [{slot:int(-1=spectator), container, viewport, rig, cam, hud,
                          #   yaw_index, yaw, zoom_index, size, prev_rot, prev_zoom}]
 var _orbit_angle := 0.0

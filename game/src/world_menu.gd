@@ -4,12 +4,21 @@ extends Control
 ## than to one player. Per-player things (blocks, characters) live in
 ## PlayerHud.
 ##
-## Tabs follow what each thing actually IS, not which code owns it:
+## Tabs follow what each thing actually IS, not which code owns it, and
+## they are in the order the decisions are made:
+##   Game    creative or battle royale, plus that mode's settings. FIRST,
+##           because the mode is what gives the rest of this menu meaning
+##           — and, as modes are added, what decides which tabs exist.
 ##   Map     what world you're in and how play works in it — the map, its
 ##           size, whether flying is on. True in every mode.
-##   Game    creative or battle royale, plus the battle-only settings.
 ##   Players who's here, their names, teams, and computer players.
-##   Video / Help / Credits
+##   Video / Credits
+##
+## There is no Scores tab and no Help tab. Opening this menu FREEZES
+## everyone at the table, so it is the wrong place to read a scoreboard or
+## look up a control: both now live in each player's own menu, which only
+## stops the player who opened it. Scores also only make sense in a mode
+## that keeps score — see PlayerHud._page_visible.
 ##
 ## KEYBOARD AND MOUSE, both:
 ##   mouse     click anything
@@ -182,12 +191,22 @@ func _ready() -> void:
 	_tabs.focus_mode = Control.FOCUS_ALL
 	_tabs.get_tab_bar().focus_mode = Control.FOCUS_ALL
 	outer.add_child(_tabs)
-	_build_map_tab()
+	# GAME first, because the mode decides what the rest of this menu even
+	# means — and soon which tabs exist at all. Then the map it is played
+	# on, then who is playing.
+	#
+	# No Scores tab here: this menu freezes everyone at the table while it
+	# is open, so it is the wrong place to browse a scoreboard. Scores live
+	# in each player's own menu, where they only appear in a mode that HAS
+	# them (see PlayerHud._page_visible).
+	#
+	# No Help tab either — the controls are on every player's own menu,
+	# and a second copy behind a modal that stops the game was never where
+	# anyone looked.
 	_build_game_tab()
+	_build_map_tab()
 	_build_players_tab()
-	_build_scores_tab()
 	_build_video_tab()
-	_build_help_tab()
 	_build_credits_tab()
 
 	outer.add_child(_adopt_hints(UiTheme.hint_row(
@@ -763,153 +782,9 @@ func _team_cell(id: String, t: int, current: int, cell_w: int) -> Button:
 		Sfx.play("tick", -8.0))
 	return cell
 
-# ------------------------------------------------------------------
-# Scores — who is winning, across every game on this map
-# ------------------------------------------------------------------
-
-var _scores_box: VBoxContainer
-var _scores_sig := ""
-
-func _build_scores_tab() -> void:
-	var box := _tab("Scores")
-	_heading(box, "The table", "Games won and knockouts, for as long as "
-		+ "everyone stays on this map. Changing the map starts it over.")
-	_scores_box = VBoxContainer.new()
-	_scores_box.add_theme_constant_override("separation", _s(14))
-	box.add_child(_scores_box)
-
-func _refresh_scores() -> void:
-	if _scores_box == null or world == null:
-		return
-	# Same rule as the roster: rebuild only when the numbers actually
-	# changed, never on a timer.
-	var sig := "%d|%s|%s" % [int(world.matches_played),
-		str(world.team_wins), str(world.player_frags)]
-	if sig == _scores_sig:
-		return
-	_scores_sig = sig
-	for child in _scores_box.get_children():
-		child.queue_free()
-	var split := HBoxContainer.new()
-	split.add_theme_constant_override("separation", _s(14))
-	_scores_box.add_child(split)
-	split.add_child(_teams_table())
-	split.add_child(_players_table())
-
-## Left: teams by games won.
-func _teams_table() -> Control:
-	var wrap := VBoxContainer.new()
-	wrap.add_theme_constant_override("separation", _s(8))
-	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var title := Label.new()
-	title.text = "GAMES WON"
-	title.add_theme_color_override("font_color", UiTheme.INK_DIM)
-	wrap.add_child(_font(title, UiTheme.T_HEADING))
-	var card := _card(wrap)
-	var teams: Array = []
-	var count: int = world.team_count
-	for t in count:
-		teams.append(t)
-	teams.sort_custom(func(a: int, b: int) -> bool:
-		return int(world.team_wins.get(a, 0)) > int(world.team_wins.get(b, 0)))
-	if world.matches_played == 0:
-		var none := Label.new()
-		none.text = "No games finished yet."
-		none.add_theme_color_override("font_color", UiTheme.INK_FAINT)
-		card.add_child(_font(none, UiTheme.T_LABEL))
-		return wrap
-	for t: int in teams:
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", _s(10))
-		card.add_child(row)
-		var swatch := PanelContainer.new()
-		swatch.add_theme_stylebox_override("panel", UiTheme.flat(
-			WorldNode.TEAM_COLORS[t], 6, _last_scale if _last_scale > 0.0 else _scale()))
-		_min(swatch, 22, 22)
-		swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(swatch)
-		var name_label := Label.new()
-		name_label.text = _team_name(t)
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(_font(name_label, UiTheme.T_LABEL))
-		var wins := Label.new()
-		wins.text = str(int(world.team_wins.get(t, 0)))
-		wins.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		wins.add_theme_color_override("font_color", UiTheme.ACCENT)
-		_min(wins, 44, 0)
-		row.add_child(_font(wins, UiTheme.T_BODY))
-	var played := Label.new()
-	played.text = "%d game%s played" % [int(world.matches_played),
-		"" if int(world.matches_played) == 1 else "s"]
-	played.add_theme_color_override("font_color", UiTheme.INK_FAINT)
-	card.add_child(_font(played, UiTheme.T_NOTE))
-	return wrap
-
-## Right: players by TOTAL knockouts, with what they got in the last one.
-func _players_table() -> Control:
-	var wrap := VBoxContainer.new()
-	wrap.add_theme_constant_override("separation", _s(8))
-	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	wrap.size_flags_stretch_ratio = 1.3
-	var title := Label.new()
-	title.text = "KNOCKOUTS"
-	title.add_theme_color_override("font_color", UiTheme.INK_DIM)
-	wrap.add_child(_font(title, UiTheme.T_HEADING))
-	var card := _card(wrap)
-	var names: Array = world.player_frags.keys()
-	if names.is_empty():
-		var none := Label.new()
-		none.text = "Nobody has knocked anybody out yet."
-		none.add_theme_color_override("font_color", UiTheme.INK_FAINT)
-		card.add_child(_font(none, UiTheme.T_LABEL))
-		return wrap
-	names.sort_custom(func(a: String, b: String) -> bool:
-		var ta := int(world.player_frags[a].get("total", 0))
-		var tb := int(world.player_frags[b].get("total", 0))
-		if ta != tb:
-			return ta > tb
-		return a < b)
-	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", _s(12))
-	grid.add_theme_constant_override("v_separation", _s(7))
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card.add_child(grid)
-	for head_text in ["Player", "Team", "Total", "This game"]:
-		var head := Label.new()
-		head.text = str(head_text)
-		head.add_theme_color_override("font_color", UiTheme.INK_FAINT)
-		if head_text != "Player":
-			head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		grid.add_child(_font(head, UiTheme.T_NOTE))
-	for who: String in names:
-		var row: Dictionary = world.player_frags[who]
-		var team := int(row.get("team", -1))
-		var name_label := Label.new()
-		name_label.text = who
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		grid.add_child(_font(name_label, UiTheme.T_LABEL))
-		var team_label := Label.new()
-		team_label.text = _team_name(team) if team >= 0 else "—"
-		team_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		if team >= 0 and team < WorldNode.TEAM_COLORS.size():
-			team_label.add_theme_color_override("font_color",
-				WorldNode.TEAM_COLORS[team])
-		grid.add_child(_font(team_label, UiTheme.T_LABEL))
-		var total := Label.new()
-		total.text = str(int(row.get("total", 0)))
-		total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		total.add_theme_color_override("font_color", UiTheme.ACCENT)
-		grid.add_child(_font(total, UiTheme.T_LABEL))
-		var last := Label.new()
-		last.text = str(int(row.get("last", 0)))
-		last.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		last.add_theme_color_override("font_color", UiTheme.INK_DIM)
-		grid.add_child(_font(last, UiTheme.T_LABEL))
-	return wrap
 
 # ------------------------------------------------------------------
-# Video / Help / Credits
+# Video / Credits
 # ------------------------------------------------------------------
 
 func _build_video_tab() -> void:
@@ -1037,65 +912,6 @@ func _stepper(parent: Control, label: String, key: String, low: int, high: int,
 	_min(plus, 56, 42)
 	control.add_child(plus)
 	_setting_row(parent, label, "", control)
-
-func _build_help_tab() -> void:
-	var box := _tab("Help")
-	var pad := _section(box, "Controller")
-	_key_table(pad, [
-		["Ⓧ / Start", "Your own blocks, kits and character"],
-		["LB / RB", "Flip through the picker's tabs"],
-		["D-pad ◀ ▶", "Swap what you're holding"],
-		["Ⓐ", "Jump. Double-tap to fly (when it's allowed)"],
-		["RT", "Throw or shoot"],
-		["LT", "Dig"],
-	])
-	var keys := _section(box, "Keyboard and mouse")
-	_key_table(keys, [
-		["`", "This menu"],
-		["E", "Your own blocks, kits and character"],
-		["1 – 8", "Pick a slot on the hotbar"],
-		["Space", "Jump. Double-tap to fly (when it's allowed)"],
-		["R", "Throw or shoot"],
-		["Mouse", "Look around. Left click digs, right click builds"],
-	])
-	var tips := _section(box, "Good to know")
-	for line in ["Walk into a dragon to ride it — double-tap jump to hop off.",
-			"Grapple a block and it reels you up on top of it.",
-			"Crates hold better weapons. The radar shows them in gold.",
-			"In a battle the storm shrinks the world — the red ring is its edge."]:
-		var label := Label.new()
-		label.text = "•   " + str(line)
-		label.add_theme_color_override("font_color", UiTheme.INK_DIM)
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		tips.add_child(_font(label, UiTheme.T_LABEL))
-
-## Two aligned columns: the key on the left in its own cap, what it does
-## on the right. A wall of "X — does a thing" bullets never lines up.
-func _key_table(parent: Control, rows: Array) -> void:
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", _s(20))
-	grid.add_theme_constant_override("v_separation", _s(10))
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	parent.add_child(grid)
-	for row: Array in rows:
-		var cap := PanelContainer.new()
-		cap.add_theme_stylebox_override("panel", UiTheme.hint_box(_scale()))
-		cap.size_flags_horizontal = Control.SIZE_SHRINK_END
-		cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		_pills.append(cap)
-		var cap_label := Label.new()
-		cap_label.text = str(row[0])
-		cap_label.add_theme_color_override("font_color", UiTheme.ACCENT)
-		cap.add_child(_font(cap_label, UiTheme.T_NOTE + 1))
-		grid.add_child(cap)
-		var what := Label.new()
-		what.text = str(row[1])
-		what.add_theme_color_override("font_color", UiTheme.INK)
-		what.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		what.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		what.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		grid.add_child(_font(what, UiTheme.T_LABEL))
 
 func _build_credits_tab() -> void:
 	var box := _tab("Credits")
@@ -1261,10 +1077,8 @@ func _refresh(force := false) -> void:
 	if force:
 		_maps_sig = ""
 		_roster_sig = ""
-		_scores_sig = ""
 	_refresh_maps()
 	_refresh_players()
-	_refresh_scores()
 	if world == null:
 		return
 	for key: String in _mode_btns:

@@ -108,6 +108,11 @@ var roster: Dictionary = {}
 ## This machine's local players: slot int -> InputSlot.
 var local_inputs: Dictionary = {}
 var world: Node = null
+## The WORLD menu (Escape/backtick). Held here for the same reason `world`
+## is: a PlayerHud has to be able to close it when its own menu opens, and
+## walking up the scene tree to find it would break the moment the split
+## screen re-lays itself out.
+var world_menu: Node = null
 ## The first human to join is the battle host (their peer id).
 var host_peer := 0
 ## Which saved character (characters.cfg section) each local slot is using.
