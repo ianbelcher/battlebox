@@ -58,6 +58,37 @@ var ui_locked := false
 func held() -> Dictionary:
 	return slots[selected_slot]
 
+## Put something picked up in the world into the hotbar, and say where it
+## went (-1 if it did not go anywhere).
+##
+## ONE rule for every kind of pickup, because there used to be three and
+## they disagreed: crates found the first empty slot, the block sucker
+## overwrote whatever sat next to your hand — a Big Shooter, if that is
+## what was there — and everything else made you open the menu and place
+## it by hand. Picking something up should mean you are holding it.
+##
+##   already carrying one  ->  keep the one you have, change nothing
+##   a slot is empty       ->  it goes there
+##   the bar is full       ->  overwrite the first thing that is not a
+##                             weapon; if it is ALL weapons, refuse
+##
+## Refusing is the right answer for a full bar of weapons: silently
+## dropping one of them to make room for a block loses a fight.
+func give_item(kind: String, id: int) -> int:
+	for i in 8:
+		var slot_here: Dictionary = slots[i]
+		if str(slot_here.kind) == kind and int(slot_here.id) == id:
+			return i
+	for i in 8:
+		if str(slots[i].kind) == "empty":
+			slots[i] = {"kind": kind, "id": id}
+			return i
+	for i in 8:
+		if str(slots[i].kind) != "weapon":
+			slots[i] = {"kind": kind, "id": id}
+			return i
+	return -1
+
 ## Flight (double-tap jump toggles; landing exits).
 var fly_mode := false
 var _prev_jump := false

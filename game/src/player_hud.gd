@@ -302,10 +302,14 @@ func _ready() -> void:
 	add_child(_storm_arrow)
 	# Big center note for match phases (lobby countdown, next-battle).
 	_center_note = Label.new()
-	_center_note.add_theme_font_size_override("font_size", _us(26))
+	# Big enough to read from across the room. This is the match clock —
+	# "Next battle in 12" — and on a split screen at 26px it was smaller
+	# than the hotbar numbers underneath it, so nobody ever noticed a
+	# round was about to start.
+	_center_note.add_theme_font_size_override("font_size", _us(42))
 	_center_note.add_theme_color_override("font_color", Color("ffd166"))
 	_center_note.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1, 0.9))
-	_center_note.add_theme_constant_override("outline_size", 6)
+	_center_note.add_theme_constant_override("outline_size", 9)
 	_center_note.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	_center_note.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_center_note.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -744,8 +748,15 @@ func _toggle_menu(player: Player, open_tab: int) -> void:
 	for picker: BlockPicker in _pickers:
 		picker.fit(span)
 		picker.open()
-	if open_tab == 0:
-		_set_page(1)  # the blocks button always lands on Building
+	# Back to whichever tab you were last on. Opening on Building every
+	# time meant anyone living in Kits or on their character page paid two
+	# extra clicks every single time they opened this. `_last_tab` already
+	# existed and was tracked correctly — this path just never read it.
+	#
+	# A forced page (open_tab >= 1) is still honoured, which is what the
+	# autotest hook uses to land on a particular tab.
+	if open_tab >= 1 and not _page_disabled(open_tab):
+		_set_page(open_tab)
 	else:
 		_set_page(1 if _page_disabled(_last_tab) else _last_tab)
 	_tab_guard = false

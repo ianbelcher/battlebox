@@ -42,6 +42,11 @@ func is_descend_pressed() -> bool:
 	return fmod(_t() * 0.09 + bot_index * 0.6, 1.0) < 0.15
 
 func is_dig_pressed() -> bool:
+	# Not while shooting. Digging is checked BEFORE placing in Player's
+	# action code, so a bot that idly swings at the ground mid-fight throws
+	# away that shot AND the cooldown after it.
+	if brain_shoot:
+		return false
 	return fmod(_t() * 0.2 + bot_index * 0.7, 1.0) < 0.06
 
 func is_place_pressed() -> bool:
@@ -82,4 +87,12 @@ func is_leave_pressed() -> bool:
 	return false
 
 func is_shoot_pressed() -> bool:
+	# Held down for as long as the brain wants the trigger held, exactly
+	# like a person leaning on the button — the weapon's own cooldown is
+	# what sets the rate, so a Little Shooter rattles and a Big Shooter
+	# thumps. Without this it fell through to the wander schedule below,
+	# which is true for 3% of a 6.7-second cycle: one shot every seven
+	# seconds, whatever was happening.
+	if brain_shoot:
+		return true
 	return fmod(_t() * 0.15 + bot_index * 0.55, 1.0) < 0.03

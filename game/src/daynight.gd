@@ -22,6 +22,25 @@ const DUSK_HORIZON := Color("f2a05e")
 const NIGHT_TOP := Color("0a0e22")
 const NIGHT_HORIZON := Color("1c2445")
 
+## The colour night is lit BY, once the sky stops doing it.
+##
+## Ambient light is taken from the sky, and the night sky is very nearly
+## black — which is the whole reason night went from "moonlit" to "cannot
+## see the block in front of your face". Turning the sky's contribution
+## down after dusk and mixing this in instead keeps the palette cool and
+## night-like while leaving every block readable. It is deliberately blue:
+## a grey lift just looks like the gamma is broken.
+const NIGHT_AMBIENT := Color("8a9ccb")
+## How much of the ambient stops coming from the sky at midnight.
+const NIGHT_SKY_PULLBACK := 0.8
+## Extra ambient energy at midnight, on top of the daytime floor.
+const NIGHT_AMBIENT_LIFT := 0.55
+
+## Seconds per full day. Pushed from the world, which fits one whole day
+## into a battle — see WorldNode.day_length. The sky runs its own clock
+## between server syncs, so it needs the rate, not just the time.
+var day_length := 240.0
+
 func _ready() -> void:
 	if RenderingServer.get_rendering_device() == null:
 		_gl_boost = 1.45
@@ -92,7 +111,7 @@ func set_low_fx(low: bool) -> void:
 	moon.shadow_enabled = false if low else moon.shadow_enabled
 
 func _process(delta: float) -> void:
-	_clock = fposmod(_clock + delta / WorldNode.day_seconds(), 1.0)
+	_clock = fposmod(_clock + delta / maxf(day_length, 1.0), 1.0)
 	_apply(_clock)
 
 ## clock: 0 midnight, 0.25 dawn, 0.5 noon, 0.75 dusk.
@@ -110,7 +129,11 @@ func _apply(clock: float) -> void:
 
 	var moonlight := clampf(-elevation * 5.0, 0.0, 1.0)
 	moon.rotation = Vector3(-maxf(-elevation, 0.02) * 1.2, -0.6, 0)
-	moon.light_energy = moonlight * 0.4
+	# A brighter moon, and brighter again on the browser's renderer, which
+	# has no SSAO or bounce light to fill anything in. The moon is the only
+	# thing giving night any SHAPE — without it every face of every block
+	# is the same flat ambient colour and the world reads as a fog bank.
+	moon.light_energy = moonlight * 0.85 * _gl_boost
 	moon.shadow_enabled = allow_shadows and moonlight > 0.4
 
 	var top: Color
@@ -132,4 +155,16 @@ func _apply(clock: float) -> void:
 	# of a flat dark gray slab.
 	sky_material.ground_bottom_color = horizon.darkened(0.25)
 	sky_material.ground_horizon_color = horizon
-	environment.ambient_light_energy = (0.72 + daylight * 0.28) * _gl_boost
+	# Ambient is taken from the SKY, and after dusk the sky is nearly black
+	# (NIGHT_TOP is #0a0e22), so "ambient energy 0.72" was 0.72 of almost
+	# nothing. That is what made night unplayable rather than atmospheric —
+	# turning the energy up alone could never have fixed it, because the
+	# COLOUR was the problem.
+	#
+	# So as the sun goes down the sky hands ambient over to a fixed blue,
+	# and the energy lifts to meet it.
+	var night := 1.0 - daylight
+	environment.ambient_light_sky_contribution = 1.0 - night * NIGHT_SKY_PULLBACK
+	environment.ambient_light_color = NIGHT_AMBIENT
+	environment.ambient_light_energy = \
+		(0.72 + daylight * 0.28 + night * NIGHT_AMBIENT_LIFT) * _gl_boost

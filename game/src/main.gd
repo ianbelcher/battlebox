@@ -578,12 +578,27 @@ func _maybe_start_autotest() -> void:
 			if Game.world != null:
 				for i in server_bots.to_int():
 					Game.world.sv_add_bot.rpc_id(1))
-	if OS.get_environment("WORLD_AUTOTEST_MATCH") == "1":
-		get_tree().create_timer(6.0).timeout.connect(func() -> void:
+	# WORLD_AUTOTEST_MATCH=1 starts one battle. A number ABOVE 1 is a repeat
+	# interval in seconds, which is how anything that must be the same from
+	# one round to the next gets checked — where each team starts, most of
+	# all. One battle can never show that; it takes two and a comparison.
+	var match_hook := OS.get_environment("WORLD_AUTOTEST_MATCH")
+	if match_hook.is_valid_int() and match_hook.to_int() >= 1:
+		var start_battle := func() -> void:
 			if Game.world != null:
 				Game.world.sv_match_start.rpc_id(1, 0)
 				for slot: int in Game.local_inputs.keys():
-					Game.set_local_team(slot, slot % 4))
+					Game.set_local_team(slot, slot % 4)
+		get_tree().create_timer(6.0).timeout.connect(start_battle)
+		var every := match_hook.to_int()
+		if every > 1:
+			var repeat := Timer.new()
+			repeat.wait_time = float(every)
+			# sv_match_start is ignored while a battle is already running,
+			# so this simply picks up whenever the table is idle again.
+			repeat.timeout.connect(start_battle)
+			add_child(repeat)
+			repeat.start()
 	# WORLD_SHOWCASE=1: plant a strip of every foliage/shaped block near
 	# spawn so a screenshot run can judge the look deterministically.
 	if OS.get_environment("WORLD_SHOWCASE") == "1":

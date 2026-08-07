@@ -420,7 +420,14 @@ anywhere else, that is the bug.
 - Battle test hooks: `WORLD_BOT_WEAPON=<id>` arms every computer player at
   the drop (they otherwise start with a sword and must find a crate), and
   `WORLD_ORB_DEBUG=1` logs every bot shot — fired, hit, or stopped by a
-  wall. Bots drop 16-30% of the world's size from the centre, so shrink
+  wall. `WORLD_AUTOTEST_MATCH=<secs>` (any number above 1) starts a fresh
+  battle on that interval, which is the only way to check anything that
+  has to be the SAME from one round to the next — one battle can never
+  show it. `WORLD_CLOCK=<0..1>` pins the time of day (0 midnight, 0.25
+  dawn, 0.5 noon, 0.75 dusk) so night lighting can be looked at on purpose
+  rather than waited for.
+  Every battle start logs its team sites; those coordinates must be
+  identical round to round in the same world. Bots drop 16-30% of the world's size from the centre, so shrink
   the arena (battle.cfg `size=60`) if you want them to meet quickly.
 - Test hooks: `WORLD_DINOS_NOW=1`, `WORLD_DRAGON_NOW=1`,
   `WORLD_MENU_TEST=1` (+ `WORLD_MENU_TAB=<n>` to land on a world-menu

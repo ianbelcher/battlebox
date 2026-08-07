@@ -7,9 +7,18 @@ extends Node
 var player: Player
 var bot: BotSlot
 
+## What a bot will actually fight with. The rest of the kit is movement and
+## utility — wings, grapple, digger, flare, block sucker, smoke — and a bot
+## holding one of those is a bot standing in the open doing nothing useful
+## while somebody shoots it.
+const FIGHTING_WEAPONS := [0, 1, 15, 9, 17, 3, 8, 18, 10]
+
 func _ready() -> void:
 	var timer := Timer.new()
-	timer.wait_time = 0.35
+	# Fast enough to track someone who is strafing. At the old 0.35s a bot
+	# aimed a third of a second behind a moving player, which at close
+	# range is a clean miss every time.
+	timer.wait_time = 0.15
 	timer.timeout.connect(_think)
 	add_child(timer)
 	timer.start()
@@ -34,14 +43,26 @@ func _think() -> void:
 				and child.position.distance_to(player.position) < 26.0:
 			_drive_toward(child.position)
 			return
+	# Hold the fastest gun in the bag. Cooldown is the only thing that
+	# separates them here — there is no damage number to weigh — and with
+	# the trigger held down the cooldown IS the threat: a Little Shooter
+	# at 0.09s puts out a wall of pellets, a Big Shooter at 2.0s is one
+	# thump you can walk around. Bots used to take whatever weapon sat in
+	# the lowest slot, and only if their hands were otherwise empty.
 	var armed := false
+	var best_slot := -1
+	var best_cooldown := INF
 	for i in 8:
 		var it: Dictionary = player.slots[i]
-		if it.kind == "weapon" and int(it.id) != 13:
-			armed = true
-			if player.held().kind != "weapon":
-				player.selected_slot = i
-			break
+		if it.kind != "weapon" or not FIGHTING_WEAPONS.has(int(it.id)):
+			continue
+		armed = true
+		var cd := float(Weapons.spec(int(it.id)).cooldown)
+		if cd < best_cooldown:
+			best_cooldown = cd
+			best_slot = i
+	if best_slot >= 0 and player.selected_slot != best_slot:
+		player.selected_slot = best_slot
 	var enemy: Player = null
 	var best := 34.0
 	for child in world.players.get_children():

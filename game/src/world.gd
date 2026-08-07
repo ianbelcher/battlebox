@@ -6,13 +6,13 @@ extends Node
 ## client it owns the ChunkView, player avatars, critters and the sky.
 ##
 ## Wire protocol (client -> server sv_*, server -> clients cl_*):
-##   sv_hello                      -> cl_world_info(spawn, clock, source)
+##   sv_hello                      -> cl_world_info(spawn, clock, source, day_length)
 ##   sv_request_chunks([Vector2i]) -> cl_chunk(cx, cz, zstd_blob) each
 ##   sv_where(slot)                -> cl_where(slot, pos, treasures)
 ##   sv_pos(slot, pos, yaw, anim)     (unreliable, ~12 Hz per player)
 ##   sv_edit(slot, pos, block)     -> cl_edit(pos, block, by_id) + cl_treasures
 ##   sv_pet(slot, critter_id)      -> cl_pet(critter_id)
-##   (server timers)               -> cl_clock(frac), cl_critters(payload)
+##   (server timers)               -> cl_clock(frac, day_length), cl_critters(payload)
 
 const EDIT_RANGE := 10.0
 ## How often untouched chunks are dropped from the server's cache. Nothing
@@ -122,8 +122,41 @@ signal reset_result(happened: bool)
 static func fast_mode() -> bool:
 	return OS.get_environment("WORLD_FAST") == "1"
 
-static func day_seconds() -> float:
-	return 90.0 if fast_mode() else 600.0
+## How long a full sunrise-to-sunrise takes when nobody is fighting.
+##
+## Four minutes, not ten. A day you never see the end of is a day that is
+## just "the weather today" — you spend a whole session in the same light.
+## At four minutes the sun visibly moves while you build, dusk arrives as
+## an event, and being caught out in the dark is a thing that happens and
+## then passes.
+const IDLE_DAY_SECONDS := 240.0
+## Nothing sensible comes of a day shorter than this — the sky strobes.
+const MIN_DAY_SECONDS := 45.0
+
+## Seconds per full day/night cycle, right now (WORLD_FAST=1 quarters it).
+##
+## A BATTLE fits exactly one day into the match, whatever length the match
+## is set to: a three-minute round runs dawn → noon → dusk → night → dawn
+## and ends where it started. Every round therefore has the same shape and
+## the same last-minute darkness, rather than being decided by whatever
+## time of day the clock happened to be at when someone pressed Start.
+var day_length := 60.0 if fast_mode() else IDLE_DAY_SECONDS
+
+## What time it is when a world (or a battle) begins.
+##
+## Random, so no two starts feel the same — the world used to open at a
+## fixed morning and every battle was hard-set to 0.79, which is a few
+## minutes to seven in the evening. Every single round began at dusk and
+## went dark, which read as "this game is always night".
+##
+## WORLD_CLOCK pins it (0 midnight, 0.25 dawn, 0.5 noon, 0.75 dusk) so the
+## lighting at a particular hour can be looked at on purpose rather than
+## waited for.
+static func _random_clock() -> float:
+	var forced := OS.get_environment("WORLD_CLOCK")
+	if forced.is_valid_float():
+		return fposmod(forced.to_float(), 1.0)
+	return randf()
 
 static func growth_msec() -> int:
 	return 8_000 if fast_mode() else 100_000
@@ -232,9 +265,7 @@ func _server_setup() -> void:
 	source = store.source
 	spawn_pos = store.find_spawn()
 	_build_overview()
-	# The clock starts at morning, every time. It used to be restored from
-	# disk, which meant a server that happened to go down at 3am came back
-	# up at 3am — a fresh world in the dark, for no reason anyone could see.
+	clock = _random_clock()
 	print("World spawn at %s, clock %.2f" % [spawn_pos, clock])
 	_load_battle_setup()
 	var trim := Timer.new()
@@ -244,7 +275,7 @@ func _server_setup() -> void:
 	trim.start()
 	var clock_timer := Timer.new()
 	clock_timer.wait_time = 5.0
-	clock_timer.timeout.connect(func() -> void: cl_clock.rpc(clock))
+	clock_timer.timeout.connect(func() -> void: cl_clock.rpc(clock, day_length))
 	add_child(clock_timer)
 	clock_timer.start()
 	var critter_timer := Timer.new()
@@ -260,12 +291,21 @@ func _server_setup() -> void:
 	Game.roster_changed.connect(_server_on_roster_changed)
 
 func _process(delta: float) -> void:
-	clock = fposmod(clock + delta / day_seconds(), 1.0)
+	clock = fposmod(clock + delta / maxf(day_length, MIN_DAY_SECONDS), 1.0)
 	if not multiplayer.is_server() and match_phase != "IDLE":
 		# The server only sends match_seconds at phase transitions — tick
 		# it locally so countdowns actually count.
 		match_seconds = maxf(0.0, match_seconds - delta)
 	if multiplayer.is_server():
+		# One day-length rule, in one place. A battle squeezes a whole day
+		# into the match; the moment there is no battle it goes back to
+		# the idle rate. There are three separate paths back to IDLE (a
+		# world reset, switching to creative, the last match ending) and
+		# stating the invariant here means none of them can forget.
+		var idle_rate := 60.0 if fast_mode() else IDLE_DAY_SECONDS
+		if match_phase == "IDLE" and not is_equal_approx(day_length, idle_rate):
+			day_length = idle_rate
+			cl_clock.rpc(clock, day_length)
 		_drain_chunk_queues()
 		_server_dawn_check()
 		_server_tick_bombs()
@@ -316,7 +356,7 @@ func sv_hello() -> void:
 	if not multiplayer.is_server():
 		return
 	var peer := multiplayer.get_remote_sender_id()
-	cl_world_info.rpc_id(peer, spawn_pos, clock, source)
+	cl_world_info.rpc_id(peer, spawn_pos, clock, source, day_length)
 	cl_map_list.rpc_id(peer, ChunkStore.list_maps())
 	cl_overview.rpc_id(peer, overview)
 	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only,
@@ -1388,7 +1428,10 @@ func _do_world_reset(map_name := "", new_size := 0) -> void:
 	spawn_pos = store.find_spawn()
 	_build_overview()
 	cl_overview.rpc(overview)
-	clock = 0.35
+	# A new world is a new day, at a new time — and new ground for every
+	# team, since the hill they had fortified no longer exists.
+	clock = _random_clock()
+	_team_site.clear()
 	survival_active = false
 	_monsters.clear()
 	_fires.clear()
@@ -1441,7 +1484,7 @@ func _do_world_reset(map_name := "", new_size := 0) -> void:
 		cl_storm.rpc(0.0, Vector3.ZERO)
 	reset_scoreboard()
 	cl_reset_result.rpc(true)
-	cl_world_info.rpc(spawn_pos, clock, source)
+	cl_world_info.rpc(spawn_pos, clock, source, day_length)
 	cl_world_reset.rpc()
 	# ...and if we are meant to be playing battle royale, start a fresh
 	# one on the new map rather than leaving everyone idle.
@@ -1912,11 +1955,40 @@ func _water_at(wx: int, wz: int) -> bool:
 ## have to take seriously.
 ##
 ##   spread     how wide they miss by
-##   cadence    seconds between shots
+##   (rate of fire comes from the WEAPON — see _bot_shot_delay)
 ##   sight      how far away they notice you
 ##   speed      how fast they move
 ##   nerve      how likely they are to close in rather than mill about
 const BOT_SKILL_NAMES := ["Rookie", "Steady", "Sharp", "Deadly"]
+
+## How fast a computer player can work its trigger.
+##
+## `cadence` used to be a flat number of seconds between shots — 2.1 for a
+## rookie down to 0.55 for a deadly one — and it took no notice whatever of
+## the gun being held. So a bot with a Little Shooter, whose cooldown is
+## 0.09s, still fired once every half second while the person shooting back
+## at it fired six times in the same window. That is the whole reason bots
+## read as target practice: you could stand in the open, hold the trigger
+## and walk your fire onto one, and it would answer with a single pop.
+##
+## Now the WEAPON sets the rhythm, exactly as it does for a person holding
+## the button down, and skill only stretches the gaps.
+##
+## The floor is a balance decision, not a technical one. A hit is one heart
+## and a match starts with MATCH_HP of them, so a Little Shooter fired at
+## its true 0.09s cooldown would empty a player in well under a second from
+## across a field. At 0.26s a good bot puts out a real stream you have to
+## break line of sight from — about three and a half shots a second — and
+## you still have a couple of seconds to get behind something.
+const BOT_MIN_SHOT_GAP := 0.26
+## Multiplier on the gap for the worst bot, sliding to 1.0 for the best.
+const BOT_ROOKIE_SLACK := 2.4
+
+## Seconds a bot waits between shots with the gun it is currently holding.
+func _bot_shot_delay(bot: Dictionary) -> float:
+	var weapon_cd := float(Weapons.spec(int(bot.get("weapon", 13))).get("cooldown", 1.0))
+	var slack := lerpf(BOT_ROOKIE_SLACK, 1.0, float(bot.get("skill", 0.5)))
+	return maxf(weapon_cd, BOT_MIN_SHOT_GAP) * slack
 
 ## Older saves have bots with no skill on them; give them one on sight so
 ## a restarted server does not field a table of identical clones.
@@ -1930,7 +2002,6 @@ func _apply_bot_skill(bot: Dictionary) -> void:
 	var skill := clampf((randf() + randf() * 0.6) / 1.6, 0.0, 1.0)
 	bot.skill = skill
 	bot.spread = lerpf(0.115, 0.012, skill)     # radians of slop
-	bot.cadence = lerpf(2.1, 0.55, skill)       # seconds between shots
 	bot.sight = lerpf(22.0, 55.0, skill)        # blocks
 	bot.speed = lerpf(2.7, 4.1, skill)          # blocks per second
 	bot.nerve = lerpf(0.15, 0.9, skill)
@@ -2048,7 +2119,9 @@ func _server_tick_bots(delta: float) -> void:
 				# Only take the shot if there's something to shoot at —
 				# firing into a wall is just noise.
 				if int(bot.weapon) != 13 and _clear_shot(muzzle, aim):
-					bot.shoot_cd = float(bot.get("cadence", 1.1)) * randf_range(0.85, 1.2)
+					# The gun's rhythm, not a flat number. Jitter keeps it
+					# from sounding like a metronome.
+					bot.shoot_cd = _bot_shot_delay(bot) * randf_range(0.88, 1.14)
 					var dir := (aim - muzzle).normalized()
 					# Aim is imperfect, and HOW imperfect is what mostly
 					# separates a rookie from a deadly one. A rookie's
@@ -2073,7 +2146,7 @@ func _server_tick_bots(delta: float) -> void:
 					_spawn_bot_orb(id, muzzle, dir, int(bot.weapon))
 				elif int(bot.weapon) == 13 and pos.distance_to(epos) < 2.6:
 					# Sword range: close enough to actually swing at you.
-					bot.shoot_cd = float(bot.get("cadence", 1.1)) * 0.7
+					bot.shoot_cd = _bot_shot_delay(bot) * 0.7
 					cl_pos.rpc(id, pos, bot.yaw, 9)
 					_match_hurt(enemy, 1, pos, id)
 		if bot.send_t <= 0.0:
@@ -2310,8 +2383,12 @@ func _server_match_drop() -> void:
 	_downed_ids.clear()
 	_revive_progress.clear()
 	_bot_orbs.clear()
-	_team_site.clear()
-	_team_drop_taken.clear()
+	# _team_site is deliberately NOT cleared. A team's ground is a fixed
+	# feature of the world, like a hill: you fortify it in one round and
+	# come back to it in the next. Re-rolling it every battle was why a
+	# team kept landing in roughly the same quarter of the map but never
+	# on the same block, so nothing anyone built was ever there when they
+	# came back. It is cleared when the WORLD changes and only then.
 	_result_recorded = false
 	_start_new_scorecard()
 	var counts: Array[int] = []
@@ -2322,16 +2399,36 @@ func _server_match_drop() -> void:
 			Game.roster[id].team = -1
 		elif team >= 0:
 			counts[team] += 1
-	var i := 0
+	# Teams are settled BEFORE anyone is placed, because where you stand
+	# depends on who else is on your team.
 	for id: String in Game.roster.keys():
-		var entry: Dictionary = Game.roster[id]
-		if int(entry.get("team", -1)) < 0:
+		var e: Dictionary = Game.roster[id]
+		if int(e.get("team", -1)) < 0:
 			var best := 0
 			for t in team_count:
 				if counts[t] < counts[best]:
 					best = t
-			entry.team = best
+			e.team = best
 			counts[best] += 1
+
+	# Seat order, fixed by SORTED id rather than by roster order. Roster
+	# order changes whenever somebody joins, leaves or rejoins, so using it
+	# shuffled the same four people around the huddle between rounds even
+	# when the team had not changed.
+	_team_seats.clear()
+	for id: String in Game.roster.keys():
+		var team_of := int(Game.roster[id].get("team", 0))
+		var seats: PackedStringArray = _team_seats.get(team_of, PackedStringArray())
+		seats.append(id)
+		_team_seats[team_of] = seats
+	for team_of: int in _team_seats.keys():
+		var seats: PackedStringArray = _team_seats[team_of]
+		seats.sort()
+		_team_seats[team_of] = seats
+
+	var i := 0
+	for id: String in Game.roster.keys():
+		var entry: Dictionary = Game.roster[id]
 		_match_alive[id] = true
 		# World resets between battles can drop server-side state for
 		# bots — recreate instead of crashing the match start.
@@ -2342,7 +2439,13 @@ func _server_match_drop() -> void:
 		state.hp = MATCH_HP
 		cl_hearts.rpc(id, MATCH_HP)
 		var team_i := int(entry.get("team", 0))
-		var drop := _team_start_spot(team_i)
+		# Everyone's place in the huddle comes from WHO they are, not from
+		# the order the roster happened to be walked in. Same team, same
+		# world, same block — every single round, so the wall you put up
+		# last time is the wall you start behind this time.
+		var seats_here: PackedStringArray = _team_seats.get(team_i, PackedStringArray())
+		var seat := maxi(seats_here.find(id), 0)
+		var drop := _team_start_spot(team_i, seat)
 		cl_stand.rpc(id, drop, loot_only)
 		if _bots.has(id):
 			_bots[id].pos = drop
@@ -2397,11 +2500,30 @@ func _server_match_drop() -> void:
 	var storm_angle := randf() * TAU
 	var storm_dist := randf() * battle_size * 0.22
 	storm_center = Vector3(cos(storm_angle) * storm_dist, 0, sin(storm_angle) * storm_dist)
-	clock = randf()  # every battle gets its own time of day
-	clock = 0.79  # dusk falls as the match starts: hunt loot in the dark
-	cl_clock.rpc(clock)
+	# Every battle gets its own time of day, and runs exactly one day.
+	#
+	# There used to be a `clock = 0.79` on the line under the random one,
+	# which quietly won — 0.79 is ten to seven in the evening, so every
+	# round anyone ever played started at dusk and got darker. The random
+	# line had been dead for as long as it had been there.
+	#
+	# Fitting the day to the match length is what makes a random start
+	# fair: whatever time it opens on, a round sees the same amount of
+	# daylight and the same amount of night, and ends where it began.
+	clock = _random_clock()
+	day_length = clampf(storm_minutes * 60.0, MIN_DAY_SECONDS, 1800.0)
+	cl_clock.rpc(clock, day_length)
 	cl_match.rpc("SETUP", 6.0)
-	print("Battle royale: dropping %d players" % _match_alive.size())
+	# Where each team stood, every battle. These coordinates must be
+	# IDENTICAL from one round to the next in the same world — that is the
+	# whole point of a team having a home to fortify — so printing them is
+	# how anyone checks it without having to play two rounds and squint.
+	var sites: Array = []
+	for team_of: int in _team_site.keys():
+		sites.append("%d@%v" % [team_of, _team_site[team_of]])
+	sites.sort()
+	print("Battle royale: dropping %d players | team sites: %s"
+		% [_match_alive.size(), ", ".join(sites)])
 
 func _storm_damage() -> void:
 	var now := Time.get_ticks_msec()
@@ -2498,10 +2620,9 @@ var _last_regen_ms: Dictionary = {}
 ## The spot each team starts the match standing on, chosen once per
 ## match. Cleared with everything else when a match begins.
 var _team_site: Dictionary = {}
-## How many of each team have been given a landing spot this battle, so
-## the next one gets the next slot in the huddle.
-var _team_drop_taken: Dictionary = {}
-
+## team index -> PackedStringArray of member ids, sorted. A player's place
+## in this list is their place in the huddle, so it is the same every round.
+var _team_seats: Dictionary = {}
 ## Where one player of `team_i` STARTS. On the ground, beside their team.
 ##
 ## There is no sky drop any more. This is a building game first: a squad
@@ -2514,14 +2635,17 @@ var _team_drop_taken: Dictionary = {}
 ## once per team per match — flat, dry, inside the world — then everyone
 ## on that team is packed into a one-block spiral around it and stood on
 ## whatever the ground turns out to be underneath them.
-func _team_start_spot(team_i: int) -> Vector3:
+func _team_start_spot(team_i: int, seat: int) -> Vector3:
 	if not _team_site.has(team_i):
 		_team_site[team_i] = _find_team_site(_team_site.size())
 	var centre: Vector3 = _team_site[team_i]
 	# Ring by ring: 1 in the middle, then 6, then 12 … all one block
 	# apart, so even a team of seventeen starts in one huddle.
-	var n := int(_team_drop_taken.get(team_i, 0))
-	_team_drop_taken[team_i] = n + 1
+	#
+	# `seat` is the player's fixed place in the team, NOT a running count
+	# of who has been placed so far. With a counter, one person missing a
+	# round moved everybody else onto somebody else's block.
+	var n := seat
 	var offset := Vector3.ZERO
 	if n > 0:
 		var ring := 1
@@ -3323,31 +3447,11 @@ func cl_crates(payload: Array) -> void:
 func cl_crate_taken(id: String, weapon: int) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id and child.is_local:
-			# ALREADY HAVE ONE? The crate is still yours — nobody else
-			# gets it — but the bar does not fill up with three of the
-			# same shooter.
-			var have := false
-			for i in 8:
-				var slot_here: Dictionary = child.slots[i]
-				if str(slot_here.kind) == "weapon" and int(slot_here.id) == weapon:
-					have = true
-					break
-			if not have:
-				# Into the first empty slot, else over the first thing
-				# that is not a weapon.
-				var target := -1
-				for i in 8:
-					if str(child.slots[i].kind) == "empty":
-						target = i
-						break
-				if target < 0:
-					for i in 8:
-						if str(child.slots[i].kind) != "weapon":
-							target = i
-							break
-				if target < 0:
-					target = 7
-				child.slots[target] = {"kind": "weapon", "id": weapon}
+			# Into the bar by the one shared rule — already carrying one
+			# and nothing happens, so the bar never fills up with three of
+			# the same shooter. The crate is still yours either way;
+			# nobody else gets it.
+			child.give_item("weapon", weapon)
 			# ...and it does NOT become what you are holding. Switching
 			# somebody's weapon out from under them mid-fight, because
 			# they happened to run over a crate, is how you lose a fight
@@ -3705,6 +3809,10 @@ func _client_update_focus() -> void:
 	chunks.set_focus(focus)
 	if sky != null:
 		sky.set_clock(clock)
+		# Rate as well as time: the sky advances its own clock between
+		# server syncs, so it has to be running at the same speed or it
+		# drifts and then snaps back on every update.
+		sky.day_length = day_length
 
 func request_chunks(batch: Array) -> void:
 	sv_request_chunks.rpc_id(1, batch)
@@ -3746,10 +3854,14 @@ func cl_map_list(maps: Array) -> void:
 	map_list_changed.emit()
 
 @rpc("authority", "reliable")
-func cl_world_info(p_spawn: Vector3i, p_clock: float, p_source: String) -> void:
+func cl_world_info(p_spawn: Vector3i, p_clock: float, p_source: String,
+		p_day_length: float) -> void:
 	spawn_pos = p_spawn
 	clock = p_clock
 	source = p_source
+	day_length = maxf(p_day_length, MIN_DAY_SECONDS)
+	if sky != null:
+		sky.day_length = day_length
 	# Procedural islands end well inside the chunk bound — fence closer so
 	# kids don't drift over empty ocean; imported maps keep the full area.
 	world_radius = 250.0 if p_source == "procedural" \
@@ -3888,8 +4000,10 @@ func cl_suck(id: String, block: int) -> void:
 	Sfx.play("collect", -6.0 - _nearest_player_dist(id) * 0.8)
 	for child in players.get_children():
 		if child is Player and child.player_id == id and child.is_local:
-			var slot_index: int = (child.selected_slot + 1) % 8
-			child.slots[slot_index] = {"kind": "block", "id": block}
+			# Same rule as a crate. This used to drop the block into the
+			# slot next to your hand whatever was already in it, so
+			# sucking up a stray block could cost you a weapon.
+			child.give_item("block", block)
 
 @rpc("authority", "reliable")
 func cl_fling(id: String) -> void:
@@ -4195,8 +4309,15 @@ func cl_treasures(id: String, count: int) -> void:
 	treasures_changed.emit()
 
 @rpc("authority", "reliable")
-func cl_clock(frac: float) -> void:
+func cl_clock(frac: float, p_day_length: float) -> void:
 	clock = frac
+	# The rate comes with the time. A client that only heard the time would
+	# drift its own sky at the idle rate all the way through a battle,
+	# getting further out of step with the server every second, and then
+	# jump whenever the next sync landed.
+	day_length = maxf(p_day_length, MIN_DAY_SECONDS)
+	if sky != null:
+		sky.day_length = day_length
 
 @rpc("authority", "unreliable")
 func cl_critters(payload: Array) -> void:
