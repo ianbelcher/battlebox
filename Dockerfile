@@ -26,7 +26,11 @@ RUN wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERS
     && rm -rf /tmp/templates "Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
 
 COPY game /game
-RUN echo "$GIT_SHA" > /game/version.txt
+# Truncated HERE rather than by the caller, so every build agrees on the
+# format no matter who started it. deploy.sh and the workflow both compare
+# what the site serves against this, and a full sha from one caller and a
+# short one from another would read as "the deploy did not take".
+RUN printf '%s\n' "$GIT_SHA" | cut -c1-12 > /game/version.txt
 
 # First import populates the .godot cache; it can exit non-zero on a cold
 # cache even when it succeeds, hence the guard.
