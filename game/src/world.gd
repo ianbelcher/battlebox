@@ -1594,7 +1594,7 @@ func sv_set_mode(mode: String) -> void:
 	if mode != "battle" and mode != "creative":
 		return
 	game_mode = mode
-	match_loop = mode == "battle"
+	match_loop = mode == "battle" or mode == "ctf"
 	if mode == "creative" and match_phase != "IDLE":
 		match_phase = "IDLE"
 		_match_alive.clear()
@@ -2329,6 +2329,18 @@ func _server_tick_match(delta: float) -> void:
 				_match_timer = storm_minutes * 60.0
 				cl_match.rpc("BATTLE", _match_timer)
 		"BATTLE":
+			if _ctf_active():
+				# No storm and no clock — capture the flag runs until
+				# somebody reaches the target score.
+				_match_timer = 9999.0
+				storm_radius = -1.0
+				_tick_regen()
+				_tick_fire()
+				_tick_bot_orbs(delta)
+				_tick_revives(delta)
+				_ctf_tick(delta)
+				_check_match_win()
+				return
 			if storm_minutes >= 59.0:
 				# Unlimited: the storm never closes and the match only ends
 				# when one team is left standing.
@@ -2425,6 +2437,17 @@ func _server_match_drop() -> void:
 		var seats: PackedStringArray = _team_seats[team_of]
 		seats.sort()
 		_team_seats[team_of] = seats
+
+	# Capture the flag raises the bases FIRST, so that placing a team puts
+	# them on their own base's floor rather than on the hillside the base
+	# is about to be built over.
+	if _ctf_active():
+		ctf_scores.clear()
+		for t in team_count:
+			ctf_scores[t] = 0
+		_ctf_build_all_bases()
+	else:
+		_flags.clear()
 
 	var i := 0
 	for id: String in Game.roster.keys():
@@ -2591,13 +2614,19 @@ func _match_eliminate(id: String, attacker := "") -> void:
 		if other != id and not _downed_ids.has(other) \
 				and int(Game.roster.get(other, {}).get("team", -2)) == team:
 			has_standing_mate = true
-	if has_standing_mate:
+	var fell_at: Vector3 = _player_state.get(id, {}).get("pos", Vector3.ZERO)
+	# Reviving is a mode setting in capture the flag: with it off, a
+	# knockout puts you straight out as a ghost and the only way back is
+	# your own flag.
+	var can_revive: bool = ctf_revive if _ctf_active() else true
+	if has_standing_mate and can_revive:
 		_downed_ids[id] = Time.get_ticks_msec()
 		cl_downed_state.rpc(id, true)
 		_emit_feed(id, attacker)
 		return
 	_match_alive.erase(id)
 	_downed_ids.erase(id)
+	_drop_weapons(id, fell_at)
 	cl_eliminated.rpc(id)
 	_emit_feed(id, attacker)
 	_check_match_win()
@@ -2891,6 +2920,11 @@ func _check_match_win() -> void:
 	if not anyone_here:
 		_server_match_end(-2)
 		return
+	# Capture the flag is decided ON THE SCOREBOARD, never by clearing the
+	# other team out: knocking someone down only buys you the time it takes
+	# them to get home. Ending it here would turn it back into a battle.
+	if _ctf_active():
+		return
 	if teams_alive.size() <= 1:
 		var winner := -1
 		for t in teams_alive.keys():
@@ -3026,8 +3060,13 @@ func _teams_differ(a: String, b: String) -> bool:
 	return int(Game.roster[a].get("team", -1)) != int(Game.roster[b].get("team", -2))
 
 signal match_score_changed
+## Flag positions as the clients know them: [[team, home:Vector3, present:bool], ...]
+signal flags_changed
+signal flag_taken(id: String, team: int, from_team: int)
 signal knockout(attacker: String, attacker_team: int, victim: String, victim_team: int)
 var ghost_ids: Dictionary = {}
+## Client mirror of the flags, for the HUD map. See cl_flags.
+var flags: Array = []
 var client_downed: Dictionary = {}
 ## id -> 0..1 while a team-mate is picking that player up, so everyone can
 ## see the ring fill rather than guessing whether it's working.
@@ -3099,6 +3138,14 @@ func cl_stand(id: String, pos: Vector3, loot := false) -> void:
 				child.slots.append({"kind": "empty", "id": 0})
 			child.selected_slot = 0
 			child.downed = false
+
+@rpc("authority", "reliable")
+func cl_revived(id: String) -> void:
+	ghost_ids.erase(id)
+	alive_ids[id] = true
+	hearts[id] = MATCH_HP
+	hearts_changed.emit()
+	match_score_changed.emit()
 
 @rpc("authority", "reliable")
 func cl_downed_state(id: String, is_down: bool) -> void:
@@ -4352,3 +4399,230 @@ func _burst_particles(pos: Vector3i, color: Color) -> void:
 	get_tree().create_timer(1.2).timeout.connect(func() -> void:
 		if is_instance_valid(particles):
 			particles.queue_free())
+
+# ------------------------------------------------------------------
+# Capture the flag
+# ------------------------------------------------------------------
+##
+## A third mode beside Just Building and Battle Royale, and the first one
+## that scores on something other than knockouts.
+##
+## Every team gets a BASE — for now a hollow dirt box, dug into the hill it
+## stands on so there is never a gap underneath — with the team's FLAG on a
+## short wool pole in the middle of it. The team starts inside. Touching an
+## enemy flag scores: +1 you, -1 them, and their flag comes back a few
+## seconds later. First team to `ctf_target` wins. There is no clock and no
+## storm; a round ends on the scoreboard or not at all.
+##
+## Knockouts do NOT score here, which is the point of the mode: shooting
+## someone only buys you the seconds it takes them to get back.
+
+## Wool matched as closely as the palette allows to TEAM_COLORS. Wrapped,
+## so a table with more teams than wools still builds.
+## Not a `const`: a constant initialiser may only use constant values, and
+## another class's enum entries do not count — which fails the whole script
+## to parse, and Godot reports that as an error in every file that preloads
+## this one rather than in this one.
+var TEAM_WOOL: Array = [Blocks.WOOL_RED, Blocks.WOOL_BLUE, Blocks.WOOL_GREEN,
+	Blocks.WOOL_YELLOW, Blocks.WOOL_PURPLE, Blocks.WOOL_ORANGE,
+	Blocks.WOOL_WHITE, Blocks.WOOL_BLACK]
+
+## Half the base's footprint, its wall height, and how close you have to be
+## to a flag to take it. The box is deliberately small enough to defend and
+## big enough for four people to stand in and build.
+const CTF_BASE_HALF := 6
+const CTF_BASE_HEIGHT := 6
+const CTF_FLAG_TOUCH := 2.8
+## How long a captured flag stays gone before it reappears at home.
+const CTF_FLAG_RETURN_MS := 6000
+
+var ctf_target := 3
+## Revive ON is the gentle default: knockouts work exactly as they do in
+## Battle Royale. Turn it off and a knockout makes you a GHOST who has to
+## fly home and touch their own flag to rejoin — which is the version that
+## makes attacking a distant base a real commitment.
+var ctf_revive := true
+## Cross-mode: does a knockout scatter your weapons where you fell?
+var drop_on_knockout := false
+var ctf_scores: Dictionary = {}   # team index -> int
+
+## team -> {"home": Vector3, "pos": Vector3 (INF while taken), "back_at": msec}
+var _flags: Dictionary = {}
+
+func _ctf_active() -> bool:
+	return game_mode == "ctf"
+
+## Put a block down as part of building a base, remembering it for one
+## bulk broadcast. Skips anything already correct so the payload is walls
+## and plinth rather than a thousand air blocks.
+func _ctf_put(pos: Vector3i, block: int, pairs: Array) -> void:
+	if pos.y <= 0 or pos.y >= WorldGen.CHUNK_H:
+		return
+	if store.get_block(pos) == block:
+		return
+	store.set_block(pos, block)
+	pairs.append([pos, block])
+
+## Build one team's base and return where its flag stands.
+func _ctf_build_base(team_i: int, centre: Vector3, pairs: Array) -> Vector3:
+	var cx := int(round(centre.x))
+	var cz := int(round(centre.z))
+	# The floor is one above the ground at the CENTRE, and every other
+	# column is packed up to meet it. That is what stops a base built on a
+	# slope from standing on stilts with a gap you can walk under.
+	var floor_y := store.surface_y(cx, cz) + 1
+	var wool: int = TEAM_WOOL[team_i % TEAM_WOOL.size()]
+	for dz in range(-CTF_BASE_HALF, CTF_BASE_HALF + 1):
+		for dx in range(-CTF_BASE_HALF, CTF_BASE_HALF + 1):
+			var wx := cx + dx
+			var wz := cz + dz
+			for y in range(mini(store.surface_y(wx, wz), floor_y), floor_y):
+				_ctf_put(Vector3i(wx, y, wz), Blocks.DIRT, pairs)
+			var edge: bool = absi(dx) == CTF_BASE_HALF or absi(dz) == CTF_BASE_HALF
+			for y in range(floor_y, floor_y + CTF_BASE_HEIGHT):
+				var here := Vector3i(wx, y, wz)
+				# One doorway, three wide, in the +Z wall. A sealed box is
+				# a fort nobody can attack; a hole is a game.
+				var doorway: bool = dz == CTF_BASE_HALF and absi(dx) <= 1 \
+					and y < floor_y + 3
+				_ctf_put(here, Blocks.AIR if (not edge or doorway) else Blocks.DIRT,
+					pairs)
+			_ctf_put(Vector3i(wx, floor_y + CTF_BASE_HEIGHT, wz), Blocks.DIRT, pairs)
+	# The flag itself: a pole of the team's wool with a glowstone on top so
+	# it reads from outside the walls and after dark.
+	for y in range(floor_y, floor_y + 3):
+		_ctf_put(Vector3i(cx, y, cz), wool, pairs)
+	_ctf_put(Vector3i(cx, floor_y + 3, cz), Blocks.GLOWSTONE, pairs)
+	return Vector3(cx, floor_y, cz)
+
+## Raise every team's base and plant its flag. Called once as a round starts.
+func _ctf_build_all_bases() -> void:
+	_flags.clear()
+	for team_i in team_count:
+		if not _team_site.has(team_i):
+			_team_site[team_i] = _find_team_site(_team_site.size())
+		var pairs: Array = []
+		var flag_at := _ctf_build_base(team_i, _team_site[team_i], pairs)
+		_flags[team_i] = {"home": flag_at, "pos": flag_at, "back_at": 0}
+		if not pairs.is_empty():
+			cl_edits.rpc(pairs)
+	_broadcast_flags()
+	print("CTF: %d bases raised" % _flags.size())
+
+func _broadcast_flags() -> void:
+	var payload: Array = []
+	for team_i: int in _flags.keys():
+		var flag: Dictionary = _flags[team_i]
+		var taken: bool = int(flag.back_at) > 0
+		payload.append([team_i, flag.home, not taken])
+	cl_flags.rpc(payload, ctf_scores, ctf_target)
+
+## The top of a flag pole is removed while the flag is away, so a base you
+## have just been robbed of looks robbed.
+func _ctf_show_flag(team_i: int, present: bool) -> void:
+	var flag: Dictionary = _flags.get(team_i, {})
+	if flag.is_empty():
+		return
+	var home: Vector3 = flag.home
+	var cap := Vector3i(int(home.x), int(home.y) + 3, int(home.z))
+	var pairs: Array = []
+	_ctf_put(cap, Blocks.GLOWSTONE if present else Blocks.AIR, pairs)
+	if not pairs.is_empty():
+		cl_edits.rpc(pairs)
+
+func _ctf_tick(_delta: float) -> void:
+	if _flags.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	for team_i: int in _flags.keys():
+		var flag: Dictionary = _flags[team_i]
+		if int(flag.back_at) > 0 and now >= int(flag.back_at):
+			flag.back_at = 0
+			flag.pos = flag.home
+			_ctf_show_flag(team_i, true)
+			_broadcast_flags()
+	for id: String in _player_state.keys():
+		var team := int(Game.roster.get(id, {}).get("team", -1))
+		if team < 0:
+			continue
+		var pos: Vector3 = _player_state[id].get("pos", Vector3.INF)
+		if pos == Vector3.INF:
+			continue
+		# A GHOST touching its OWN flag comes back. That is the whole
+		# respawn rule when reviving is off: fly home, tag up, rejoin.
+		if ghost_ids.has(id):
+			var mine: Dictionary = _flags.get(team, {})
+			# Typed local, never `mine.home as Vector3`: `as` is for object
+			# types, and the analyzer rejects the whole file over it — with
+			# no line number, because every script that preloads this one
+			# reports the failure instead.
+			var mine_at: Vector3 = mine.get("home", Vector3.INF)
+			if not mine.is_empty() and int(mine.back_at) == 0 \
+					and pos.distance_to(mine_at) < CTF_FLAG_TOUCH + 1.0:
+				_ctf_respawn(id)
+			continue
+		if _downed_ids.has(id):
+			continue
+		for other_team: int in _flags.keys():
+			if other_team == team:
+				continue
+			var flag2: Dictionary = _flags[other_team]
+			if int(flag2.back_at) > 0:
+				continue
+			var flag_at2: Vector3 = flag2.pos
+			if pos.distance_to(flag_at2) < CTF_FLAG_TOUCH:
+				_ctf_capture(id, team, other_team)
+				break
+
+func _ctf_capture(id: String, team: int, from_team: int) -> void:
+	ctf_scores[team] = int(ctf_scores.get(team, 0)) + 1
+	ctf_scores[from_team] = int(ctf_scores.get(from_team, 0)) - 1
+	var flag: Dictionary = _flags[from_team]
+	flag.pos = Vector3.INF
+	flag.back_at = Time.get_ticks_msec() + CTF_FLAG_RETURN_MS
+	_ctf_show_flag(from_team, false)
+	_broadcast_flags()
+	cl_flag_taken.rpc(id, team, from_team)
+	print("CTF: %s took team %d's flag (scores %s)" % [id, from_team, ctf_scores])
+	if int(ctf_scores.get(team, 0)) >= ctf_target:
+		_server_match_end(team)
+
+## Back in the game, standing at your own flag.
+func _ctf_respawn(id: String) -> void:
+	ghost_ids.erase(id)
+	_match_alive[id] = true
+	_downed_ids.erase(id)
+	var state: Dictionary = _player_state.get(id, {})
+	if not state.is_empty():
+		state.hp = MATCH_HP
+	cl_hearts.rpc(id, MATCH_HP)
+	cl_revived.rpc(id)
+
+## Scatter what someone was carrying where they fell, as crates anyone can
+## pick up — including them, if a team-mate stands them back up on the spot.
+## Off by default: a child who found a blaster should keep it.
+func _drop_weapons(id: String, at: Vector3) -> void:
+	if not drop_on_knockout:
+		return
+	var carried: Array = _bots[id].get("carried", []) if _bots.has(id) else []
+	if _bots.has(id) and int(_bots[id].get("weapon", 13)) != 13:
+		carried = [int(_bots[id].weapon)]
+		_bots[id].weapon = 13
+	for weapon: int in carried:
+		var spot := store.safe_stand(at + Vector3(randf_range(-2.0, 2.0), 0.0,
+			randf_range(-2.0, 2.0)))
+		_crates[_next_crate_id] = {"weapon": weapon, "pos": spot}
+		_next_crate_id += 1
+	if not carried.is_empty():
+		_broadcast_crates()
+
+@rpc("authority", "reliable")
+func cl_flags(payload: Array, scores: Dictionary, target: int) -> void:
+	flags = payload
+	ctf_scores = scores
+	ctf_target = target
+	flags_changed.emit()
+
+@rpc("authority", "reliable")
+func cl_flag_taken(id: String, team: int, from_team: int) -> void:
+	flag_taken.emit(id, team, from_team)
