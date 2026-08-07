@@ -57,6 +57,12 @@ var _length_btns: Dictionary = {}
 var _size_btns: Dictionary = {}
 var _fly_btns: Dictionary = {}
 var _battle_only: Array = []
+## Shown in any mode with knockouts (battle royale AND capture the flag).
+var _fight_only: Array = []
+var _ctf_only: Array = []
+var _drop_btns: Dictionary = {}
+var _target_btns: Dictionary = {}
+var _revive_btns: Dictionary = {}
 var _creative_only: Array = []
 var _add_bot_btn: Button
 var _update_state := "idle"
@@ -514,12 +520,13 @@ func _build_game_tab() -> void:
 	var mode_card := _section(box, "How are we playing?",
 		"Just building is the calm one: no storm, no hearts, nothing can hurt you.")
 	var mode_row := _row(mode_card)
-	for spec in [["creative", "🔨  Just building"], ["battle", "🏆  Battle royale"]]:
+	for spec in [["creative", "🔨  Just building"], ["battle", "🏆  Battle royale"],
+			["ctf", "⚑  Capture the flag"]]:
 		var key := str(spec[0])
 		var btn := _choice(mode_row, str(spec[1]), func() -> void:
 			if Game.world != null:
 				Game.world.sv_set_mode.rpc_id(1, key), UiTheme.T_TITLE - 8)
-		_min(btn, 240, 68)
+		_min(btn, 190, 68)
 		_mode_btns[key] = btn
 
 	# Creative has no settings of its own, which left this tab as one row
@@ -541,6 +548,51 @@ func _build_game_tab() -> void:
 		bullet.add_theme_color_override("font_color", UiTheme.INK_DIM)
 		bullet.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		calm.add_child(_font(bullet, UiTheme.T_LABEL))
+
+	# Knockouts work the same way in every mode that HAS them, so this one
+	# sits above the per-mode settings and is shown for both.
+	var ko_group := VBoxContainer.new()
+	ko_group.add_theme_constant_override("separation", _s(8))
+	box.add_child(ko_group)
+	_fight_only.append(ko_group)
+	var ko_card := _section(ko_group, "When you are knocked out",
+		"Dropping is off by default: someone who found a blaster keeps it.")
+	var ko_row := _row(ko_card)
+	for spec2 in [[0, "Keep your weapons"], [1, "Drop them where you fell"]]:
+		var drop_val: int = spec2[0]
+		var btn2 := _choice(ko_row, str(spec2[1]), func() -> void:
+			if Game.world != null:
+				Game.world.sv_ctf_config.rpc_id(1, -1, -1, drop_val))
+		_min(btn2, 180, 46)
+		_drop_btns[drop_val] = btn2
+
+	# Capture-the-flag-only settings.
+	var ctf_group := VBoxContainer.new()
+	ctf_group.add_theme_constant_override("separation", _s(8))
+	box.add_child(ctf_group)
+	_ctf_only.append(ctf_group)
+	var ctf_card := _section(ctf_group, "Capturing",
+		"Touch another team's flag to score. There is no clock — the round "
+		+ "ends when someone reaches the target.")
+	var target_row := _row(ctf_card)
+	for t in [1, 3, 5, 10]:
+		var target_val: int = t
+		var btn3 := _choice(target_row, "First to %d" % t, func() -> void:
+			if Game.world != null:
+				Game.world.sv_ctf_config.rpc_id(1, -1, target_val, -1))
+		_min(btn3, 130, 46)
+		_target_btns[target_val] = btn3
+	var rev_card := _section(ctf_group, "Getting back up",
+		"With picking each other up turned off, a knockout makes you a "
+		+ "ghost and the only way back is to fly home and touch your own flag.")
+	var rev_row := _row(rev_card)
+	for spec3 in [[1, "Team-mates can pick you up"], [0, "Fly home to your flag"]]:
+		var rev_val: int = spec3[0]
+		var btn4 := _choice(rev_row, str(spec3[1]), func() -> void:
+			if Game.world != null:
+				Game.world.sv_ctf_config.rpc_id(1, rev_val, -1, -1))
+		_min(btn4, 220, 46)
+		_revive_btns[rev_val] = btn4
 
 	# Battle-only settings are hidden outright in creative rather than
 	# greyed out — one less thing for a child to poke at.
@@ -1091,12 +1143,25 @@ func _refresh(force := false) -> void:
 	for val: int in _fly_btns:
 		_mark(_fly_btns[val], (val == 1) == world.client_fly)
 	var battling: bool = world.client_mode == "battle"
+	var ctf: bool = world.client_mode == "ctf"
 	for node in _battle_only:
 		if is_instance_valid(node):
 			(node as Control).visible = battling
+	for node in _ctf_only:
+		if is_instance_valid(node):
+			(node as Control).visible = ctf
+	for node in _fight_only:
+		if is_instance_valid(node):
+			(node as Control).visible = battling or ctf
 	for node in _creative_only:
 		if is_instance_valid(node):
-			(node as Control).visible = not battling
+			(node as Control).visible = not (battling or ctf)
+	for val: int in _drop_btns:
+		_mark(_drop_btns[val], (val == 1) == world.client_drop)
+	for val: int in _revive_btns:
+		_mark(_revive_btns[val], (val == 1) == world.client_ctf_revive)
+	for val: int in _target_btns:
+		_mark(_target_btns[val], val == world.client_ctf_target)
 
 var _auto_ms := 0
 var _tick := 0.0

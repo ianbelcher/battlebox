@@ -35,6 +35,10 @@ var client_minutes := 5
 var client_size := 250
 var client_loot := false
 var client_fly := false
+## Client mirrors of the mode settings the menu draws. See cl_battle_config.
+var client_drop := false
+var client_ctf_revive := true
+var client_ctf_target := 3
 var client_team_names: Array = TEAM_NAMES.slice(0, 4)
 var client_world := ""
 var client_mode := "creative"
@@ -360,7 +364,7 @@ func sv_hello() -> void:
 	cl_map_list.rpc_id(peer, ChunkStore.list_maps())
 	cl_overview.rpc_id(peer, overview)
 	cl_battle_config.rpc_id(peer, int(storm_minutes), int(battle_size), loot_only,
-		battle_fly, team_count)
+		battle_fly, team_count, drop_on_knockout, ctf_revive, ctf_target)
 	cl_teams.rpc_id(peer, team_names)
 	cl_mode.rpc_id(peer, game_mode)
 	cl_world_sel.rpc_id(peer, selected_map if not selected_map.is_empty() \
@@ -1591,7 +1595,7 @@ func sv_remove_bot(target_id: String = "") -> void:
 func sv_set_mode(mode: String) -> void:
 	if not multiplayer.is_server() or not _is_host(multiplayer.get_remote_sender_id()):
 		return
-	if mode != "battle" and mode != "creative":
+	if mode != "battle" and mode != "creative" and mode != "ctf":
 		return
 	game_mode = mode
 	match_loop = mode == "battle" or mode == "ctf"
@@ -1600,7 +1604,7 @@ func sv_set_mode(mode: String) -> void:
 		_match_alive.clear()
 		_downed_ids.clear()
 		cl_match.rpc("IDLE", 0.0)
-	elif mode == "battle" and match_phase == "IDLE":
+	elif mode != "creative" and match_phase == "IDLE":
 		_begin_battle_lobby()
 	cl_mode.rpc(game_mode)
 	_save_battle_setup()
@@ -2209,6 +2213,24 @@ func sv_set_bot_team(target_id: String, team: int) -> void:
 		Game.cl_roster.rpc(Game.roster)
 
 @rpc("any_peer", "reliable")
+func sv_ctf_config(revive: int, target: int, drop: int) -> void:
+	## Settings that belong to a MODE rather than to the arena. `drop` is
+	## deliberately cross-mode — losing your weapons on a knockout is a
+	## fair question in battle royale too — while revive and the target
+	## score only mean anything in capture the flag.
+	if not multiplayer.is_server() \
+			or not _is_host(multiplayer.get_remote_sender_id()):
+		return
+	if revive >= 0:
+		ctf_revive = revive == 1
+	if target > 0:
+		ctf_target = clampi(target, 1, 25)
+	if drop >= 0:
+		drop_on_knockout = drop == 1
+	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only,
+		battle_fly, team_count, drop_on_knockout, ctf_revive, ctf_target)
+
+@rpc("any_peer", "reliable")
 func sv_match_config(minutes: int, loot: int, size: int = -1, fly: int = -1) -> void:
 	# No phase guard: the grown-up gets to re-size the arena, allow flying
 	# or change the round length WHILE a battle is running.
@@ -2229,7 +2251,7 @@ func sv_match_config(minutes: int, loot: int, size: int = -1, fly: int = -1) -> 
 	if fly >= 0:
 		battle_fly = fly == 1
 	cl_battle_config.rpc(int(storm_minutes), int(battle_size), loot_only,
-		battle_fly, team_count)
+		battle_fly, team_count, drop_on_knockout, ctf_revive, ctf_target)
 	_save_battle_setup()
 	if resize_to > 0:
 		_do_world_reset(selected_map, resize_to)
@@ -2260,7 +2282,7 @@ func _begin_battle_lobby() -> void:
 	# battle actually starts, which is the only placement that matters.
 	match_phase = "LOBBY"
 	_match_timer = LOBBY_SECONDS
-	print("Battle royale lobby open")
+	print("%s lobby open" % ("Capture the flag" if _ctf_active() else "Battle royale"))
 	cl_match.rpc("LOBBY", LOBBY_SECONDS)
 
 func _assign_stray_humans() -> void:
@@ -2545,8 +2567,9 @@ func _server_match_drop() -> void:
 	for team_of: int in _team_site.keys():
 		sites.append("%d@%v" % [team_of, _team_site[team_of]])
 	sites.sort()
-	print("Battle royale: dropping %d players | team sites: %s"
-		% [_match_alive.size(), ", ".join(sites)])
+	print("%s: dropping %d players | team sites: %s"
+		% ["Capture the flag" if _ctf_active() else "Battle royale",
+			_match_alive.size(), ", ".join(sites)])
 
 func _storm_damage() -> void:
 	var now := Time.get_ticks_msec()
@@ -3884,11 +3907,14 @@ func cl_overview(bytes: PackedByteArray) -> void:
 
 @rpc("authority", "reliable")
 func cl_battle_config(minutes: int, size: int, loot: bool, fly := false,
-		teams := -1) -> void:
+		teams := -1, drop := false, revive := true, target := 3) -> void:
 	client_minutes = minutes
 	client_size = size
 	client_loot = loot
 	client_fly = fly
+	client_drop = drop
+	client_ctf_revive = revive
+	client_ctf_target = target
 	# team_count used to live only on the server, so "Remove a team" left
 	# the client drawing a column that no longer existed.
 	if teams > 0:
@@ -4417,16 +4443,6 @@ func _burst_particles(pos: Vector3i, color: Color) -> void:
 ## Knockouts do NOT score here, which is the point of the mode: shooting
 ## someone only buys you the seconds it takes them to get back.
 
-## Wool matched as closely as the palette allows to TEAM_COLORS. Wrapped,
-## so a table with more teams than wools still builds.
-## Not a `const`: a constant initialiser may only use constant values, and
-## another class's enum entries do not count — which fails the whole script
-## to parse, and Godot reports that as an error in every file that preloads
-## this one rather than in this one.
-var TEAM_WOOL: Array = [Blocks.WOOL_RED, Blocks.WOOL_BLUE, Blocks.WOOL_GREEN,
-	Blocks.WOOL_YELLOW, Blocks.WOOL_PURPLE, Blocks.WOOL_ORANGE,
-	Blocks.WOOL_WHITE, Blocks.WOOL_BLACK]
-
 ## Half the base's footprint, its wall height, and how close you have to be
 ## to a flag to take it. The box is deliberately small enough to defend and
 ## big enough for four people to stand in and build.
@@ -4582,6 +4598,19 @@ func _ctf_capture(id: String, team: int, from_team: int) -> void:
 	flag.back_at = Time.get_ticks_msec() + CTF_FLAG_RETURN_MS
 	_ctf_show_flag(from_team, false)
 	_broadcast_flags()
+	# Home you go. Without this, touch-to-score lets one player stand on an
+	# enemy flag and take it again every time it respawns — the headless
+	# run had somebody win 3-0 off a single flag without moving. Sending
+	# the capturer back is also what "capturing" ought to mean: you took it
+	# somewhere, and now you have to make the trip again.
+	var seats: PackedStringArray = _team_seats.get(team, PackedStringArray())
+	var home_spot := _team_start_spot(team, maxi(seats.find(id), 0))
+	var state2: Dictionary = _player_state.get(id, {})
+	if not state2.is_empty():
+		state2.pos = home_spot
+	if _bots.has(id):
+		_bots[id].pos = home_spot
+	cl_stand.rpc(id, home_spot, false)
 	cl_flag_taken.rpc(id, team, from_team)
 	print("CTF: %s took team %d's flag (scores %s)" % [id, from_team, ctf_scores])
 	if int(ctf_scores.get(team, 0)) >= ctf_target:

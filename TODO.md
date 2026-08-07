@@ -401,6 +401,17 @@ anywhere else, that is the bug.
   request lands as an ordinary GET, the WebSocket server rejects it and you
   get a **502 that looks exactly like a broken proxy and is not**. Both
   deploy checks do this correctly; a hand-run one is where it bites.
+- **A script that will not parse is reported in the WRONG FILE.** Godot
+  names every file that PRELOADS the broken one — `game.gd:181`, then a
+  cascade through `main.gd` — and never a line inside the file itself. Do
+  not go hunting by eye; parse the one file on its own:
+
+      godot --headless --path <game> --check-only --script res://src/world.gd
+
+  which skips the autoload cascade and prints the real line. (It will also
+  say "Identifier not found: Game" — that is the probe, not your bug:
+  `--check-only` runs without autoloads.) An hour went into a duplicate
+  `TEAM_WOOL` that this would have found in ten seconds.
 - **A green build does not mean the game runs — that had to be built in.**
   `--export-release` exits 0 with a GDScript parse error in the project: it
   packs the broken script, and the result serves the right `version.txt`,
@@ -423,7 +434,9 @@ anywhere else, that is the bug.
   wall. `WORLD_AUTOTEST_MATCH=<secs>` (any number above 1) starts a fresh
   battle on that interval, which is the only way to check anything that
   has to be the SAME from one round to the next — one battle can never
-  show it. `WORLD_CLOCK=<0..1>` pins the time of day (0 midnight, 0.25
+  show it. `WORLD_AUTOTEST_MODE=creative|battle|ctf` picks the game
+  mode, without which a new mode cannot be exercised headlessly at all.
+  `WORLD_CLOCK=<0..1>` pins the time of day (0 midnight, 0.25
   dawn, 0.5 noon, 0.75 dusk) so night lighting can be looked at on purpose
   rather than waited for.
   Every battle start logs its team sites; those coordinates must be

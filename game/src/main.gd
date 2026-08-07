@@ -583,6 +583,15 @@ func _maybe_start_autotest() -> void:
 	# interval in seconds, which is how anything that must be the same from
 	# one round to the next gets checked — where each team starts, most of
 	# all. One battle can never show that; it takes two and a comparison.
+	# WORLD_AUTOTEST_MODE=creative|battle|ctf: pick the game mode before the
+	# first round starts. Without it a headless run can only ever exercise
+	# whatever mode the server happens to be in, which is no way to test a
+	# new one.
+	var mode_hook := OS.get_environment("WORLD_AUTOTEST_MODE")
+	if not mode_hook.is_empty():
+		get_tree().create_timer(4.5).timeout.connect(func() -> void:
+			if Game.world != null:
+				Game.world.sv_set_mode.rpc_id(1, mode_hook))
 	var match_hook := OS.get_environment("WORLD_AUTOTEST_MATCH")
 	if match_hook.is_valid_int() and match_hook.to_int() >= 1:
 		var start_battle := func() -> void:
