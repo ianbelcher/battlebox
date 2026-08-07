@@ -78,7 +78,12 @@ func _ready() -> void:
 	moon.shadow_enabled = true
 	moon.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	moon.directional_shadow_max_distance = 90.0
-	moon.light_color = Color(0.62, 0.72, 0.95)
+	# Near-white, not blue. The sky shader draws the moon's DISC from this
+	# colour times the light's energy, and at the low energy the moon
+	# needs (see MOON_ENERGY) a blue-grey disc came out barely above the
+	# night sky behind it. White reads as a moon; the light it casts is
+	# still cool because everything else at night is.
+	moon.light_color = Color(0.88, 0.92, 1.0)
 	moon.light_energy = 0.0
 	# Starts light-only; _apply() turns the disc on once the moon is up and
 	# lit, and off again before daybreak. See the note there.
