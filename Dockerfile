@@ -55,6 +55,20 @@ RUN godot --headless --path /game --quit-after 240 > /tmp/boot.log 2>&1 || true;
     fi; \
     echo "project compiles clean"
 
+# Every symbol the UI draws has a bundled font that can draw it.
+#
+# Tofu is invisible to every other check here and to the browser test: a
+# box with a code point in it is a SUCCESSFUL draw. Nothing errors, nothing
+# logs, the screenshot looks fine unless a person reads it. On a desktop it
+# cannot even be reproduced, because Godot quietly borrows missing glyphs
+# from the operating system — the hearts only read "2665" in a browser,
+# which has nothing to borrow from.
+#
+# tests/ui_glyphs.gd works out what to check by reading src/ rather than
+# from a list, so adding a new emoji to a menu fails the build on the day
+# it is added instead of shipping a box to the kids.
+RUN godot --headless --path /game --script res://tests/ui_glyphs.gd
+
 RUN mkdir -p /game/build/server /game/build/downloads /game/build/play \
     && godot --headless --path /game --export-release "Linux Server" build/server/battlebox-server.x86_64 \
     && godot --headless --path /game --export-release "Linux Client" build/downloads/battlebox-linux.x86_64 \
