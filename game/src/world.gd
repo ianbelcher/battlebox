@@ -2399,7 +2399,7 @@ func _server_tick_match(delta: float) -> void:
 						break
 				if match_loop and humans:
 					_begin_battle_lobby()
-					print("Battle royale loop: fresh lobby open")
+					print("%s loop: fresh lobby open" % ("Capture the flag" if _ctf_active() else "Battle royale"))
 				else:
 					match_phase = "IDLE"
 					cl_match.rpc("IDLE", 0.0)
@@ -2465,8 +2465,13 @@ func _server_match_drop() -> void:
 	# is about to be built over.
 	if _ctf_active():
 		ctf_scores.clear()
+		ctf_caps.clear()
+		ctf_lost.clear()
+		ctf_player_caps.clear()
 		for t in team_count:
 			ctf_scores[t] = 0
+			ctf_caps[t] = 0
+			ctf_lost[t] = 0
 		_ctf_build_all_bases()
 	else:
 		_flags.clear()
@@ -2961,7 +2966,7 @@ func _server_match_end(winner: int) -> void:
 	# next battle places everyone properly at their team's site, so there
 	# is nothing to see in between.
 	_match_timer = 14.0
-	print("Battle royale over: team %d" % winner)
+	print("%s over: team %d" % ["Capture the flag" if _ctf_active() else "Battle royale", winner])
 	_record_result(winner)
 	cl_match_end.rpc(winner)
 
@@ -4465,7 +4470,14 @@ var ctf_target := 3
 var ctf_revive := true
 ## Cross-mode: does a knockout scatter your weapons where you fell?
 var drop_on_knockout := false
-var ctf_scores: Dictionary = {}   # team index -> int
+var ctf_scores: Dictionary = {}   # team index -> net score (caps - losses)
+## Captures MADE by each team, and flags LOST by each team. Kept apart from
+## the net score because the table shows all three, and "3 for, 1 against"
+## is a different story from "2".
+var ctf_caps: Dictionary = {}     # team index -> int
+var ctf_lost: Dictionary = {}     # team index -> int
+## Who actually ran the flags in. player id -> count.
+var ctf_player_caps: Dictionary = {}
 
 ## How long a knocked-out computer player waits before walking back on at
 ## its own flag.
@@ -4541,7 +4553,8 @@ func _broadcast_flags() -> void:
 		var flag: Dictionary = _flags[team_i]
 		var taken: bool = int(flag.back_at) > 0
 		payload.append([team_i, flag.home, not taken])
-	cl_flags.rpc(payload, ctf_scores, ctf_target)
+	cl_flags.rpc(payload, ctf_scores, ctf_target, ctf_caps, ctf_lost,
+		ctf_player_caps)
 
 ## The top of a flag pole is removed while the flag is away, so a base you
 ## have just been robbed of looks robbed.
@@ -4649,6 +4662,9 @@ func _ctf_home_spot(team_i: int, seat: int) -> Vector3:
 func _ctf_capture(id: String, team: int, from_team: int) -> void:
 	ctf_scores[team] = int(ctf_scores.get(team, 0)) + 1
 	ctf_scores[from_team] = int(ctf_scores.get(from_team, 0)) - 1
+	ctf_caps[team] = int(ctf_caps.get(team, 0)) + 1
+	ctf_lost[from_team] = int(ctf_lost.get(from_team, 0)) + 1
+	ctf_player_caps[id] = int(ctf_player_caps.get(id, 0)) + 1
 	var flag: Dictionary = _flags[from_team]
 	flag.pos = Vector3.INF
 	flag.back_at = Time.get_ticks_msec() + CTF_FLAG_RETURN_MS
@@ -4724,10 +4740,15 @@ func _drop_weapons(id: String, at: Vector3) -> void:
 		_broadcast_crates()
 
 @rpc("authority", "reliable")
-func cl_flags(payload: Array, scores: Dictionary, target: int) -> void:
+func cl_flags(payload: Array, scores: Dictionary, target: int,
+		caps: Dictionary = {}, lost: Dictionary = {},
+		player_caps: Dictionary = {}) -> void:
 	flags = payload
 	ctf_scores = scores
 	ctf_target = target
+	ctf_caps = caps
+	ctf_lost = lost
+	ctf_player_caps = player_caps
 	flags_changed.emit()
 
 @rpc("authority", "reliable")

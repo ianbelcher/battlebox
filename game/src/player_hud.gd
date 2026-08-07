@@ -1224,7 +1224,8 @@ func _reset_map_view() -> void:
 func _page_visible(page: int) -> bool:
 	match page:
 		PAGE_SCORES:
-			return world != null and world.client_mode == "battle"
+			return world != null and (world.client_mode == "battle"
+				or world.client_mode == "ctf")
 		_:
 			return true
 
@@ -1263,6 +1264,78 @@ func _add_section(tab: Control, title: String) -> void:
 var _scores_box: VBoxContainer
 var _scores_sig := ""
 
+## Capture the flag's table: taken, lost, score — ordered by who is
+## winning — and underneath, who actually ran the flags in.
+func _refresh_ctf_scores() -> void:
+	var sig := "ctf|%s|%s|%s" % [str(world.ctf_caps), str(world.ctf_lost),
+		str(world.ctf_player_caps)]
+	if sig == _scores_sig:
+		return
+	_scores_sig = sig
+	for child in _scores_box.get_children():
+		child.queue_free()
+
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", _ms(10))
+	_scores_box.add_child(head)
+	for col in [["TEAM", 150], ["TAKEN", 80], ["LOST", 80], ["SCORE", 80]]:
+		var h := Label.new()
+		h.text = str(col[0])
+		h.custom_minimum_size = Vector2(_ms(int(col[1])), 0)
+		h.add_theme_font_size_override("font_size",
+			UiTheme.px(UiTheme.T_NOTE, _menu_scale))
+		h.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+		head.add_child(h)
+
+	var teams: Array = []
+	for t in int(world.team_count):
+		teams.append(t)
+	teams.sort_custom(func(a: int, b: int) -> bool:
+		return int(world.ctf_scores.get(a, 0)) > int(world.ctf_scores.get(b, 0)))
+	for t: int in teams:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", _ms(10))
+		_scores_box.add_child(row)
+		var tint: Color = WorldNode.TEAM_COLORS[t] \
+			if t < WorldNode.TEAM_COLORS.size() else Color.WHITE
+		for cell in [[str(world.client_team_names[t]) \
+					if t < world.client_team_names.size() else "Team %d" % (t + 1), 150],
+				[str(int(world.ctf_caps.get(t, 0))), 80],
+				[str(int(world.ctf_lost.get(t, 0))), 80],
+				[str(int(world.ctf_scores.get(t, 0))), 80]]:
+			var lbl := Label.new()
+			lbl.text = str(cell[0])
+			lbl.custom_minimum_size = Vector2(_ms(int(cell[1])), 0)
+			lbl.add_theme_font_size_override("font_size",
+				UiTheme.px(UiTheme.T_BODY, _menu_scale))
+			lbl.add_theme_color_override("font_color", tint)
+			row.add_child(lbl)
+
+	var target := Label.new()
+	target.text = "First to %d wins." % int(world.ctf_target)
+	target.add_theme_font_size_override("font_size",
+		UiTheme.px(UiTheme.T_NOTE, _menu_scale))
+	target.add_theme_color_override("font_color", UiTheme.INK_FAINT)
+	_scores_box.add_child(target)
+
+	# Who did it. A capture is a whole-team point, but the run itself is
+	# somebody's, and a nine-year-old wants to see their own name here.
+	var runners: Array = []
+	for pid: String in world.ctf_player_caps.keys():
+		runners.append(pid)
+	runners.sort_custom(func(a: String, b: String) -> bool:
+		return int(world.ctf_player_caps.get(a, 0)) \
+			> int(world.ctf_player_caps.get(b, 0)))
+	if not runners.is_empty():
+		_scores_box.add_child(_scores_head("FLAGS TAKEN BY"))
+		for pid: String in runners:
+			var who := str(Game.roster.get(pid, {}).get("name", "?"))
+			var line := Label.new()
+			line.text = "%s — %d" % [who, int(world.ctf_player_caps.get(pid, 0))]
+			line.add_theme_font_size_override("font_size",
+				UiTheme.px(UiTheme.T_BODY, _menu_scale))
+			_scores_box.add_child(line)
+
 func _build_scores_tab() -> void:
 	var page := MarginContainer.new()
 	page.name = "Scores"
@@ -1279,6 +1352,13 @@ func _build_scores_tab() -> void:
 
 func _refresh_scores_tab() -> void:
 	if _scores_box == null or world == null:
+		return
+	# Capture the flag keeps a completely different score — flags in and
+	# flags out, not games won and knockouts — so it gets its own table
+	# rather than the battle one relabelled. The next mode will want its
+	# own again; this is where that goes.
+	if str(world.client_mode) == "ctf":
+		_refresh_ctf_scores()
 		return
 	var sig := "%d|%s|%s" % [int(world.matches_played), str(world.team_wins),
 		str(world.player_frags)]
@@ -1470,7 +1550,63 @@ func _draw_big_map() -> void:
 			var tint: Color = WorldNode.TEAM_COLORS[team] if team >= 0 \
 				else Color.WHITE
 			_map_blip(image, child.position, tint, size_px, child.is_local)
+	# Flags last, over the terrain and the player blips: in capture the
+	# flag they are the only thing on this map anybody actually needs.
+	for entry: Array in world.flags:
+		var team: int = int(entry[0])
+		var home: Vector3 = entry[1]
+		var present: bool = bool(entry[2])
+		var tint: Color = WorldNode.TEAM_COLORS[team] if team >= 0 \
+			and team < WorldNode.TEAM_COLORS.size() else Color.WHITE
+		_map_flag(image, home, tint, size_px, present)
 	_map_tex.texture = ImageTexture.create_from_image(image)
+
+## A flag on the big map — as a little flag where it stands, or as a
+## chevron pinned to the edge pointing at it when it is off the view.
+##
+## The chevron is the whole point: zoomed in on your own base you have no
+## idea which way the others are, and "somewhere over there" is the single
+## most useful thing a map can tell you in this mode.
+func _map_flag(image: Image, at: Vector3, tint: Color, size_px: int,
+		present: bool) -> void:
+	var px := size_px / 2 + int((at.x - _map_centre.x) / _map_zoom)
+	var py := size_px / 2 + int((at.z - _map_centre.y) / _map_zoom)
+	var edge := 10
+	if px >= edge and px < size_px - edge and py >= edge and py < size_px - edge:
+		# On the map: a pole with a pennant. Hollowed when the flag has
+		# been taken, so a base that has just been robbed reads as robbed.
+		for dy in range(-7, 4):
+			_map_dot(image, px, py + dy, size_px, Color(0.05, 0.05, 0.07))
+		for dy in range(-7, -1):
+			var run := 6 - absi(dy + 4) * 2
+			for dx in range(1, maxi(run, 1)):
+				var solid: bool = present or dx == 1 or absi(dy + 4) >= 2
+				_map_dot(image, px + dx, py + dy, size_px,
+					tint if solid else Color(0.12, 0.12, 0.16))
+		return
+	# Off the map: clamp to the rim and point outward.
+	var dir := Vector2(float(px - size_px / 2), float(py - size_px / 2))
+	if dir.length() < 0.001:
+		return
+	dir = dir.normalized()
+	var rim := float(size_px) * 0.5 - 12.0
+	var cx := float(size_px) * 0.5 + dir.x * rim
+	var cy := float(size_px) * 0.5 + dir.y * rim
+	# A solid triangle, same size as the flag, nose along `dir`.
+	var side := Vector2(-dir.y, dir.x)
+	for step in range(0, 9):
+		var t := float(step) / 8.0
+		var wide := int(round((1.0 - t) * 5.0))
+		var bx := cx + dir.x * (float(step) - 4.0)
+		var by := cy + dir.y * (float(step) - 4.0)
+		for w in range(-wide, wide + 1):
+			_map_dot(image, int(round(bx + side.x * float(w))),
+				int(round(by + side.y * float(w))), size_px, tint)
+
+func _map_dot(image: Image, x: int, y: int, size_px: int, c: Color) -> void:
+	if x < 0 or y < 0 or x >= size_px or y >= size_px:
+		return
+	image.set_pixel(x, y, c)
 
 func _map_ground(wx: int, wz: int, half: float) -> Color:
 	if absf(float(wx)) > half or absf(float(wz)) > half:
@@ -1642,6 +1778,16 @@ func _update_radar() -> void:
 			if team == my_team and my_team >= 0:
 				blip_color = blip_color.lightened(0.4)
 			_blip(image, center, yaw, child.position, blip_color, true, span, eye_row)
+	# Flags on the radar too — and THIS is the view that turns with you, so
+	# a flag off the edge shows as a chevron whose direction swings round
+	# as you look about, and points straight up when you are facing it.
+	if world != null:
+		for entry: Array in world.flags:
+			var fteam: int = int(entry[0])
+			var fhome: Vector3 = entry[1]
+			var ftint: Color = WorldNode.TEAM_COLORS[fteam] if fteam >= 0 \
+				and fteam < WorldNode.TEAM_COLORS.size() else Color.WHITE
+			_radar_flag(image, center, yaw, fhome, ftint, span, eye_row)
 	_blip(image, center, yaw, player.position, Color.WHITE, true, span, eye_row)
 	_radar.texture = ImageTexture.create_from_image(image)
 	_update_clock()
@@ -1683,6 +1829,40 @@ func _held_name() -> String:
 		_:
 			return ""
 
+
+## A flag on the personal radar: a dot where it is, or a chevron on the rim
+## pointing the way when it is beyond the edge. Everything here is already
+## rotated by `yaw`, so the chevron turns with the player for free.
+func _radar_flag(image: Image, center: Vector3, yaw: float, at: Vector3,
+		color: Color, span: float, eye_row: float) -> void:
+	var s := Vector2(at.x - center.x, at.z - center.z).rotated(yaw) / span
+	var cx := 64.0
+	var cy := eye_row
+	var px := cx + s.x
+	var py := cy + s.y
+	var rim := 26.0
+	if s.length() < rim:
+		for dy in range(-3, 2):
+			_radar_dot(image, int(px), int(py) + dy, Color(0.05, 0.05, 0.07))
+		for dy in range(-3, -1):
+			for dx in range(1, 4):
+				_radar_dot(image, int(px) + dx, int(py) + dy, color)
+		return
+	var dir := s.normalized()
+	var bx := cx + dir.x * rim
+	var by := cy + dir.y * rim
+	var side := Vector2(-dir.y, dir.x)
+	for step in range(0, 6):
+		var t := float(step) / 5.0
+		var wide := int(round((1.0 - t) * 3.0))
+		for w in range(-wide, wide + 1):
+			_radar_dot(image, int(round(bx + dir.x * (float(step) - 2.0) + side.x * float(w))),
+				int(round(by + dir.y * (float(step) - 2.0) + side.y * float(w))), color)
+
+func _radar_dot(image: Image, x: int, y: int, c: Color) -> void:
+	if x < 0 or y < 0 or x >= image.get_width() or y >= image.get_height():
+		return
+	image.set_pixel(x, y, c)
 
 func _blip(image: Image, center: Vector3, yaw: float, pos: Vector3, color: Color,
 		big := false, span := 2.0, eye_row := 64.0) -> void:
