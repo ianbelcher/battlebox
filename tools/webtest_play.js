@@ -11,11 +11,18 @@ const URL = process.argv[2] || 'https://localhost:8443/play/';
 const SECONDS = parseInt(process.argv[3] || '90', 10);
 
 (async () => {
+  // CHROME_PATH so this can run somewhere other than Ian's laptop — a
+  // Linux box, CI, the live site — without editing the file. The macOS
+  // path stays the default because that is where it is usually run by hand.
   const browser = await puppeteer.launch({
-    executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    executablePath: process.env.CHROME_PATH
+      || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     headless: 'new',
     args: [
-      '--ignore-certificate-errors',           // it is self-signed on purpose
+      // For the LOCAL harness, whose certificate is self-signed on
+      // purpose. Pointed at battlebox.games this is never exercised —
+      // that certificate is a real one.
+      '--ignore-certificate-errors',
       '--enable-unsafe-swiftshader',           // WebGL2 without a real GPU
       '--use-gl=angle', '--use-angle=swiftshader',
       '--no-sandbox', '--window-size=1280,800',
@@ -65,6 +72,14 @@ const SECONDS = parseInt(process.argv[3] || '90', 10);
 
   await page.screenshot({ path: process.argv[4] || 'shot.png' });
 
+  // A GDScript file that failed to compile is fatal and completely silent
+  // from out here: Godot logs it, packs the broken script, boots anyway,
+  // opens its websocket and draws a canvas. Every other check in this file
+  // passed while game.gd had a parse error in it and the game did nothing.
+  // So the console is evidence, not decoration — read it.
+  const scriptErrors = log.filter(l =>
+    /SCRIPT ERROR|Parse Error|Compile Error|Failed to load script/i.test(l));
+
   console.log('--- browser run ---');
   console.log('url            :', URL);
   console.log('crossOriginIso :', state.isolated);
@@ -77,6 +92,11 @@ const SECONDS = parseInt(process.argv[3] || '90', 10);
   // threads are not running at all and everything is limping along on
   // the synchronous fallback.
   console.log('mesh stalls    :', log.filter(l => /Mesh worker stalled/.test(l)).length);
+  console.log('script errors  :', scriptErrors.length);
+  if (scriptErrors.length) {
+    console.log('--- scripts that did not compile ---');
+    console.log([...new Set(scriptErrors)].slice(0, 15).join('\n'));
+  }
   console.log('--- console (last 40) ---');
   console.log(log.slice(-40).join('\n') || '(nothing)');
   if (errors.length) {
@@ -85,7 +105,7 @@ const SECONDS = parseInt(process.argv[3] || '90', 10);
   }
   await browser.close();
 
-  const ok = state.isolated && state.hasSAB && connected;
+  const ok = state.isolated && state.hasSAB && connected && scriptErrors.length === 0;
   console.log(ok ? '\nWEB PLAY: PASS' : '\nWEB PLAY: FAIL');
   process.exit(ok ? 0 : 1);
 })();

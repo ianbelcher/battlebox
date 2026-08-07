@@ -115,7 +115,23 @@ jobs:
             || { echo "::error::COOP header missing on /play/"; exit 1; }
           echo "$hdrs" | grep -qi 'cross-origin-embedder-policy: require-corp' \
             || { echo "::error::COEP header missing on /play/"; exit 1; }
-          echo "battlebox.games is serving $got, cross-origin isolated."
+
+          # The game socket, all the way through Cloudflare and Caddy.
+          #
+          # --http1.1 is REQUIRED and is not a style choice. Over HTTP/2 the
+          # Connection and Upgrade headers are illegal, so curl silently
+          # drops them, the request arrives as an ordinary GET, and the
+          # WebSocket server rejects it — you get a 502 and go hunting for a
+          # proxy bug that does not exist. Ask for the protocol a browser
+          # actually opens a websocket on.
+          code="$(curl -s --http1.1 --max-time 8 -o /dev/null -w '%{http_code}' \
+            -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+            -H 'Sec-WebSocket-Version: 13' \
+            -H 'Sec-WebSocket-Key: ZGVwbG95Y2hlY2sxMjM0NQ==' \
+            https://battlebox.games/ws || true)"
+          [ "$code" = "101" ] \
+            || { echo "::error::wss://battlebox.games/ws answered $code, not 101"; exit 1; }
+          echo "battlebox.games is serving $got, cross-origin isolated, socket up."
 
       - name: Clean up the key
         if: always()

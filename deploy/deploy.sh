@@ -76,6 +76,11 @@ fi
 # A real WebSocket handshake against the path a browser player uses. 101 is
 # the world accepting; 502 is nginx up with nothing behind it, which is
 # exactly the half-deployed state that otherwise reads as success.
+#
+# This one talks plain http to a local port, so it is HTTP/1.1 already. If
+# you ever repoint it at https://battlebox.games/ws by hand, add --http1.1:
+# over HTTP/2 the Connection and Upgrade headers are illegal, curl drops
+# them, and you get a 502 that looks like a broken proxy and is not.
 echo "==> waiting for the game server"
 code=""
 for _ in $(seq 1 30); do

@@ -300,8 +300,6 @@ func _server_trim_cache() -> void:
 	var dropped := store.trim_cache()
 	if dropped > 0:
 		print("World: dropped %d regenerable chunks from cache" % dropped)
-	if saved > 0:
-		print("Autosave: %d chunks" % saved)
 
 func _server_on_roster_changed() -> void:
 	# Forget players whose roster entries vanished. NOTHING about a player

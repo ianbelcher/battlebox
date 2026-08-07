@@ -36,6 +36,25 @@ RUN printf '%s\n' "$GIT_SHA" | cut -c1-12 > /game/version.txt
 # cache even when it succeeds, hence the guard.
 RUN godot --headless --path /game --import || true
 
+# Boot the project and refuse to build if any script failed to compile.
+#
+# This is not belt-and-braces, it is the only thing that catches it.
+# `--export-release` succeeds with a GDScript parse error in the project:
+# it packs the broken script and exits 0. The result installs, serves,
+# passes a version check and answers a websocket — and then the game boots
+# with a dead autoload and does nothing. A deploy of that looks green at
+# every single step.
+#
+# Booting is what surfaces it, because that is when scripts are compiled.
+# --quit-after gives it a fixed number of frames so it cannot hang here.
+RUN godot --headless --path /game --quit-after 240 > /tmp/boot.log 2>&1 || true; \
+    if grep -qiE "SCRIPT ERROR|Parse Error|Compile Error|Failed to load script" /tmp/boot.log; then \
+      echo "=== FATAL: the project does not compile ==="; \
+      grep -iE -A2 "SCRIPT ERROR|Parse Error|Compile Error|Failed to load script" /tmp/boot.log; \
+      exit 1; \
+    fi; \
+    echo "project compiles clean"
+
 RUN mkdir -p /game/build/server /game/build/downloads /game/build/play \
     && godot --headless --path /game --export-release "Linux Server" build/server/battlebox-server.x86_64 \
     && godot --headless --path /game --export-release "Linux Client" build/downloads/battlebox-linux.x86_64 \
