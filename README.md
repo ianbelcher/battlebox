@@ -231,8 +231,15 @@ network namespace, so nginx reaches the game on loopback.
 Pushing to `master` builds the image on the self-hosted runner, pushes it to
 `ghcr.io/ianbelcher/battlebox`, ships `deploy/` to the droplet and runs
 `deploy.sh` there. That script pins the exact image and then checks that
-`version.txt` served by the site is this commit and that `/ws` answers 101
-— so a green build means the change is live, not that it compiled.
+`version.txt` served by the site is this commit and that `/ws` answers 101;
+the workflow then checks the same things from outside, through Cloudflare.
+A green build means the change is live, not that it compiled.
+
+It also means it *runs*, which took work: `godot --export-release` exits 0
+with a GDScript parse error in the project, packing the broken script into a
+build that serves and connects perfectly while doing nothing. The Dockerfile
+boots the project and fails on any compile error, and `tools/webtest_play.js`
+fails on the same errors appearing in a browser console.
 
 Four things about the web build are load-bearing and all four look optional:
 

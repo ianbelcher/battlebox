@@ -15,12 +15,29 @@ Nothing outstanding.
 
 ## Where this runs
 
-`battlebox.games` is **one DigitalOcean droplet in San Francisco**
-(`s-2vcpu-4gb`, Ubuntu 24.04), not the home cluster. It used to be a k8s
-deployment on `r710-2` reachable only from the LAN; that is gone, along
-with its NodePorts, its NFS volume and its self-signed certificate. The
-only thing left on the cluster is the **build runner**
+`battlebox.games` is **one DigitalOcean droplet in San Francisco** —
+`battlebox-games`, `s-2vcpu-4gb`, sfo3, Ubuntu 24.04, **143.110.238.17** —
+not the home cluster. It used to be a k8s deployment on `r710-2` reachable
+only from the LAN; that is gone: namespace, both Services, the NodePorts
+(30810-30812), the NFS volume and the self-signed certificate. The only
+thing left on the cluster is the **build runner**
 (`k8s/gh-runner.yaml`), which builds the image and pushes it.
+
+Getting in: `ssh deploy@143.110.238.17`, or `root@` for the box itself.
+Both accept Ian's own key; CI logs in as `deploy` with a key of its own
+(`DEPLOY_SSH_KEY`, generated for this and used nowhere else). The droplet
+IP is deliberately NOT in DNS — the A records are proxied, so the origin
+address is not public and does not need to be.
+
+**Cloudflare** proxies both records (apex and www) and the zone is on
+**Full**. It should be **Full (strict)**, which the real Let's Encrypt
+certificate on the origin makes valid; the API token in use can read zone
+settings but not write them, so that one switch is a dashboard click.
+
+Three GitHub secrets make a deploy work — `DEPLOY_HOST` (the IP),
+`DEPLOY_HOST_KEY` (the droplet's host keys, pinned so CI never has to
+trust whatever answers) and `DEPLOY_SSH_KEY`. Rebuild the box and the
+first two change.
 
 ```
 Cloudflare ──▶ Caddy ──▶ nginx (web role) ──▶ Godot server (server role)
@@ -350,11 +367,24 @@ anywhere else, that is the bug.
   (`version.txt` holds the built commit sha — check it when Ian says a
   feature is missing; he may have downloaded mid-deploy). The sandboxed
   shell can't reach it; `dangerouslyDisableSandbox` can.
-- **On the droplet** (`ssh deploy@battlebox.games`, everything under
+- **On the droplet** (`ssh deploy@143.110.238.17`, everything under
   `/srv/battlebox`): `docker compose ps`, `docker compose logs -f server`,
   and `./deploy.sh <sha>` to roll to any built image by hand. `deploy/` in
   this repo is copied there by CI on every deploy, so edit it HERE — a
   change made on the box is overwritten on the next push.
+- **Testing a websocket by hand: pass `--http1.1`.** Over HTTP/2 the
+  `Connection` and `Upgrade` headers are illegal, so curl drops them, the
+  request lands as an ordinary GET, the WebSocket server rejects it and you
+  get a **502 that looks exactly like a broken proxy and is not**. Both
+  deploy checks do this correctly; a hand-run one is where it bites.
+- **A green build does not mean the game runs — that had to be built in.**
+  `--export-release` exits 0 with a GDScript parse error in the project: it
+  packs the broken script, and the result serves the right `version.txt`,
+  answers `/ws` with 101 and draws a canvas, while the autoload is dead and
+  nothing works. The Dockerfile now boots the project (`--quit-after 240`)
+  and fails on any `SCRIPT ERROR` / `Parse Error` / `Compile Error`, and
+  `webtest_play.js` fails on the same strings in the browser console.
+  Neither guard is optional; both exist because that exact thing shipped.
 - **Test before shipping.** Headless server + client with `WORLD_AUTOTEST`
   and `WORLD_SHOTS` screenshots; check BOTH split-screen seats for anything
   UI-related.
