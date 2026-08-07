@@ -1,0 +1,94 @@
+---
+# The build runner for this repo.
+#
+# Lives on Ian's home cluster alongside the runners for ianbelcher.me and
+# frontierengineer, in the same `gh-runners` namespace and reusing the same
+# `github-credentials` secret. Nothing about the GAME runs here any more —
+# battlebox.games is a DigitalOcean droplet — this box only builds the image
+# and pushes it.
+#
+# Self-hosted rather than a GitHub-hosted runner for one reason: the build
+# downloads ~1 GB of Godot export templates and then exports five targets
+# (Linux server, three native clients, the browser build). On a cold runner
+# that is most of an hour every time. Here the docker layer cache survives
+# between runs, so an ordinary change to the GDScript rebuilds in minutes.
+#
+# A Deployment with one replica, not a DaemonSet: two runners would each
+# hold half the layer cache and neither would be warm.
+#
+# Apply by hand — this file is not touched by CI:
+#
+#   kubectl apply -f k8s/gh-runner.yaml
+#
+# It needs the secret that is already in the namespace. If it ever has to be
+# recreated, it is a GitHub personal access token with `repo` scope:
+#
+#   kubectl create secret generic github-credentials \
+#     --namespace=gh-runners --from-literal=accessToken='<token>'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gh-actions-runner-battlebox
+  namespace: gh-runners
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gh-actions-runner-battlebox
+  template:
+    metadata:
+      labels:
+        app: gh-actions-runner-battlebox
+    spec:
+      # The node with the docker socket and the disk. The workdir below is
+      # a hostPath, so this runner is not portable between nodes anyway —
+      # naming the node makes that a decision rather than an accident.
+      nodeName: r710-2
+      containers:
+        - name: runner
+          image: myoung34/github-runner:latest
+          env:
+            - name: ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-credentials
+                  key: accessToken
+            - name: RUNNER_NAME
+              value: gh-actions-runner-battlebox
+            - name: REPO_URL
+              value: https://github.com/ianbelcher/battlebox
+            - name: RUNNER_SCOPE
+              value: repo
+            # What `runs-on: [self-hosted, battlebox]` matches. Without
+            # this the job would be picked up by whichever self-hosted
+            # runner was free, including the ones for other repos.
+            - name: LABELS
+              value: battlebox
+            - name: RUNNER_WORKDIR
+              value: /tmp/github-runner-battlebox
+          volumeMounts:
+            # Builds go to the node's docker daemon. That is also why the
+            # workdir below is mounted at the SAME path inside and out:
+            # the daemon resolves the build context on the host, so the two
+            # paths have to agree or the build context is empty.
+            - name: dockersock
+              mountPath: /var/run/docker.sock
+            - name: workdir
+              mountPath: /tmp/github-runner-battlebox
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              # The Godot exports are the heavy part and they run in the
+              # build container, not here; this mostly needs room to hold a
+              # checkout with ~130 MB of art in it.
+              memory: "4Gi"
+              cpu: "4000m"
+      volumes:
+        - name: dockersock
+          hostPath:
+            path: /var/run/docker.sock
+        - name: workdir
+          hostPath:
+            path: /tmp/github-runner-battlebox

@@ -3,83 +3,326 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Voxel Battle</title>
+<title>BattleBox — build, battle, no download</title>
+<meta name="description" content="A blocky multiplayer world you can play straight in your browser. Build a fort, then defend it. Up to four players on one computer.">
+<meta property="og:title" content="BattleBox">
+<meta property="og:description" content="Build a fort. Defend it. Play free in your browser — no download.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://battlebox.games/">
+<!-- Inline so the tab icon never costs a request, and never 404s if the
+     game build's own icon is renamed by a Godot version bump. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2310141f'/%3E%3Cpath d='M16 5l9 5v12l-9 5-9-5V10z' fill='%23ffd166'/%3E%3Cpath d='M16 5l9 5-9 5-9-5z' fill='%23fff0c2'/%3E%3Cpath d='M16 15v12l-9-5V10z' fill='%23e0a92e'/%3E%3C/svg%3E">
 <style>
+  :root {
+    --gold: #ffd166;
+    --gold-deep: #f0b429;
+    --ink: #0d1117;
+    --ink-2: #10141f;
+    --sky-hi: #2b3d5e;
+    --sky-lo: #0d1117;
+    --paper: rgba(255, 255, 255, 0.94);
+    --muted: rgba(255, 255, 255, 0.62);
+    --faint: rgba(255, 255, 255, 0.40);
+    --card: rgba(255, 255, 255, 0.055);
+    --card-line: rgba(255, 255, 255, 0.10);
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
   body {
-    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(#22304a, #10141f); color: #fff;
-    font-family: -apple-system, "Segoe UI", sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    background: var(--sky-lo);
+    background-image:
+      radial-gradient(ellipse 90% 60% at 50% -10%, #35507d 0%, transparent 70%),
+      linear-gradient(var(--sky-hi), var(--sky-lo) 60%);
+    background-repeat: no-repeat;
+    color: var(--paper);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 Helvetica, Arial, sans-serif;
+    line-height: 1.55;
   }
-  main { max-width: 620px; padding: 40px 24px; }
-  h1 { color: #ffd166; font-size: 44px; margin: 0 0 4px; }
-  p { color: rgba(255,255,255,0.75); line-height: 1.5; }
-  .card {
-    background: rgba(0,0,0,0.3); border-radius: 14px; padding: 18px 22px; margin: 14px 0;
+
+  main {
+    max-width: 740px;
+    margin: 0 auto;
+    padding: 56px 20px 72px;
   }
-  a.button {
-    display: inline-block; background: #ffd166; color: #10141f; font-weight: 700;
-    padding: 10px 18px; border-radius: 10px; text-decoration: none; margin: 4px 8px 4px 0;
+
+  /* ---- Hero ---------------------------------------------------- */
+
+  .hero { text-align: center; }
+
+  h1 {
+    font-size: clamp(46px, 12vw, 82px);
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    margin: 0;
+    color: var(--gold);
+    text-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
   }
-  code { background: rgba(255,255,255,0.12); padding: 2px 7px; border-radius: 6px; }
-  .small { font-size: 13px; color: rgba(255,255,255,0.5); }
+
+  .tagline {
+    font-size: clamp(17px, 4.2vw, 21px);
+    color: var(--paper);
+    margin: 14px auto 0;
+    max-width: 30ch;
+  }
+
+  /* ---- The main event: play in the browser --------------------- */
+
+  .play-block {
+    margin: 34px 0 10px;
+    text-align: center;
+  }
+
+  a.play {
+    display: block;
+    width: 100%;
+    background: linear-gradient(var(--gold), var(--gold-deep));
+    color: #171004;
+    font-size: clamp(21px, 5.5vw, 27px);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    padding: 22px 24px 20px;
+    border-radius: 16px;
+    text-decoration: none;
+    box-shadow: 0 6px 0 #b8860f, 0 14px 34px rgba(255, 209, 102, 0.22);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+  a.play:hover { transform: translateY(-2px); box-shadow: 0 8px 0 #b8860f, 0 18px 40px rgba(255, 209, 102, 0.30); }
+  a.play:active { transform: translateY(4px); box-shadow: 0 2px 0 #b8860f, 0 6px 18px rgba(255, 209, 102, 0.20); }
+  a.play:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+
+  a.play .sub {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    opacity: 0.72;
+    margin-top: 5px;
+  }
+
+  .reassure {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 20px;
+    margin: 16px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .reassure li::before {
+    content: "✓";
+    color: var(--gold);
+    font-weight: 800;
+    margin-right: 6px;
+  }
+
+  /* ---- Cards --------------------------------------------------- */
+
+  section.card {
+    background: var(--card);
+    border: 1px solid var(--card-line);
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin: 30px 0 0;
+  }
+
+  h2 {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--gold);
+    margin: 0 0 10px;
+  }
+
+  p { margin: 0 0 10px; color: var(--paper); }
+  p:last-child { margin-bottom: 0; }
+  .note { font-size: 13.5px; color: var(--faint); }
+  .note:last-child { margin-bottom: 0; }
+
+  b, strong { color: #fff; }
+
+  code {
+    background: rgba(255, 255, 255, 0.11);
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-size: 0.88em;
+  }
+
+  /* ---- Downloads: deliberately the quieter option -------------- */
+
+  .downloads { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 14px; }
+
+  a.dl {
+    flex: 1 1 150px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--card-line);
+    color: var(--paper);
+    font-weight: 600;
+    font-size: 15px;
+    padding: 11px 14px;
+    border-radius: 10px;
+    text-decoration: none;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  a.dl:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.24); }
+  a.dl:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  a.dl .os-note { font-size: 12px; color: var(--faint); font-weight: 500; }
+
+  /* Only the visitor's own platform is picked out, and only faintly —
+     the browser button above is still the one to press. */
+  a.dl[data-yours="1"] { border-color: rgba(255, 209, 102, 0.55); }
+  a.dl[data-yours="1"] .os-note::before { content: "yours · "; color: var(--gold); }
+
+  details { margin-top: 12px; }
+  summary {
+    cursor: pointer;
+    font-size: 13.5px;
+    color: var(--muted);
+    padding: 4px 0;
+  }
+  summary:hover { color: var(--paper); }
+  details[open] summary { margin-bottom: 8px; }
+
+  /* ---- Controls ------------------------------------------------ */
+
+  dl.keys { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; }
+  dl.keys dt { color: var(--gold); font-weight: 700; font-size: 13.5px; white-space: nowrap; }
+  dl.keys dd { margin: 0; font-size: 14.5px; color: var(--muted); }
+
+  footer {
+    margin-top: 36px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--faint);
+  }
+  footer a { color: var(--muted); }
+
+  @media (max-width: 480px) {
+    main { padding: 40px 16px 56px; }
+    section.card { padding: 16px 16px; }
+    dl.keys { grid-template-columns: 1fr; gap: 2px 0; }
+    dl.keys dd { margin-bottom: 8px; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <h1>Voxel Battle</h1>
-  <p>One cozy world, always on. Grab the game for your computer, open it, and
-  press <b>Connect</b> — the address is already filled in. Up to four players
-  per computer: press <b>Space</b>, <b>Enter</b>, or a gamepad's <b>A</b>
-  button to hop in.</p>
 
-  <div class="card">
-    <p style="margin:0 0 10px"><b>Play right here, no download</b></p>
-    <a class="button" id="play" href="/play/">▶  Play in the browser</a>
-    <p class="small">Your browser will warn you the connection isn't
-    private, because the server signs its own certificate. Click
-    <b>Advanced &rarr; Proceed</b> — it only asks once. First load is about
-    35&nbsp;MB. Best on a computer with a keyboard and mouse.</p>
+  <div class="hero">
+    <h1>BattleBox</h1>
+    <p class="tagline">One blocky world, always on. Build a fort — then
+    defend it.</p>
   </div>
 
-  <div class="card">
-    <p style="margin:0 0 10px"><b>Or install it — runs faster</b></p>
-    <a class="button" href="downloads/voxel-battle-macos.zip">macOS</a>
-    <a class="button" href="downloads/voxel-battle-windows.exe">Windows</a>
-    <a class="button" href="downloads/voxel-battle-linux.x86_64">Linux</a>
-    <p class="small">macOS: unzip, then right-click the app &rarr; Open the
-    first time (it isn't signed). Linux: <code>chmod +x</code> it first.</p>
-    <p class="small"><strong>Old computer running slow?</strong> In the game,
-    open the menu (Esc) &rarr; Video tab: turn things off or down until it is
-    smooth, and try "Renderer: Lite" — the game restarts itself into a much
-    lighter graphics mode.</p>
+  <div class="play-block">
+    <a class="play" href="/play/">
+      ▶&nbsp; Play now
+      <span class="sub">Free · in your browser · nothing to install</span>
+    </a>
+    <ul class="reassure">
+      <li>Loads in about a minute</li>
+      <li>Up to 4 on one computer</li>
+      <li>Your world is saved</li>
+    </ul>
   </div>
 
-  <div class="card">
-    <p style="margin:0"><b>Controls (like Minecraft)</b> &mdash; WASD +
-    mouse, left-click break, right-click place, <b>E for all blocks &amp;
-    building kits</b>, R throws orbs, Esc for the guide. Double-tap jump to
-    fly. Gamepad: stick + A, B break, X place, right trigger throws,
-    D-pad up picks, Start for the guide. T / Y switches first person &harr;
-    overview. Press <b>&#9876; Attack!</b> up top to start a Grump raid
-    &mdash; build a fort first!</p>
-  </div>
+  <section class="card">
+    <h2>How it works</h2>
+    <p>Everyone plays in the same world, and it stays put — whatever you
+    build is still standing tomorrow. Break blocks, place blocks, open
+    <b>E</b> for the whole block palette and the ready-made building kits.
+    When the fort is ready, press <b>⚔ Attack!</b> to call in a Grump raid.</p>
+    <p class="note">Sharing one computer? Press <b>Space</b>, <b>Enter</b>, or
+    a gamepad's <b>A</b> button and a second, third or fourth player drops
+    in — the screen splits itself.</p>
+  </section>
 
-  <div class="card">
-    <p style="margin:0" class="small"><b>Linux:</b> if it won't start, run it
-    from a terminal to see why: <code>./voxel-battle-linux.x86_64</code>,
-    and try <code>--rendering-method mobile</code> or
-    <code>--rendering-driver opengl3</code>; send us the output.</p>
-  </div>
+  <section class="card">
+    <h2>Controls</h2>
+    <dl class="keys">
+      <dt>WASD + mouse</dt><dd>Move and look</dd>
+      <dt>Left / right click</dt><dd>Break a block / place a block</dd>
+      <dt>E</dt><dd>All blocks and building kits</dd>
+      <dt>R</dt><dd>Throw an orb</dd>
+      <dt>Double-tap jump</dt><dd>Fly</dd>
+      <dt>T / Y</dt><dd>First person ↔ overview</dd>
+      <dt>Esc</dt><dd>Menu and the full guide</dd>
+      <dt>Gamepad</dt><dd>Stick + A, B breaks, X places, right trigger throws,
+        D-pad up picks, Start for the guide</dd>
+    </dl>
+  </section>
 
-  <p class="small">Server: <code>ws://10.0.0.200:30810</code> &middot; runs on
-  the cluster &middot; the world is saved, so whatever you build is still
-  there tomorrow.</p>
+  <section class="card">
+    <h2>Prefer to install it?</h2>
+    <p class="note">The browser version is the same game and the easy way in.
+    An installed copy runs a little smoother on an older machine, and starts
+    faster after the first time.</p>
+    <div class="downloads">
+      <a class="dl" id="dl-win" href="/downloads/battlebox-windows.exe">Windows
+        <span class="os-note">.exe</span></a>
+      <a class="dl" id="dl-mac" href="/downloads/battlebox-macos.zip">macOS
+        <span class="os-note">.zip</span></a>
+      <a class="dl" id="dl-linux" href="/downloads/battlebox-linux.x86_64">Linux
+        <span class="os-note">x86-64</span></a>
+    </div>
+    <details>
+      <summary>Opening the download on each system</summary>
+      <p class="note"><b>Windows:</b> SmartScreen will say it doesn't
+      recognise the app, because the build isn't code-signed. Choose <b>More
+      info → Run anyway</b>.</p>
+      <p class="note"><b>macOS:</b> unzip it, then <b>right-click the app →
+      Open</b> the first time; double-clicking a first-run unsigned app just
+      refuses.</p>
+      <p class="note"><b>Linux:</b> <code>chmod +x battlebox-linux.x86_64</code>
+      and run it. If nothing happens, run it from a terminal to see why, and
+      try <code>--rendering-method mobile</code> or
+      <code>--rendering-driver opengl3</code>.</p>
+      <p class="note">Installed copies check for updates themselves — the
+      menu offers to fetch a new build and restart into it.</p>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Running slow?</h2>
+    <p class="note">In the game, press <b>Esc</b> → <b>Video</b>. Turn the
+    view distance and effects down, and try <b>Renderer: Lite</b> — the game
+    restarts itself into a much lighter graphics mode. On a laptop, plugging
+    it in often doubles the frame rate on its own.</p>
+  </section>
+
+  <footer>
+    <p>battlebox.games &middot; built for (and mostly by the demands of) my
+    kids &middot; <a href="https://github.com/ianbelcher/battlebox">source on
+    GitHub</a></p>
+  </footer>
+
 </main>
 <script>
-  // The browser game is on the https port, whatever address this page was
-  // reached on — so it works from any machine without hard-coding an IP.
-  var play = document.getElementById('play');
-  if (play) { play.href = 'https://' + location.hostname + ':30812/play/'; }
+  // Point out the visitor's own platform in the downloads row. This only
+  // ever adds a hint — every link stays visible and clickable, because
+  // guessing the OS from a user-agent string is a guess, and someone
+  // downloading a build for a different machine is a normal thing to do.
+  (function () {
+    var ua = navigator.userAgent;
+    var id = /Windows/i.test(ua) ? 'dl-win'
+           : /Mac OS X|Macintosh/i.test(ua) ? 'dl-mac'
+           : /Linux|X11|CrOS/i.test(ua) ? 'dl-linux'
+           : null;
+    if (id) {
+      var el = document.getElementById(id);
+      if (el) { el.setAttribute('data-yours', '1'); }
+    }
+  })();
 </script>
 </body>
 </html>

@@ -1,0 +1,85 @@
+# The whole of battlebox.games, on one box.
+#
+# Three containers:
+#   server  the world — the Godot headless build, holding every block and
+#           every player. Not published to the host: the only way in is
+#           through the proxy.
+#   web     nginx, serving the entry page, the native downloads and the
+#           browser build, and relaying the game socket at /ws.
+#   caddy   TLS. Holds the real battlebox.games certificate and renews it
+#           on its own; Cloudflare sits in front of this.
+#
+# `docker compose up -d` is idempotent and is what deploy.sh runs. The image
+# tag comes from .env, which deploy.sh rewrites on every release — pinning
+# the exact build rather than chasing :latest, so what is running is always
+# a sha somebody can go and look at.
+
+name: battlebox
+
+services:
+  server:
+    image: ${BATTLEBOX_IMAGE:?set BATTLEBOX_IMAGE in .env}
+    command: ["server"]
+    restart: unless-stopped
+    environment:
+      WORLD_DATA_DIR: /data
+      WORLD_SOURCE: procedural
+    volumes:
+      - world-data:/data
+    # Loopback only. This is the health endpoint deploy.sh polls and the
+    # way in for a hands-on look; it is NOT reachable from the internet,
+    # and it must not be — a page served over plain http is not a secure
+    # context, so the browser build would load and then die there.
+    ports:
+      - "127.0.0.1:8081:8081"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  web:
+    image: ${BATTLEBOX_IMAGE:?set BATTLEBOX_IMAGE in .env}
+    command: ["web"]
+    restart: unless-stopped
+    # Shares the server's network namespace, which is why nginx.conf can
+    # say `proxy_pass http://127.0.0.1:9081` and mean it. This is the same
+    # arrangement the game ran under on Kubernetes, where both roles were
+    # containers in one pod — so the shipped nginx.conf needs no variant
+    # for this deployment.
+    #
+    # The consequence: recreating `server` tears down the namespace `web`
+    # is living in. deploy.sh always brings the whole stack up together
+    # rather than restarting one of them, so that ordering is never left
+    # to chance.
+    network_mode: "service:server"
+    depends_on:
+      - server
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The certificate and the ACME account key. Losing this volume is not
+      # fatal — Caddy just gets a fresh certificate — but doing that
+      # repeatedly walks into Let's Encrypt's rate limits, so it is a named
+      # volume rather than something that dies with the container.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - server
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  # Every block anyone has ever placed. The one thing here that cannot be
+  # rebuilt from the repo.
+  world-data:
+  caddy-data:
+  caddy-config:

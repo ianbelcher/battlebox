@@ -315,7 +315,7 @@ static func maps_root() -> String:
 	var override := OS.get_environment("WORLD_MCA_DIR")
 	if not override.is_empty():
 		return override
-	for candidate in ["/opt/world/maps",
+	for candidate in ["/opt/battlebox/maps",
 			ProjectSettings.globalize_path("res://").path_join("../maps")]:
 		if DirAccess.dir_exists_absolute(candidate):
 			return candidate

@@ -3,9 +3,17 @@ extends Node
 ## every client; on a LAN the TCP-vs-UDP difference is negligible).
 
 const DEFAULT_PORT := 9081
-## NodePort the game-server Service is exposed on (see _configurations/world.yaml).
-const LAN_NODE_PORT := 30810
-const DEFAULT_LAN_HOST := "10.0.0.200"
+
+## The public world. One host serves the page, the downloads and the game
+## socket, all on 443 — the websocket is proxied through the same origin
+## as everything else (see nginx.conf), so there is only ever one name and
+## one port to get wrong.
+const PUBLIC_HOST := "battlebox.games"
+const PUBLIC_SERVER_URL := "wss://battlebox.games/ws"
+
+## Port the web role listens on when it is reached directly, with no proxy
+## in front of it — a LAN box or a dev machine.
+const WEB_PORT := 8081
 
 signal connected_to_server
 signal connection_failed
@@ -35,12 +43,12 @@ func start_server() -> Error:
 		return err
 	multiplayer.multiplayer_peer = peer
 	is_server = true
-	print("Voxel Battle server listening on ws://0.0.0.0:%d" % port)
+	print("BattleBox server listening on ws://0.0.0.0:%d" % port)
 	return OK
 
-## Host of the server we last connected to (updater fetches from its web
-## port). Falls back to the LAN default.
-var last_host := DEFAULT_LAN_HOST
+## Host of the server we last connected to (the updater fetches builds from
+## its web port). Falls back to the public world.
+var last_host := PUBLIC_HOST
 
 func connect_to(url: String) -> Error:
 	var stripped := url.replace("ws://", "").replace("wss://", "")
@@ -70,15 +78,16 @@ func go_offline() -> void:
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 
 ## In a browser the address is NOT ours to choose: go back to whatever
-## origin served the page, on /ws.
+## origin served the page, on /ws. Same scheme, host and port as the page.
 ##
-## This has to be the same scheme, host AND port as the page, and that is
-## not tidiness — it is the only arrangement that works. The certificate
-## is self-signed, so the browser refuses it until someone clicks through
-## the warning, and it only ever offers that click for the PAGE. A socket
-## to any other origin is refused with no warning and no way to accept it,
-## so the game would sit on "Finding the world…" forever with nothing to
-## click. nginx proxies /ws through to this same server binary.
+## A page served over https cannot open a plain ws:// socket at all — the
+## browser blocks it as mixed content, with no prompt and nothing to click,
+## so the game would sit on "Finding the world…" forever. Deriving it from
+## the page is also what makes a preview deployment or a LAN copy work with
+## no rebuild: the build never names a host.
+##
+## Native clients have no page to inherit from, so they get the public
+## world. WORLD_SERVER_URL overrides it for a LAN or dev server.
 func default_server_url() -> String:
 	if OS.has_feature("web"):
 		var host := str(JavaScriptBridge.eval("window.location.host", true))
@@ -86,4 +95,19 @@ func default_server_url() -> String:
 			var secure := str(JavaScriptBridge.eval(
 				"window.location.protocol", true)) == "https:"
 			return "%s://%s/ws" % ["wss" if secure else "ws", host]
-	return "ws://%s:%d" % [DEFAULT_LAN_HOST, LAN_NODE_PORT]
+	var forced := OS.get_environment("WORLD_SERVER_URL")
+	if not forced.is_empty():
+		return forced
+	return PUBLIC_SERVER_URL
+
+## Where this client fetches build downloads and version.txt from — the web
+## side of whatever server it is connected to.
+##
+## The public world is behind a proxy that serves everything on 443; a LAN
+## or dev server is a bare container with nothing in front of it, so its web
+## role is on its own port. Getting this wrong is not visible until someone
+## presses "Install update" and it 404s, so both cases live in one place.
+func downloads_base() -> String:
+	if last_host == PUBLIC_HOST or last_host.ends_with("." + PUBLIC_HOST):
+		return "https://%s/downloads" % last_host
+	return "http://%s:%d/downloads" % [last_host, WEB_PORT]

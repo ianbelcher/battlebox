@@ -1,4 +1,4 @@
-# Voxel Battle — TODO
+# BattleBox — TODO
 
 **Outstanding work only.** Git history is the record of what's done.
 **This file is the single source of truth** — everything Ian asks for gets
@@ -9,48 +9,62 @@ any tool) can pick the work up cold.
 
 ## Open work
 
-**One manual step, and browser play is live.** Everything is built,
-deployed and verified; the only thing missing is the Service port, and
-`_configurations/` is applied by hand, never by CI:
-
-```
-kubectl apply -f deployments/_configurations/world.yaml
-```
-
-That adds nodePort 30812 (https) to `world-web`, and mounts the data
-volume on the web container so the certificate survives deploys. Then
-`https://10.0.0.200:30812/play/` is the game — accept the browser's
-certificate warning once.
-
-Until it is applied, nginx is already serving https on 8443 inside the
-pod; there is simply no route to it from the LAN. Nothing else is
-waiting on it.
+Nothing outstanding.
 
 ---
 
+## Where this runs
+
+`battlebox.games` is **one DigitalOcean droplet in San Francisco**
+(`s-2vcpu-4gb`, Ubuntu 24.04), not the home cluster. It used to be a k8s
+deployment on `r710-2` reachable only from the LAN; that is gone, along
+with its NodePorts, its NFS volume and its self-signed certificate. The
+only thing left on the cluster is the **build runner**
+(`k8s/gh-runner.yaml`), which builds the image and pushes it.
+
+```
+Cloudflare ──▶ Caddy ──▶ nginx (web role) ──▶ Godot server (server role)
+   proxy,      real LE      entry page,           the world itself
+   caching     certificate  downloads, /play/,
+                            /ws relay
+```
+
+`server` and `web` are the **same image** run with a different argument,
+sharing one network namespace (`network_mode: service:server`), which is
+why `nginx.conf` can say `proxy_pass http://127.0.0.1:9081` — the same
+arrangement the two containers had inside a k8s pod. Recreating `server`
+tears down the namespace `web` lives in, so `deploy.sh` always brings the
+whole stack up together rather than restarting one container.
+
+**The world lives in the `world-data` docker volume on the droplet.** It
+is the only thing in this system that cannot be rebuilt from this repo.
+
 ## Playing in a browser
 
-There is a fourth export, **Web**, served at
-`https://10.0.0.200:30812/play/` alongside the native downloads. Same
-source, same server, same world — desktop players and browser players
-share one game.
+The **Web** export is served at `https://battlebox.games/play/` alongside
+the native downloads. Same source, same server, same world — desktop and
+browser players share one game, and the browser is the front door: the
+entry page leads with it and the downloads sit underneath.
 
 Four things about it are load-bearing and all four look optional:
 
-- **It must be https.** Godot's browser build meshes chunks on real
-  threads, which needs `SharedArrayBuffer`, which browsers only hand to a
-  *cross-origin isolated* page: the two `Cross-Origin-*` headers in
-  `nginx.conf`, and those only count in a secure context. Serve it over
-  plain http and it downloads in full and then dies on startup.
-- **The websocket is proxied through the same https port** as `/ws`, not
-  dialled on 30810. The certificate is self-signed, and a browser only
-  offers the "accept this" click for a page you navigate to — a socket to
-  any other origin is refused silently, leaving the game on "Finding the
-  world…" with nothing to click. Same origin, one acceptance, both work.
-- **The certificate lives on the shared volume** (`/data/tls`), generated
-  once by `entrypoint.sh`. Generate it into the image instead and it is a
-  new certificate every deploy, so every player re-accepts the warning
-  every time we ship.
+- **It must be https, with a certificate the browser trusts.** Godot's
+  browser build meshes chunks on real threads, which needs
+  `SharedArrayBuffer`, which browsers only hand to a *cross-origin
+  isolated* page: the two `Cross-Origin-*` headers in `nginx.conf`, and
+  those only count in a secure context. Reaching the container directly
+  over plain http (a port-forward, `127.0.0.1:8081` on the droplet) gets a
+  game that downloads in full and then dies on startup. That is expected
+  there, not a bug.
+- **The websocket is proxied through the same origin** as the page, at
+  `/ws`. A page served over https cannot open a plain `ws://` socket at
+  all: the browser blocks it as mixed content, silently, leaving the game
+  on "Finding the world…" with nothing to click.
+- **The certificate is Caddy's**, a real Let's Encrypt one renewed over
+  HTTP-01. That is why port 80 is open on the droplet even though nothing
+  is served there. Close it and the certificate expires 60 days later,
+  quietly, on a day nobody is deploying. Cloudflare must stay on **Full
+  (strict)** — it is this certificate that makes that valid.
 - **`project.godot` sets `renderer/rendering_method.web`** to
   `gl_compatibility`. A browser has no Vulkan; without that override the
   web build inherits Forward+ and renders nothing.
@@ -61,10 +75,10 @@ gated to Windows/Linux) and the Lite/Full renderer switch (gated on
 `OS.has_feature("web")` in both menus).
 
 To test it for real rather than guess: `tools/webtest.sh` exports the
-build, serves it over local https with the production nginx config, and
-drives it in headless Chrome — asserting the page is isolated, threads
-are on, and it actually reaches the world. A run that merely fails to
-crash proves nothing.
+build, serves it with the production `nginx.conf` behind a stand-in for
+Caddy, and drives it in headless Chrome — asserting the page is isolated,
+threads are on, and it actually reaches the world. A run that merely fails
+to crash proves nothing.
 
 ## Nothing is persisted
 
@@ -293,17 +307,26 @@ anywhere else, that is the bug.
 
 ## How this project runs (for whoever picks it up)
 
-- **Ship every round**: commit → push → wait for CI on **that exact commit
-  sha** → wait for the k8s rollout → **restart Ian's debug client** and
-  confirm it reconnected. He tests every round and needs to know he's on
-  the new build.
-- Debug client: `WORLD_ROLE=client WORLD_AUTOCONNECT=ws://10.0.0.200:30810
+- **Ship every round**: commit → push to `master` → wait for the
+  `build and deploy` workflow on **that exact commit sha** → **restart
+  Ian's debug client** and confirm it reconnected. He tests every round
+  and needs to know he's on the new build.
+  The workflow is not "green when it compiled": its last two steps check
+  that `https://battlebox.games/downloads/version.txt` is this commit and
+  that `/play/` still comes back cross-origin isolated. A green tick means
+  it is live.
+- Debug client: `WORLD_ROLE=client WORLD_AUTOCONNECT=wss://battlebox.games/ws
   WORLD_DEBUG=1 godot --path <abs path to game>`, pid kept in
   `/tmp/world-dev-client.pid`.
-- Downloads / version endpoint: `http://10.0.0.200:30811/downloads/`
+- Downloads / version endpoint: `https://battlebox.games/downloads/`
   (`version.txt` holds the built commit sha — check it when Ian says a
   feature is missing; he may have downloaded mid-deploy). The sandboxed
   shell can't reach it; `dangerouslyDisableSandbox` can.
+- **On the droplet** (`ssh deploy@battlebox.games`, everything under
+  `/srv/battlebox`): `docker compose ps`, `docker compose logs -f server`,
+  and `./deploy.sh <sha>` to roll to any built image by hand. `deploy/` in
+  this repo is copied there by CI on every deploy, so edit it HERE — a
+  change made on the box is overwritten on the next push.
 - **Test before shipping.** Headless server + client with `WORLD_DATA_DIR`,
   `WORLD_AUTOTEST` and `WORLD_SHOTS` screenshots; check BOTH split-screen
   seats for anything UI-related.

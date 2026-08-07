@@ -4,7 +4,7 @@ extends Control
 ## When launched headless (or with --server / WORLD_ROLE=server) no UI is
 ## built at all; we just start listening.
 
-const TITLE := "Voxel Battle"
+const TITLE := "BattleBox"
 const BG_TOP := Color("22304a")
 const BG_BOTTOM := Color("10141f")
 const GOLD := Color("ffd166")

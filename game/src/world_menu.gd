@@ -1132,7 +1132,7 @@ func _build_credits_tab() -> void:
 # ------------------------------------------------------------------
 
 func _updater_base() -> String:
-	return "http://%s:30811/downloads" % Net.last_host
+	return Net.downloads_base()
 
 func _local_version() -> String:
 	var f := FileAccess.open("res://version.txt", FileAccess.READ)
@@ -1169,8 +1169,8 @@ func _updater_step() -> void:
 	elif _update_state == "ready":
 		_update_state = "busy"
 		_set_update_text("Downloading…")
-		var fname := "voxel-battle-windows.exe" if OS.has_feature("windows") \
-			else "voxel-battle-linux.x86_64"
+		var fname := "battlebox-windows.exe" if OS.has_feature("windows") \
+			else "battlebox-linux.x86_64"
 		var dest := ProjectSettings.globalize_path("user://update-download")
 		_update_req.download_file = dest
 		_update_req.request_completed.connect(

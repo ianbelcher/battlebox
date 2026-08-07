@@ -33,26 +33,25 @@ RUN echo "$GIT_SHA" > /game/version.txt
 RUN godot --headless --path /game --import || true
 
 RUN mkdir -p /game/build/server /game/build/downloads /game/build/play \
-    && godot --headless --path /game --export-release "Linux Server" build/server/world-server.x86_64 \
-    && godot --headless --path /game --export-release "Linux Client" build/downloads/voxel-battle-linux.x86_64 \
-    && godot --headless --path /game --export-release "Windows Client" build/downloads/voxel-battle-windows.exe \
-    && godot --headless --path /game --export-release "macOS Client" build/downloads/voxel-battle-macos.zip \
+    && godot --headless --path /game --export-release "Linux Server" build/server/battlebox-server.x86_64 \
+    && godot --headless --path /game --export-release "Linux Client" build/downloads/battlebox-linux.x86_64 \
+    && godot --headless --path /game --export-release "Windows Client" build/downloads/battlebox-windows.exe \
+    && godot --headless --path /game --export-release "macOS Client" build/downloads/battlebox-macos.zip \
     && godot --headless --path /game --export-release "Web" build/play/index.html \
     && cp /game/version.txt /game/build/downloads/version.txt \
     && cp /game/version.txt /game/build/play/version.txt
 
-# Runtime stage: one image, two roles. The k8s deployment runs two containers
-# from this image — `server` (the world) and `web` (nginx serving the
-# downloads page over http, and the browser game over https).
+# Runtime stage: one image, two roles. The deployment runs two containers
+# from this image — `server` (the world) and `web` (nginx serving the entry
+# page, the native downloads and the browser build). They share a network
+# namespace, so nginx proxies the game socket to the server on loopback.
 #
-# The browser game MUST be https: it needs SharedArrayBuffer for Godot's
-# worker threads, and browsers only grant that to a "cross-origin isolated"
-# page, which requires a secure context. openssl is here to mint the
-# self-signed certificate that provides one (see entrypoint.sh).
+# No TLS in here. Caddy terminates https for battlebox.games in front of
+# this, with Cloudflare in front of that — see deploy/.
 FROM ubuntu:24.04
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nginx openssl ca-certificates libfontconfig1 \
+    && apt-get install -y --no-install-recommends nginx ca-certificates libfontconfig1 curl \
     && rm -rf /var/lib/apt/lists/*
 
 # The browser build is served as application/wasm or it will not start.
@@ -65,30 +64,20 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Check the config against THIS nginx, at build time.
 #
 # A config that is valid on a newer nginx and invalid here does not fail
-# quietly: nginx refuses to start, the web container crash-loops, the pod
-# never becomes ready, and Kubernetes then pulls the GAME SERVER out of
-# its Service as well — so a typo in a web server config takes the whole
-# game offline. That happened with "http2 on;", which is 1.25.1+ while
-# this image is on 1.24.
-#
-# nginx -t needs the certificate files to exist, so mint a throwaway pair
-# purely for the test and delete them; the real one is created at startup
-# on the shared volume.
-RUN mkdir -p /opt/world/tls \
-    && openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
-       -keyout /opt/world/tls/world.key -out /opt/world/tls/world.crt \
-       -subj "/CN=config check" >/dev/null 2>&1 \
-    && nginx -t \
-    && rm -f /opt/world/tls/world.crt /opt/world/tls/world.key
+# quietly: nginx refuses to start and the web container crash-loops, so the
+# site is down while the image looks fine. That happened once with
+# "http2 on;", which is 1.25.1+ while this image is on 1.24. Catching it
+# here means a bad config fails the build instead of the deployment.
+RUN nginx -t
 
-COPY --from=build /game/build/server /opt/world/server
-COPY maps /opt/world/maps
-COPY --from=build /game/build/downloads /opt/world/web/downloads
-COPY --from=build /game/build/play /opt/world/web/play
-COPY web/index.html /opt/world/web/index.html
+COPY --from=build /game/build/server /opt/battlebox/server
+COPY maps /opt/battlebox/maps
+COPY --from=build /game/build/downloads /opt/battlebox/web/downloads
+COPY --from=build /game/build/play /opt/battlebox/web/play
+COPY web/index.html /opt/battlebox/web/index.html
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh /opt/world/server/world-server.x86_64
+RUN chmod +x /entrypoint.sh /opt/battlebox/server/battlebox-server.x86_64
 
-EXPOSE 9081 8081 8443
+EXPOSE 9081 8081
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["server"]

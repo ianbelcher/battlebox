@@ -1,0 +1,122 @@
+name: build and deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# One deploy at a time, and never cancel one half way through: the droplet
+# would be left with a rewritten .env and the old containers still running.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-and-deploy:
+    name: Build the image and put it live
+    # The runner on Ian's cluster (k8s/gh-runner.yaml). Self-hosted because
+    # this build downloads ~1 GB of Godot export templates and then exports
+    # five targets; a warm docker layer cache turns that from most of an
+    # hour into a couple of minutes.
+    runs-on: [self-hosted, battlebox]
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to the registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build the image
+        run: |
+          docker build \
+            --build-arg GIT_SHA="${GITHUB_SHA}" \
+            --tag "${IMAGE}:${GITHUB_SHA}" \
+            --tag "${IMAGE}:latest" \
+            .
+
+      - name: Push the image
+        run: |
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          docker push "${IMAGE}:latest"
+
+      # The droplet runs the configuration that is committed here, not a
+      # copy somebody edited on the box six months ago. Shipping it on every
+      # deploy is what keeps those two things the same thing.
+      - name: Ship the deploy configuration
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/battlebox_deploy
+          chmod 600 ~/.ssh/battlebox_deploy
+          # The host key is pinned from a secret rather than accepted on
+          # sight. ssh-keyscan here would trust whatever answered, which is
+          # the whole thing a host key exists to prevent.
+          printf '%s\n' "$HOST_KEY" > ~/.ssh/known_hosts_battlebox
+          chmod 600 ~/.ssh/known_hosts_battlebox
+          scp -i ~/.ssh/battlebox_deploy \
+              -o UserKnownHostsFile=~/.ssh/known_hosts_battlebox \
+              -o StrictHostKeyChecking=yes \
+              deploy/docker-compose.yml deploy/Caddyfile deploy/deploy.sh \
+              "deploy@${HOST}:/srv/battlebox/"
+          ssh -i ~/.ssh/battlebox_deploy \
+              -o UserKnownHostsFile=~/.ssh/known_hosts_battlebox \
+              -o StrictHostKeyChecking=yes \
+              "deploy@${HOST}" "chmod +x /srv/battlebox/deploy.sh"
+
+      # deploy.sh does not just restart things — it pins this exact image,
+      # then checks that the version the site is SERVING is this commit and
+      # that the world server is accepting websockets. It fails the job if
+      # either is untrue, so a green tick here means the build is live.
+      - name: Put it live
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | ssh -i ~/.ssh/battlebox_deploy \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_battlebox \
+            -o StrictHostKeyChecking=yes \
+            "deploy@${HOST}" "/srv/battlebox/deploy.sh ${GITHUB_SHA}"
+
+      - name: Check the public address, not just the box
+        run: |
+          # Everything above was verified from inside the droplet. This is
+          # the only step that proves Cloudflare, DNS and the certificate
+          # are all still doing their jobs — which is what a player meets.
+          want="$(printf '%s' "${GITHUB_SHA}" | cut -c1-12)"
+          for _ in $(seq 1 20); do
+            got="$(curl -fsS --max-time 10 \
+              https://battlebox.games/downloads/version.txt 2>/dev/null \
+              | tr -d '[:space:]' || true)"
+            [ "$got" = "$want" ] && break
+            sleep 6
+          done
+          if [ "$got" != "$want" ]; then
+            echo "::error::battlebox.games is serving '$got', expected '$want'"
+            exit 1
+          fi
+          # The browser build is dead without cross-origin isolation, and
+          # nothing else in this pipeline would notice it going missing.
+          hdrs="$(curl -fsSI --max-time 10 https://battlebox.games/play/)"
+          echo "$hdrs" | grep -qi 'cross-origin-opener-policy: same-origin' \
+            || { echo "::error::COOP header missing on /play/"; exit 1; }
+          echo "$hdrs" | grep -qi 'cross-origin-embedder-policy: require-corp' \
+            || { echo "::error::COEP header missing on /play/"; exit 1; }
+          echo "battlebox.games is serving $got, cross-origin isolated."
+
+      - name: Clean up the key
+        if: always()
+        run: rm -f ~/.ssh/battlebox_deploy ~/.ssh/known_hosts_battlebox

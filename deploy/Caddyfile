@@ -1,0 +1,48 @@
+# TLS for battlebox.games.
+#
+# Caddy gets a real Let's Encrypt certificate over HTTP-01 and renews it
+# without being asked. That matters more than it sounds: the game replaced
+# a self-signed certificate, which meant every player had to click through
+# a browser warning before they could play, every time the certificate
+# changed. It also has to be a certificate the browser TRUSTS, not merely
+# https — the browser build needs SharedArrayBuffer, browsers only hand
+# that to a cross-origin isolated page, and isolation only counts in a
+# secure context.
+#
+# Cloudflare sits in front of this and proxies :80 through, ACME challenges
+# included, so renewal keeps working with the orange cloud on. Cloudflare's
+# SSL mode must be **Full (strict)** — it is the certificate here that makes
+# that valid.
+
+{
+	email ian@digitallyenabled.com
+	# Caddy's own admin API, off. Nothing here uses it and it is one less
+	# thing listening.
+	admin off
+}
+
+battlebox.games {
+	# Everything — the entry page, the downloads, the browser build and the
+	# game socket at /ws — is one nginx behind here. Caddy relays websocket
+	# upgrades and passes response headers through untouched, which is what
+	# keeps the Cross-Origin-* headers (and therefore the game) working.
+	#
+	# `server` is the compose service; nginx listens on 8081 inside its
+	# network namespace.
+	reverse_proxy server:8081
+
+	# No `encode` here on purpose. nginx already gzips the 60 MB browser
+	# build on the way out; compressing an already-compressed body a second
+	# time costs CPU and saves nothing.
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+# One canonical name. Anything arriving on www lands on the apex, so links
+# people share are all the same link.
+www.battlebox.games {
+	redir https://battlebox.games{uri} permanent
+}

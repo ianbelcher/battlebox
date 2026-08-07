@@ -1,28 +1,30 @@
-# Belcher World
+# BattleBox — [battlebox.games](https://battlebox.games)
 
 A cozy isometric "local MMO" for the kids (ages ~4-8), and a deliberate
 stress test of Godot 4's Forward+ renderer as an Unreal/Unity alternative.
-One persistent voxel world runs forever on the cluster; any machine on the
-LAN connects a native client and drops 1-4 local players into it (keyboard
-splits + gamepads, dynamic split screen). Explore, dig, build, collect
-flowers and shells, pet the sheep, plant trees, light lanterns for the
-night — nothing can hurt you.
+One persistent voxel world runs forever; anyone can join it in a browser,
+or install a native client, and drop 1-4 local players in from one machine
+(keyboard splits + gamepads, dynamic split screen). Explore, dig, build,
+collect flowers and shells, pet the sheep, plant trees, light lanterns for
+the night — nothing can hurt you.
 
 The world is either **procedurally generated** (a friendly island: meadows,
 forests, beaches, lakes, snowy hills) or **imported from a real Minecraft
-save** — including the family Minecraft server's world, whose NFS volume the
-server mounts read-only. Kids can walk around their own Minecraft builds in
-isometric Forward+ lighting; Godot-side edits are stored as an overlay and
-the Minecraft save is never modified.
+save**. Kids can walk around their own Minecraft builds in isometric
+Forward+ lighting; Godot-side edits are stored as an overlay and the
+Minecraft save is never modified.
 
 ## Playing
 
-1. Open `http://<node-ip>:30811`, download the build for your machine, run it.
-2. It connects itself. There is no server-picker screen — the client dials
-   the saved address (`ws://10.0.0.200:30810` by default) the moment it
-   launches, and if the link ever drops it says so and keeps retrying until
-   it's back, putting everyone who was playing straight back in their seat.
-   To point it somewhere else, use **Server** in the Esc menu's Map tab.
+1. Go to **<https://battlebox.games>** and press **Play now**. That is the
+   browser build — same game, same world, nothing to install.
+2. Or download a native client from the same page. It runs a little
+   smoother and connects itself: there is no server-picker screen, the
+   client dials `wss://battlebox.games/ws` the moment it launches, and if
+   the link ever drops it says so and keeps retrying until it's back,
+   putting everyone who was playing straight back in their seat. To point
+   it at a LAN or dev server, use **Server** in the Esc menu's Map tab, or
+   set `WORLD_SERVER_URL`.
 3. Press **Space** / **Enter** / gamepad **A** to jump in — up to 4 per
    machine, the screen splits automatically. Characters (name, look,
    position, treasures) persist per device and per name.
@@ -96,7 +98,9 @@ diamond, a glow set (glowstone, three crystal colors, harmless swimmable
 
 ## The tech (what's being stress-tested)
 
-- **Forward+ renderer, native clients only** — real directional sun +
+- **Forward+ renderer on native clients** (the browser build renders with
+  `gl_compatibility`/WebGL2 — same source, one per-platform override in
+  `project.godot`) — real directional sun +
   moon shadows, SSAO, glow, filmic tonemapping, day/night sky; every
   lantern/campfire is a real OmniLight3D with flicker and particles.
   `WORLD_MAXFX=1` additionally enables SDFGI and volumetric fog.
@@ -111,7 +115,7 @@ diamond, a glow set (glowstone, three crystal colors, harmless swimmable
 - **Server-authoritative multiplayer**: the headless server owns chunks,
   edits, the clock, critters, growth and per-character persistence;
   machines are authoritative only over their own players' positions
-  (`peer:slot` ids, as in Belcher Party).
+  (`peer:slot` ids).
 
 ## World sources
 
@@ -127,9 +131,9 @@ diamond, a glow set (glowstone, three crystal colors, harmless swimmable
 The `.mca` importer parses Anvil region files directly in GDScript (NBT,
 1.16+ packed palettes, 1.18+ section layout, zlib/gzip) and maps ~200 block
 types onto the game's 35-block palette (unknown solids read as stone, thin
-decorations vanish). Missing chunks become open ocean. In the cluster
-deployment the Minecraft volume is mounted read-only at `/minecraft`; see
-`_configurations/world.yaml` for the switch.
+decorations vanish). Missing chunks become open ocean. The maps that ship
+in `maps/` are selectable from the Esc menu; `WORLD_MCA_DIR` points at any
+other save.
 
 ## Layout
 
@@ -140,9 +144,14 @@ game/src/        every script; gameplay is data-driven from creatures.gd,
 game/tests/      headless harnesses — rig contact sheet, map renders,
                  the .mca importer test, the kit importer
 tools/           offline generators run by hand (rig_people.py, make_mca.py)
+                 and webtest.sh, which drives the browser build in Chrome
 maps/            selectable Minecraft maps, one folder each (see its README)
 source-art/      the original art zips — gitignored, README explains why
-web/             the downloads landing page nginx serves
+web/             the battlebox.games entry page nginx serves
+deploy/          everything that makes the droplet a website: the compose
+                 file, the Caddyfile, deploy.sh and the droplet's first-boot
+                 script
+k8s/             the build runner that lives on the home cluster
 TODO.md          the outstanding-work list, and how this project runs
 ```
 
@@ -195,11 +204,47 @@ godot --headless --path game --import   # always, after generating either
 
 ## Deployment
 
-One image, two roles (`server` + nginx `web` serving the downloads page) —
-NodePorts 30810 (game) / 30811 (downloads). World data persists on the NAS
-(`10.0.0.215:/data-pool/services/world/data` — create the directory before
-first apply). LAN-only by design; config changes in
-`_configurations/world.yaml` are applied manually, CI only bumps images.
+`battlebox.games` is one DigitalOcean droplet in San Francisco running three
+containers (`deploy/docker-compose.yml`):
+
+```
+Cloudflare ──▶ Caddy ──▶ nginx (web role) ──▶ Godot server (server role)
+   proxy,      real LE      entry page,           the world itself
+   caching     certificate  downloads, /play/,
+                            /ws relay
+```
+
+`server` and `web` are the same image with a different argument, sharing one
+network namespace, so nginx reaches the game on loopback.
+
+Pushing to `master` builds the image on the self-hosted runner, pushes it to
+`ghcr.io/ianbelcher/battlebox`, ships `deploy/` to the droplet and runs
+`deploy.sh` there. That script pins the exact image and then checks that
+`version.txt` served by the site is this commit and that `/ws` answers 101
+— so a green build means the change is live, not that it compiled.
+
+Four things about the web build are load-bearing and all four look optional:
+
+- **The certificate has to be real and the page has to be https.** The
+  browser build meshes chunks on real threads, which needs
+  `SharedArrayBuffer`, which browsers only hand to a *cross-origin isolated*
+  page: the two `Cross-Origin-*` headers in `nginx.conf`, and those only
+  count in a secure context.
+- **The websocket goes through the same origin** as the page, at `/ws`. A
+  page on https cannot open a plain `ws://` socket at all.
+- **`project.godot` sets `renderer/rendering_method.web`** to
+  `gl_compatibility`. A browser has no Vulkan; without that override the web
+  build inherits Forward+ and renders nothing.
+- **Anything calling `OS.create_process` / `OS.execute` is hidden on web** —
+  a browser has no such thing. That is the self-updater and the Lite/Full
+  renderer switch, both gated on `OS.has_feature("web")`.
+
+`tools/webtest.sh` proves all of that in a real headless Chrome, against the
+shipped `nginx.conf` behind a stand-in for Caddy. A run that merely fails to
+crash proves nothing.
+
+The world lives in the `world-data` docker volume on the droplet. It is the
+only thing here that cannot be rebuilt from this repo.
 
 ## GDScript gotchas (hard-won, do not regress)
 
