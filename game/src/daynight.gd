@@ -25,16 +25,39 @@ const NIGHT_HORIZON := Color("1c2445")
 ## The colour night is lit BY, once the sky stops doing it.
 ##
 ## Ambient light is taken from the sky, and the night sky is very nearly
-## black — which is the whole reason night went from "moonlit" to "cannot
-## see the block in front of your face". Turning the sky's contribution
-## down after dusk and mixing this in instead keeps the palette cool and
-## night-like while leaving every block readable. It is deliberately blue:
-## a grey lift just looks like the gamma is broken.
-const NIGHT_AMBIENT := Color("8a9ccb")
+## black — which is why night was once unplayably dark. Turning the sky's
+## contribution down after dusk and mixing this in instead keeps the
+## palette cool and night-like while leaving blocks readable. It is
+## deliberately blue: a grey lift just looks like the gamma is broken.
+##
+## Dim on purpose. The first attempt at this used a much brighter blue and
+## lifted the energy on top, which produced a night you could read a book
+## by — see the note on MOON_ENERGY.
+const NIGHT_AMBIENT := Color("56658c")
 ## How much of the ambient stops coming from the sky at midnight.
-const NIGHT_SKY_PULLBACK := 0.8
-## Extra ambient energy at midnight, on top of the daytime floor.
-const NIGHT_AMBIENT_LIFT := 0.55
+const NIGHT_SKY_PULLBACK := 0.75
+
+## The moon, as a fraction of full sunlight (SUN_ENERGY).
+##
+## This number was 0.4, then briefly 0.85, which is where night stopped
+## looking like night: the sun only reaches 0.42 as it crosses the horizon,
+## so a 0.85 moon made MIDNIGHT BRIGHTER THAN DAWN. Walking from 5am to
+## 6am, the world got darker as the sun came up. It also cast hard shadows
+## at three in the morning from something that was not drawn in the sky.
+##
+## Keeping it well under the horizon-crossing sun is what makes the whole
+## day monotonic: brightest at noon, dimmest in the small hours.
+const SUN_ENERGY := 1.4
+const MOON_ENERGY := 0.22
+
+## Where the sun's light fades out and the moon's fades in, in elevation
+## (sin of the sun's angle: +1 overhead, 0 at the horizon, -1 midnight).
+## The two ramps overlap slightly so nothing ever drops into a trough
+## between them, which is what a hard cutover produced.
+const SUN_SET := -0.12
+const SUN_FULL := 0.20
+const MOON_HELD_OFF := 0.02
+const MOON_FULL := -0.22
 
 ## Seconds per full day. Pushed from the world, which fits one whole day
 ## into a battle — see WorldNode.day_length. The sky runs its own clock
@@ -57,7 +80,8 @@ func _ready() -> void:
 	moon.directional_shadow_max_distance = 90.0
 	moon.light_color = Color(0.62, 0.72, 0.95)
 	moon.light_energy = 0.0
-	# Never draw a second (dark) sun disc for the moon in the sky.
+	# Starts light-only; _apply() turns the disc on once the moon is up and
+	# lit, and off again before daybreak. See the note there.
 	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(moon)
 
@@ -119,22 +143,34 @@ func _apply(clock: float) -> void:
 	var sun_angle := (clock - 0.25) * TAU  # 0 at dawn
 	var elevation := sin(sun_angle)
 	sun.rotation = Vector3(-maxf(elevation, 0.02) * 1.35, 0.8 + cos(sun_angle) * 0.4, 0)
-	# The sun keeps glowing a little past the horizon so dusk stays warm
-	# instead of collapsing into a black trough before the moon takes over.
-	var daylight := clampf(elevation * 2.2 + 0.3, 0.0, 1.0)
-	sun.light_energy = daylight * 1.4 * _gl_boost
+	# Smooth ramps rather than a clamped straight line, so the light never
+	# steps and never dips between the two.
+	var daylight := smoothstep(SUN_SET, SUN_FULL, elevation)
+	sun.light_energy = daylight * SUN_ENERGY * _gl_boost
 	sun.shadow_enabled = allow_shadows and daylight > 0.1
 	var warmth := clampf(1.0 - elevation * 2.0, 0.0, 1.0)  # low sun = warm
 	sun.light_color = Color(1.0, 0.96 - warmth * 0.25, 0.88 - warmth * 0.4)
 
-	var moonlight := clampf(-elevation * 5.0, 0.0, 1.0)
+	var moonlight := smoothstep(MOON_HELD_OFF, MOON_FULL, elevation)
 	moon.rotation = Vector3(-maxf(-elevation, 0.02) * 1.2, -0.6, 0)
-	# A brighter moon, and brighter again on the browser's renderer, which
-	# has no SSAO or bounce light to fill anything in. The moon is the only
-	# thing giving night any SHAPE — without it every face of every block
-	# is the same flat ambient colour and the world reads as a fog bank.
-	moon.light_energy = moonlight * 0.85 * _gl_boost
-	moon.shadow_enabled = allow_shadows and moonlight > 0.4
+	moon.light_energy = moonlight * MOON_ENERGY * _gl_boost
+	# THERE IS A MOON IN THE SKY NOW, and it is drawn by the sky shader
+	# rather than placed in the world — which is the only way it can be
+	# right for all four split-screen cameras at once, since they share one
+	# World3D and a real object would have the wrong parallax for three of
+	# them.
+	#
+	# It has to be switched off during the day. The disc is drawn from the
+	# light's colour times its energy, so a moon that is up but unlit is a
+	# BLACK dot on a blue sky — which is why this was disabled outright
+	# before, and why it is toggled rather than simply left on.
+	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY if moonlight > 0.05 \
+		else DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	# Faint shadows, and only once the moon is properly up. Hard-edged
+	# shadows at 3am from an invisible source were the tell that something
+	# was wrong here.
+	moon.shadow_enabled = allow_shadows and moonlight > 0.5
+	moon.shadow_opacity = 0.5
 
 	var top: Color
 	var horizon: Color
@@ -161,10 +197,10 @@ func _apply(clock: float) -> void:
 	# turning the energy up alone could never have fixed it, because the
 	# COLOUR was the problem.
 	#
-	# So as the sun goes down the sky hands ambient over to a fixed blue,
-	# and the energy lifts to meet it.
+	# So as the sun goes down the sky hands ambient over to a fixed, DIM
+	# blue. No energy lift on top of it: that was the other half of making
+	# night look like an overcast afternoon.
 	var night := 1.0 - daylight
 	environment.ambient_light_sky_contribution = 1.0 - night * NIGHT_SKY_PULLBACK
 	environment.ambient_light_color = NIGHT_AMBIENT
-	environment.ambient_light_energy = \
-		(0.72 + daylight * 0.28 + night * NIGHT_AMBIENT_LIFT) * _gl_boost
+	environment.ambient_light_energy = (0.72 + daylight * 0.28) * _gl_boost
