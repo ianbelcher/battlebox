@@ -1,7 +1,7 @@
 extends SceneTree
 ## Regenerating the world must MOVE THE COMPUTER PLAYERS.
 ##
-##   WORLD_DATA_DIR=/tmp/resetbots godot --headless --path <game> \
+##   godot --headless --path <game> \
 ##     --script res://tests/reset_bots.gd
 ##
 ## Ian's report, exactly: "Alpha and Bravo were both placed outside the

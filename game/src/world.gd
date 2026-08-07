@@ -15,7 +15,9 @@ extends Node
 ##   (server timers)               -> cl_clock(frac), cl_critters(payload)
 
 const EDIT_RANGE := 10.0
-const AUTOSAVE_SECONDS := 25.0
+## How often untouched chunks are dropped from the server's cache. Nothing
+## is written to disk on this tick — or on any other; see ChunkStore.
+const CACHE_TRIM_SECONDS := 60.0
 const MAX_CRITTERS := 56
 const CRITTERS_PER_PLAYER := 9
 
@@ -230,16 +232,16 @@ func _server_setup() -> void:
 	source = store.source
 	spawn_pos = store.find_spawn()
 	_build_overview()
-	var config := ConfigFile.new()
-	config.load(store.data_dir.path_join("world.cfg"))
-	clock = float(config.get_value("world", "clock", 0.35))
+	# The clock starts at morning, every time. It used to be restored from
+	# disk, which meant a server that happened to go down at 3am came back
+	# up at 3am — a fresh world in the dark, for no reason anyone could see.
 	print("World spawn at %s, clock %.2f" % [spawn_pos, clock])
 	_load_battle_setup()
-	var autosave := Timer.new()
-	autosave.wait_time = AUTOSAVE_SECONDS
-	autosave.timeout.connect(_server_autosave)
-	add_child(autosave)
-	autosave.start()
+	var trim := Timer.new()
+	trim.wait_time = CACHE_TRIM_SECONDS
+	trim.timeout.connect(_server_trim_cache)
+	add_child(trim)
+	trim.start()
 	var clock_timer := Timer.new()
 	clock_timer.wait_time = 5.0
 	clock_timer.timeout.connect(func() -> void: cl_clock.rpc(clock))
@@ -284,20 +286,20 @@ func _process(delta: float) -> void:
 			_fire_accum = 0.0
 			_server_tick_fire()
 
-## Flush everything on clean shutdown (docker stop / pod reschedule); the
-## 25s autosave bounds losses if the process is killed hard.
-func _exit_tree() -> void:
-	if multiplayer.is_server() and store != null:
-		store.save_dirty()
-
-func _server_autosave() -> void:
+## Drop chunks that can be regenerated exactly, so a server left up for
+## days does not hold every chunk anyone ever walked through.
+##
+## This used to also zstd every edited chunk out to a file, and write the
+## world clock alongside it, every 25 seconds. Nothing ever read any of it:
+## the world is regenerated from the seed on every boot, and the chunk
+## files were deleted at startup. It was compression and disk I/O on the
+## server's only thread, on a timer, for a result that was thrown away.
+func _server_trim_cache() -> void:
 	if match_phase != "IDLE":
-		return  # matches live in RAM; nothing touches disk mid-fight
-	var saved := store.save_dirty()
-	var config := ConfigFile.new()
-	config.load(store.data_dir.path_join("world.cfg"))
-	config.set_value("world", "clock", clock)
-	config.save(store.data_dir.path_join("world.cfg"))
+		return  # nothing gets dropped out from under a live match
+	var dropped := store.trim_cache()
+	if dropped > 0:
+		print("World: dropped %d regenerable chunks from cache" % dropped)
 	if saved > 0:
 		print("Autosave: %d chunks" % saved)
 

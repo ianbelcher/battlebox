@@ -1,7 +1,7 @@
 extends SceneTree
 ## NOBODY IS EVER PLACED OFF THE MAP.
 ##
-##   WORLD_DATA_DIR=/tmp/place godot --headless --path <game> \
+##   godot --headless --path <game> \
 ##     --script res://tests/placement.gd
 ##
 ## This kept coming back. Each time, a caller was fixed and the next one

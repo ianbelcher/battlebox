@@ -36,8 +36,11 @@ arrangement the two containers had inside a k8s pod. Recreating `server`
 tears down the namespace `web` lives in, so `deploy.sh` always brings the
 whole stack up together rather than restarting one container.
 
-**The world lives in the `world-data` docker volume on the droplet.** It
-is the only thing in this system that cannot be rebuilt from this repo.
+**Nothing on that box needs backing up.** The game writes no files at all
+(see *Nothing is persisted*), so the only volume is Caddy's certificate
+store, and losing that just means Caddy fetches a new certificate. The
+droplet is disposable: rebuild it from `deploy/cloud-init.sh` and re-run
+the workflow.
 
 ## Playing in a browser
 
@@ -82,10 +85,12 @@ to crash proves nothing.
 
 ## Nothing is persisted
 
-**The server keeps NOTHING on disk about a game in progress** — not
-where players stood, not what they carried, not the team layout, not the
-mode, not the world's blocks. A restart is a clean table: fresh terrain,
-default teams, no computer players, creative mode.
+**The server writes NOTHING to disk. Not one file.** Not where players
+stood, not what they carried, not the team layout, not the mode, not the
+world's blocks, not the seed, not the clock. A restart is a clean table:
+freshly generated terrain, default teams, no computer players, creative
+mode. The container has no volume, and there is nothing on that box to
+back up.
 
 That is deliberate, and it is the fix for a whole family of bugs. The
 world is thrown away on every restart AND every resize, so anything
@@ -94,6 +99,29 @@ positions from a map twice the size (players falling to bedrock outside
 the new edge), crates hanging in the void, a battle running over terrain
 that no longer existed. Do not add persistence back without a reason
 better than convenience.
+
+It took two passes to actually be true. The first removed the *reading*:
+chunk files and `players.cfg` were deleted at startup, so a restart really
+was a clean table. But the *writing* stayed — every edited chunk was still
+zstd-compressed out to its own file every 25 seconds, alongside the clock
+and a `world.cfg` holding the seed, theme and size. That was compression
+and disk I/O on the server's only thread, on a timer, producing files
+whose sole purpose was to be deleted on the next boot. All of it is gone
+now; `WORLD_DATA_DIR` is gone with it.
+
+**What a fresh world is, is now decided entirely by the environment**
+(`WORLD_SEED`, `WORLD_THEME`, `WORLD_SIZE`, `WORLD_SOURCE`) plus whatever
+anyone changes from the menu afterwards. There is no third source of truth
+in a file. A side effect worth knowing: the map, size and time of day
+chosen from the menu no longer survive a restart, because that was the
+`world.cfg` doing it — the "clean table" quietly wasn't one.
+
+**The rule this bought, and the one thing that can break it:** an edited
+chunk may never be dropped from `ChunkStore._cache`. It has no file to come
+back from now, so evicting one would silently regenerate the terrain under
+somebody's fort. `trim_cache()` skips anything in `_edited`, and the memory
+ceiling that leaves is the world's size, not the uptime — at most 49x49
+chunks of 20 KiB, so under 50 MiB even if every corner is dug out.
 
 ## Placing a player
 
@@ -327,9 +355,9 @@ anywhere else, that is the bug.
   and `./deploy.sh <sha>` to roll to any built image by hand. `deploy/` in
   this repo is copied there by CI on every deploy, so edit it HERE — a
   change made on the box is overwritten on the next push.
-- **Test before shipping.** Headless server + client with `WORLD_DATA_DIR`,
-  `WORLD_AUTOTEST` and `WORLD_SHOTS` screenshots; check BOTH split-screen
-  seats for anything UI-related.
+- **Test before shipping.** Headless server + client with `WORLD_AUTOTEST`
+  and `WORLD_SHOTS` screenshots; check BOTH split-screen seats for anything
+  UI-related.
 - **The world menu has two rules; breaking either makes it unusable.**
   (1) Never rebuild it on a timer — rebuilding rows every frame destroys
   the text box being typed in and the button being clicked. (2) Never read

@@ -2,11 +2,16 @@
 
 A cozy isometric "local MMO" for the kids (ages ~4-8), and a deliberate
 stress test of Godot 4's Forward+ renderer as an Unreal/Unity alternative.
-One persistent voxel world runs forever; anyone can join it in a browser,
-or install a native client, and drop 1-4 local players in from one machine
-(keyboard splits + gamepads, dynamic split screen). Explore, dig, build,
-collect flowers and shells, pet the sheep, plant trees, light lanterns for
-the night — nothing can hurt you.
+One always-on voxel world; anyone can join it in a browser, or install a
+native client, and drop 1-4 local players in from one machine (keyboard
+splits + gamepads, dynamic split screen). Explore, dig, build, collect
+flowers and shells, pet the sheep, plant trees, light lanterns for the
+night — nothing can hurt you.
+
+The world lives in the server's memory and **nothing is written to disk**.
+A restart is a clean table: freshly generated terrain, default teams, no
+computer players, creative mode. That is deliberate — see
+[TODO.md](TODO.md#nothing-is-persisted) for the family of bugs it fixes.
 
 The world is either **procedurally generated** (a friendly island: meadows,
 forests, beaches, lakes, snowy hills) or **imported from a real Minecraft
@@ -26,8 +31,8 @@ Minecraft save is never modified.
    it at a LAN or dev server, use **Server** in the Esc menu's Map tab, or
    set `WORLD_SERVER_URL`.
 3. Press **Space** / **Enter** / gamepad **A** to jump in — up to 4 per
-   machine, the screen splits automatically. Characters (name, look,
-   position, treasures) persist per device and per name.
+   machine, the screen splits automatically. Your name and character are
+   remembered by your own machine; the server keeps nothing about you.
 
 Controls are Minecraft-shaped. **First person is the default view**; T / Y
 switches to the isometric overview and back.
@@ -113,17 +118,23 @@ diamond, a glow set (glowstone, three crystal colors, harmless swimmable
   data (UV2) — no textures, no art assets, no physics engine (hand-rolled
   voxel AABB movement with kid-friendly auto-hop and buoyancy).
 - **Server-authoritative multiplayer**: the headless server owns chunks,
-  edits, the clock, critters, growth and per-character persistence;
-  machines are authoritative only over their own players' positions
-  (`peer:slot` ids).
+  edits, the clock, critters and growth — all of it in memory, none of it
+  on disk; machines are authoritative only over their own players'
+  positions (`peer:slot` ids).
 
 ## World sources
+
+The server writes nothing to disk — the world is generated into memory at
+boot and dies with the process — so these environment variables are the
+whole of what a fresh server is, until somebody changes the map from the
+menu:
 
 | Env                | Default          | Meaning |
 | ------------------ | ---------------- | ------- |
 | `WORLD_SOURCE`     | `procedural`     | `procedural` or `mca` |
 | `WORLD_SEED`       | `20260726`       | procedural seed |
-| `WORLD_DATA_DIR`   | `user://world`   | persistence dir (chunk edit overlay, clock, players) |
+| `WORLD_THEME`      | `classic`        | procedural theme |
+| `WORLD_SIZE`       | `250`            | side of the square world, in blocks |
 | `WORLD_MCA_DIR`    | —                | Minecraft world dir (or its `region/` dir) |
 | `WORLD_MCA_Y0`     | `40`             | Minecraft y that becomes world floor +1 |
 | `WORLD_MCA_CENTER` | `0,0`            | Minecraft x,z that becomes our origin (chunk-aligned) |
@@ -243,8 +254,10 @@ Four things about the web build are load-bearing and all four look optional:
 shipped `nginx.conf` behind a stand-in for Caddy. A run that merely fails to
 crash proves nothing.
 
-The world lives in the `world-data` docker volume on the droplet. It is the
-only thing here that cannot be rebuilt from this repo.
+Nothing on the droplet needs backing up. The game writes no files, so the
+only volume there is Caddy's certificate store — and losing even that just
+means Caddy fetches a new certificate. The box is disposable: rebuild it
+from `deploy/cloud-init.sh` and re-run the workflow.
 
 ## GDScript gotchas (hard-won, do not regress)
 

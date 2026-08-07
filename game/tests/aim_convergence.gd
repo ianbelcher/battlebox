@@ -1,7 +1,7 @@
 extends SceneTree
 ## In first person, THE SHOT IS THE SIGHT LINE.
 ##
-##   WORLD_DATA_DIR=/tmp/aim godot --headless --path <game> \
+##   godot --headless --path <game> \
 ##     --script res://tests/aim_convergence.gd
 ##
 ## Whatever the crosshair is on is what gets hit — not approximately, and

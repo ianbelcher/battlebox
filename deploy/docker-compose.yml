@@ -1,9 +1,10 @@
 # The whole of battlebox.games, on one box.
 #
-# Three containers:
+# Three containers, and no state worth the name:
 #   server  the world — the Godot headless build, holding every block and
-#           every player. Not published to the host: the only way in is
-#           through the proxy.
+#           every player IN MEMORY. It writes nothing to disk, so this box
+#           has nothing to back up. Not published to the host: the only way
+#           in is through the proxy.
 #   web     nginx, serving the entry page, the native downloads and the
 #           browser build, and relaying the game socket at /ws.
 #   caddy   TLS. Holds the real battlebox.games certificate and renews it
@@ -21,11 +22,12 @@ services:
     image: ${BATTLEBOX_IMAGE:?set BATTLEBOX_IMAGE in .env}
     command: ["server"]
     restart: unless-stopped
+    # The whole of what a fresh world is. The server writes nothing to
+    # disk — no volume, no state, nothing to back up or migrate — so this
+    # is the only place its shape is decided until somebody changes the map
+    # from the in-game menu.
     environment:
-      WORLD_DATA_DIR: /data
       WORLD_SOURCE: procedural
-    volumes:
-      - world-data:/data
     # Loopback only. This is the health endpoint deploy.sh polls and the
     # way in for a hands-on look; it is NOT reachable from the internet,
     # and it must not be — a page served over plain http is not a secure
@@ -78,8 +80,12 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
 volumes:
-  # Every block anyone has ever placed. The one thing here that cannot be
-  # rebuilt from the repo.
-  world-data:
+  # Caddy's certificate and ACME account key — the only state on this box.
+  # Losing it is not fatal (Caddy just gets a fresh certificate) but doing
+  # that repeatedly walks into Let's Encrypt's rate limits.
+  #
+  # There is deliberately no volume for the game. The world is generated
+  # into memory at boot and thrown away with the process, so a restart is a
+  # clean table by construction rather than by a cleanup step.
   caddy-data:
   caddy-config:

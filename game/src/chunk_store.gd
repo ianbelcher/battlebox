@@ -2,18 +2,38 @@ class_name ChunkStore
 extends RefCounted
 ## Server-side authoritative world storage. Chunks come from one of two
 ## sources — the procedural generator or a read-only Minecraft world — and
-## every edited chunk is persisted to the data dir as its own zstd blob, so
-## the source world is never modified and the server can restart freely.
+## the source world is never modified.
 ##
-## Layout on disk (WORLD_DATA_DIR, default user://world):
-##   world.cfg          seed, source, world clock
-##   chunks/c_X_Z.bin   zstd-compressed block bytes for edited chunks
+## THIS WRITES NOTHING TO DISK. The world lives in memory and dies with
+## the process, on purpose.
+##
+## It used to zstd every edited chunk out to a file every 25 seconds — and
+## then delete every one of those files on the next boot, because the world
+## has always been regenerated fresh on restart. Compressing and writing a
+## few hundred chunks on a timer is real work on the server's only thread,
+## and nothing ever read a byte of it. The seed, theme and size were kept
+## in a world.cfg beside them, which meant a "clean table" restart quietly
+## came back with the last session's map, its size and its time of day.
+##
+## What a fresh server is now is decided entirely by its environment
+## (WORLD_SEED / WORLD_THEME / WORLD_SIZE / WORLD_SOURCE) and by whoever
+## changes the map from the menu afterwards. There is no third source of
+## truth sitting in a file, and no volume to lose.
+##
+## The one thing that has to be true for this to be safe: an edited chunk
+## may NEVER be dropped from the cache. It has no file to come back from,
+## so evicting one would silently regenerate the terrain underneath
+## somebody's fort. `trim_cache()` only ever drops chunks that are still
+## exactly as generated.
 
 const RAW_CHUNK_BYTES := WorldGen.CHUNK_SIZE * WorldGen.CHUNK_SIZE * WorldGen.CHUNK_H
 ## Chunks farther than this (in chunks) from the origin are ocean border.
 const WORLD_RADIUS_CHUNKS := 24
+## The world every fresh server makes, unless WORLD_SEED says otherwise.
+## Fixed rather than random so a restart is a place people recognise —
+## the same island, freshly built, not somewhere new every time.
+const DEFAULT_SEED := 20260726
 
-var data_dir: String
 var source := "procedural"  # or "mca"
 var theme := "classic"
 ## Side of the square world, in blocks — a size of 50 is a 50x50 slab
@@ -24,29 +44,23 @@ var gen: WorldGen
 var mca: McaWorld = null
 
 var _cache: Dictionary = {}       # Vector2i -> PackedByteArray
-var _dirty: Dictionary = {}       # Vector2i -> true (needs saving)
-var _edited: Dictionary = {}      # Vector2i -> true (has a disk file)
+## Chunks somebody has changed. These are the world — there is no copy of
+## them anywhere else — so they are pinned in the cache for the lifetime of
+## the world and only `reset_world()` lets them go.
+var _edited: Dictionary = {}      # Vector2i -> true
 
 func _init() -> void:
-	data_dir = OS.get_environment("WORLD_DATA_DIR")
-	if data_dir.is_empty():
-		data_dir = "user://world"
-	DirAccess.make_dir_recursive_absolute(data_dir.path_join("chunks"))
-	var config := ConfigFile.new()
-	config.load(data_dir.path_join("world.cfg"))
 	source = OS.get_environment("WORLD_SOURCE")
 	if source.is_empty():
-		source = str(config.get_value("world", "source", "procedural"))
+		source = "procedural"
 	var seed_env := OS.get_environment("WORLD_SEED")
-	var seed_value: int
-	if seed_env.is_valid_int():
-		seed_value = seed_env.to_int()
-	else:
-		seed_value = int(config.get_value("world", "seed", 20260726))
+	var seed_value := seed_env.to_int() if seed_env.is_valid_int() else DEFAULT_SEED
 	theme = OS.get_environment("WORLD_THEME")
 	if theme.is_empty():
-		theme = str(config.get_value("world", "theme", "classic"))
-	world_size = int(config.get_value("world", "size", world_size))
+		theme = "classic"
+	var size_env := OS.get_environment("WORLD_SIZE")
+	if size_env.is_valid_int():
+		world_size = size_env.to_int()
 	gen = WorldGen.new(seed_value, theme, world_size)
 	if source == "mca":
 		var mca_dir := OS.get_environment("WORLD_MCA_DIR")
@@ -55,26 +69,8 @@ func _init() -> void:
 			push_error("WORLD_SOURCE=mca but no region files at '%s'; falling back to procedural" % mca_dir)
 			source = "procedural"
 			mca = null
-	config.set_value("world", "seed", seed_value)
-	config.set_value("world", "source", source)
-	config.set_value("world", "theme", theme)
-	config.set_value("world", "size", world_size)
-	config.save(data_dir.path_join("world.cfg"))
-	# Worlds are ephemeral: block edits never survive a restart — every
-	# boot starts from clean generation (only SETTINGS persist). This
-	# also means a crash can't strand everyone in a half-eaten map.
-	var dir := DirAccess.open(data_dir.path_join("chunks"))
-	if dir != null:
-		for file in dir.get_files():
-			if file.begins_with("c_") and file.ends_with(".bin"):
-				dir.remove(file)
-	# Nothing about a PLAYER is kept on disk at all any more — not where
-	# they stood, not what they carried. A restart is a fresh world, so
-	# anything remembered from the last one only ever made nonsense of
-	# the new one. Old players.cfg files are deleted on sight.
-	DirAccess.remove_absolute(data_dir.path_join("players.cfg"))
-	print("World store: source=%s seed=%d data=%s edited_chunks=%d" % [
-		source, seed_value, data_dir, _edited.size()])
+	print("World store: source=%s seed=%d theme=%s size=%d (memory only, nothing on disk)" % [
+		source, seed_value, theme, world_size])
 
 func in_bounds(cpos: Vector2i) -> bool:
 	return absi(cpos.x) <= WORLD_RADIUS_CHUNKS and absi(cpos.y) <= WORLD_RADIUS_CHUNKS
@@ -251,18 +247,18 @@ func carve_exit_ramp(origin: Vector3i, radius: float) -> Array:
 func get_chunk(cpos: Vector2i) -> PackedByteArray:
 	if _cache.has(cpos):
 		return _cache[cpos]
+	# A miss can only ever be a chunk nobody has touched: edited ones are
+	# pinned in the cache and never evicted, so reaching here means the
+	# generator (or the .mca) is the whole truth about this chunk.
 	var data: PackedByteArray
-	if _edited.has(cpos):
-		data = _load_chunk_file(cpos)
-	if data.is_empty():
-		if not in_bounds(cpos):
+	if not in_bounds(cpos):
+		data = _border_chunk()
+	elif mca != null:
+		data = mca.read_chunk(cpos.x, cpos.y)
+		if data.is_empty():
 			data = _border_chunk()
-		elif mca != null:
-			data = mca.read_chunk(cpos.x, cpos.y)
-			if data.is_empty():
-				data = _border_chunk()
-		else:
-			data = gen.generate_chunk(cpos.x, cpos.y)
+	else:
+		data = gen.generate_chunk(cpos.x, cpos.y)
 	_cache[cpos] = data
 	return data
 
@@ -290,7 +286,8 @@ func set_block(pos: Vector3i, block: int) -> void:
 	var lz := posmod(pos.z, 16)
 	data[WorldGen.idx(lx, pos.y, lz)] = block
 	_cache[cpos] = data
-	_dirty[cpos] = true
+	# From here on this chunk IS the world — regenerating it would undo
+	# whatever was just built — so it is pinned against eviction.
 	_edited[cpos] = true
 
 ## Top solid/water surface for spawning things on.
@@ -355,12 +352,8 @@ static func list_maps() -> Array:
 func reset_world(new_seed: int, map_name := "", new_size := 0) -> void:
 	if new_size > 0:
 		world_size = new_size
+	# Dropping both is the entire reset: the world only ever existed here.
 	_cache.clear()
-	_dirty.clear()
-	var dir := DirAccess.open(data_dir.path_join("chunks"))
-	if dir != null:
-		for file in dir.get_files():
-			dir.remove(file)
 	_edited.clear()
 	_apply_map(map_name, new_seed)
 
@@ -398,44 +391,30 @@ func _apply_map(map_name: String, new_seed: int) -> void:
 		mca = null
 		theme = map_name
 	gen = WorldGen.new(new_seed, theme, world_size)
-	var config := ConfigFile.new()
-	config.load(data_dir.path_join("world.cfg"))
-	config.set_value("world", "seed", new_seed)
-	config.set_value("world", "source", source)
-	config.set_value("world", "theme", theme)
-	config.set_value("world", "size", world_size)
-	config.save(data_dir.path_join("world.cfg"))
 
-func save_dirty() -> int:
-	var saved := 0
-	for cpos: Vector2i in _dirty.keys():
-		var file := FileAccess.open(_chunk_path(cpos), FileAccess.WRITE)
-		if file != null:
-			file.store_buffer(_cache[cpos].compress(FileAccess.COMPRESSION_ZSTD))
-			file.close()
-			saved += 1
-	_dirty.clear()
-	# Keep memory bounded on long-running servers: drop far, clean chunks.
-	if _cache.size() > 1400:
-		for cpos: Vector2i in _cache.keys():
-			if not _dirty.has(cpos) and _cache.size() > 1000:
-				_cache.erase(cpos)
-	return saved
-
-func _chunk_path(cpos: Vector2i) -> String:
-	return data_dir.path_join("chunks/c_%d_%d.bin" % [cpos.x, cpos.y])
-
-func _load_chunk_file(cpos: Vector2i) -> PackedByteArray:
-	var file := FileAccess.open(_chunk_path(cpos), FileAccess.READ)
-	if file == null:
-		return PackedByteArray()
-	var blob := file.get_buffer(file.get_length())
-	file.close()
-	var data := blob.decompress(RAW_CHUNK_BYTES, FileAccess.COMPRESSION_ZSTD)
-	if data.size() != RAW_CHUNK_BYTES:
-		push_error("Corrupt chunk file %s" % _chunk_path(cpos))
-		return PackedByteArray()
-	return data
+## Keep memory bounded on a long-running server by dropping chunks that can
+## be regenerated exactly — nothing else.
+##
+## An EDITED chunk is never dropped. It has no file to come back from, so
+## evicting one would quietly hand back generated terrain in its place and
+## a fort would stop existing. That is the whole cost of not writing to
+## disk, and it is paid here.
+##
+## The ceiling that puts on memory is the world, not the uptime: the slab
+## is at most 49x49 chunks of 20 KiB, so even a world edited corner to
+## corner is under 50 MiB.
+func trim_cache() -> int:
+	if _cache.size() <= 1400:
+		return 0
+	var dropped := 0
+	for cpos: Vector2i in _cache.keys():
+		if _cache.size() <= 1000:
+			break
+		if _edited.has(cpos):
+			continue
+		_cache.erase(cpos)
+		dropped += 1
+	return dropped
 
 ## Open ocean for everything outside the playable radius / missing MCA chunks.
 func _border_chunk() -> PackedByteArray:

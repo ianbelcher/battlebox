@@ -2,7 +2,7 @@ extends SceneTree
 ## End-to-end: a running world with computer players in it, resized down.
 ## Nobody may be outside the map afterwards.
 ##
-##   WORLD_DATA_DIR=/tmp/live godot --headless --path <game> \
+##   godot --headless --path <game> \
 ##     --script res://tests/live_resize.gd
 ##
 ## The unit tests check the pieces; this checks the actual sequence Ian

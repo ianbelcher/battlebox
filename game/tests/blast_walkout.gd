@@ -12,7 +12,7 @@ extends SceneTree
 ## measures the damage too, and fails if a shot removes far more than its
 ## own sphere.
 ##
-##   WORLD_DATA_DIR=/tmp/walkout godot --headless --path <game> \
+##   godot --headless --path <game> \
 ##     --script res://tests/blast_walkout.gd
 ##
 ## Escape is checked the way a PLAYER would experience it: flood out from
@@ -40,7 +40,7 @@ var _failures := 0
 var _checked := 0
 
 func _initialize() -> void:
-	var store := ChunkStore.new()   # _init() boots it from WORLD_DATA_DIR
+	var store := ChunkStore.new()   # _init() boots it from the environment
 	var shapes := ["flat", "slope"]
 	for ri in RADII.size():
 		var radius: float = RADII[ri]

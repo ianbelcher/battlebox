@@ -1,7 +1,7 @@
 extends SceneTree
 ## Changing the world's SIZE must restart everything.
 ##
-##   WORLD_DATA_DIR=/tmp/resize godot --headless --path <game> \
+##   godot --headless --path <game> \
 ##     --script res://tests/resize_reset.gd
 ##
 ## Resizing used to leave the old world's leftovers lying around in the

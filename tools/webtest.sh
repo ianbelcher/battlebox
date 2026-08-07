@@ -40,7 +40,7 @@ godot --headless --path "$GAME" --export-release "Web" "$GAME/build/play/index.h
 
 echo "==> staging into $WORK"
 rm -rf "$WORK"
-mkdir -p "$WORK"/{tls,www/play,logs,data}
+mkdir -p "$WORK"/{tls,www/play,logs}
 cp -r "$GAME/build/play/." "$WORK/www/play/"
 cp "$ROOT/web/index.html" "$WORK/www/index.html"
 
@@ -111,7 +111,7 @@ trap cleanup EXIT
 echo "==> starting nginx and a world server"
 nginx -t -c "$WORK/nginx.conf" -p "$WORK" 2>&1 | tail -1
 nginx -c "$WORK/nginx.conf" -p "$WORK"
-WORLD_DATA_DIR="$WORK/data" WORLD_PORT="$PORT_GAME" \
+WORLD_PORT="$PORT_GAME" \
   godot --headless --path "$GAME" > "$WORK/logs/server.log" 2>&1 &
 SERVER_PID=$!
 sleep 8

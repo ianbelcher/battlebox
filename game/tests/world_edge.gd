@@ -1,7 +1,7 @@
 extends SceneTree
 ## Walking into the edge of the map STOPS you. It does not teleport you.
 ##
-##   WORLD_DATA_DIR=/tmp/edge godot --headless --path <game> \
+##   godot --headless --path <game> \
 ##     --script res://tests/world_edge.gd
 ##
 ## Ian: "as soon as I hit the boundary I get placed back at some random
