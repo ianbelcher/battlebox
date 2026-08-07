@@ -2490,8 +2490,9 @@ func _server_match_drop() -> void:
 		# last time is the wall you start behind this time.
 		var seats_here: PackedStringArray = _team_seats.get(team_i, PackedStringArray())
 		var seat := maxi(seats_here.find(id), 0)
-		var drop := _team_start_spot(team_i, seat)
-		cl_stand.rpc(id, drop, loot_only)
+		var drop := _ctf_home_spot(team_i, seat) if _ctf_active() \
+			else _team_start_spot(team_i, seat)
+		cl_stand.rpc(id, drop, loot_only, Weapons.starting_kit(game_mode), true)
 		if _bots.has(id):
 			_bots[id].pos = drop
 			# WORLD_BOT_WEAPON=<id>: hand every computer player that weapon
@@ -3142,7 +3143,8 @@ func cl_storm(radius: float, center: Vector3 = Vector3.ZERO) -> void:
 	storm_changed.emit()
 
 @rpc("authority", "reliable")
-func cl_stand(id: String, pos: Vector3, loot := false) -> void:
+func cl_stand(id: String, pos: Vector3, loot := false, kit: Array = [],
+		reset_kit := true) -> void:
 	for child in players.get_children():
 		if child is Player and child.player_id == id and child.is_local:
 			# Stood on the ground beside your team, not dropped out of the
@@ -3151,15 +3153,18 @@ func cl_stand(id: String, pos: Vector3, loot := false) -> void:
 			child.teleport(pos)
 			child.fly_mode = false
 			child.velocity = Vector3.ZERO
-			# Everyone drops with the same small kit — a sword to fight
-			# with and the two team markers, so a squad can talk to each
-			# other from the first second. Everything else is loot.
-			child.slots = []
-			for weapon_id: int in Weapons.STARTING_KIT:
-				child.slots.append({"kind": "weapon", "id": weapon_id})
-			while child.slots.size() < 8:
-				child.slots.append({"kind": "empty", "id": 0})
-			child.selected_slot = 0
+			# The kit is only handed out at the DROP. Everything else that
+			# moves a player — capturing a flag, coming back to life —
+			# reuses this and must not touch what they are carrying: it
+			# reset the bar unconditionally, so a capture cost you every
+			# weapon you had found on the way there.
+			if reset_kit:
+				child.slots = []
+				for weapon_id: int in kit:
+					child.slots.append({"kind": "weapon", "id": weapon_id})
+				while child.slots.size() < 8:
+					child.slots.append({"kind": "empty", "id": 0})
+				child.selected_slot = 0
 			child.downed = false
 
 @rpc("authority", "reliable")
@@ -4462,6 +4467,11 @@ var ctf_revive := true
 var drop_on_knockout := false
 var ctf_scores: Dictionary = {}   # team index -> int
 
+## How long a knocked-out computer player waits before walking back on at
+## its own flag.
+const BOT_RETURN_MS := 8000
+var _bot_ghost_since: Dictionary = {}
+
 ## team -> {"home": Vector3, "pos": Vector3 (INF while taken), "back_at": msec}
 var _flags: Dictionary = {}
 
@@ -4567,6 +4577,22 @@ func _ctf_tick(_delta: float) -> void:
 		# A GHOST touching its OWN flag comes back. That is the whole
 		# respawn rule when reviving is off: fly home, tag up, rejoin.
 		if ghost_ids.has(id):
+			# A computer player has no way to decide to fly home, so it
+			# simply gets back up at its own flag after a breather. Without
+			# this a bot knocked out once stayed out for the whole round,
+			# which is how a four-a-side turns into a walkover.
+			if _bots.has(id):
+				var out_since := int(_bot_ghost_since.get(id, 0))
+				if out_since == 0:
+					_bot_ghost_since[id] = now
+				elif now - out_since > BOT_RETURN_MS:
+					_bot_ghost_since.erase(id)
+					_ctf_respawn(id)
+					var back := _ctf_home_spot(team, maxi(seats_of(team).find(id), 0))
+					_bots[id].pos = back
+					_player_state[id].pos = back
+					cl_stand.rpc(id, back, false, [], false)
+				continue
 			var mine: Dictionary = _flags.get(team, {})
 			# Typed local, never `mine.home as Vector3`: `as` is for object
 			# types, and the analyzer rejects the whole file over it — with
@@ -4590,6 +4616,36 @@ func _ctf_tick(_delta: float) -> void:
 				_ctf_capture(id, team, other_team)
 				break
 
+## Standing room INSIDE a team's base, beside their flag.
+##
+## Not safe_stand(): once the box is built, the highest solid ground at
+## those coordinates is the ROOF, so the ordinary placement put everybody
+## on top of their own base looking down at the flag through it. The floor
+## is known — it is where the flag stands — so this places on it directly
+## and only spirals outward to find a clear square.
+func seats_of(team_i: int) -> PackedStringArray:
+	return _team_seats.get(team_i, PackedStringArray())
+
+func _ctf_home_spot(team_i: int, seat: int) -> Vector3:
+	var flag: Dictionary = _flags.get(team_i, {})
+	if flag.is_empty():
+		return _team_start_spot(team_i, seat)
+	var home: Vector3 = flag.home
+	# Ring out from the flag, skipping the flag's own column, staying well
+	# inside the walls.
+	var reach := CTF_BASE_HALF - 1
+	var spots: Array = []
+	for dz in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			if dx == 0 and dz == 0:
+				continue
+			spots.append(Vector3(home.x + dx, home.y, home.z + dz))
+	spots.sort_custom(func(a: Vector3, b: Vector3) -> bool:
+		return a.distance_squared_to(home) < b.distance_squared_to(home))
+	if spots.is_empty():
+		return home
+	return spots[seat % spots.size()]
+
 func _ctf_capture(id: String, team: int, from_team: int) -> void:
 	ctf_scores[team] = int(ctf_scores.get(team, 0)) + 1
 	ctf_scores[from_team] = int(ctf_scores.get(from_team, 0)) - 1
@@ -4598,19 +4654,40 @@ func _ctf_capture(id: String, team: int, from_team: int) -> void:
 	flag.back_at = Time.get_ticks_msec() + CTF_FLAG_RETURN_MS
 	_ctf_show_flag(from_team, false)
 	_broadcast_flags()
+	# A capture brings your whole team back. This is the mode's release
+	# valve: without it, anyone knocked out with no team-mate standing is a
+	# ghost until they personally fly all the way home, and a team that is
+	# losing gets more and more thinly spread. Scoring undoes that in one
+	# go, for everybody.
+	for mate: String in Game.roster.keys():
+		if int(Game.roster[mate].get("team", -1)) != team:
+			continue
+		if ghost_ids.has(mate) or _downed_ids.has(mate):
+			_ctf_respawn(mate)
+			var mate_seat: int = maxi(seats_of(team).find(mate), 0)
+			var mate_home := _ctf_home_spot(team, mate_seat)
+			var mate_state: Dictionary = _player_state.get(mate, {})
+			if not mate_state.is_empty():
+				mate_state.pos = mate_home
+			if _bots.has(mate):
+				_bots[mate].pos = mate_home
+			cl_stand.rpc(mate, mate_home, false, [], false)
+
 	# Home you go. Without this, touch-to-score lets one player stand on an
 	# enemy flag and take it again every time it respawns — the headless
 	# run had somebody win 3-0 off a single flag without moving. Sending
 	# the capturer back is also what "capturing" ought to mean: you took it
 	# somewhere, and now you have to make the trip again.
 	var seats: PackedStringArray = _team_seats.get(team, PackedStringArray())
-	var home_spot := _team_start_spot(team, maxi(seats.find(id), 0))
+	var home_spot := _ctf_home_spot(team, maxi(seats.find(id), 0))
 	var state2: Dictionary = _player_state.get(id, {})
 	if not state2.is_empty():
 		state2.pos = home_spot
 	if _bots.has(id):
 		_bots[id].pos = home_spot
-	cl_stand.rpc(id, home_spot, false)
+	# reset_kit FALSE: you keep everything you were carrying. Being sent
+	# home for scoring must never cost you the loot you scored with.
+	cl_stand.rpc(id, home_spot, false, [], false)
 	cl_flag_taken.rpc(id, team, from_team)
 	print("CTF: %s took team %d's flag (scores %s)" % [id, from_team, ctf_scores])
 	if int(ctf_scores.get(team, 0)) >= ctf_target:
@@ -4619,6 +4696,7 @@ func _ctf_capture(id: String, team: int, from_team: int) -> void:
 ## Back in the game, standing at your own flag.
 func _ctf_respawn(id: String) -> void:
 	ghost_ids.erase(id)
+	_bot_ghost_since.erase(id)
 	_match_alive[id] = true
 	_downed_ids.erase(id)
 	var state: Dictionary = _player_state.get(id, {})

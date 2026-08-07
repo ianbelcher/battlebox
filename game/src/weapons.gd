@@ -3,8 +3,11 @@ class_name Weapons
 ## weapon, edit this table and (if it changes terrain) its case in
 ## WorldNode.sv_shot / OrbView impact handling. Ids are wire format.
 
-## Order here IS the order of the Tools tab. Shooters together, then the
-## movement kit, then the three team-colour markers, then wings.
+## ORDER HERE IS THE ORDER OF THE TOOLS TAB, and the picker is ten wide —
+## so the first ten entries are row one and everything after is row two.
+## Row one is the sword and the things that shoot; row two is the kit you
+## use on each other and the world: flare, smoke, sprayer, wings, paint
+## bomb, whistle.
 const WEAPONS := [
 	{"id": 13, "name": "Sword", "color": Color("dfe4ea"), "cooldown": 0.4, "speed": 1.0,
 		"blurb": "Trusty melee: swing at enemies and soft blocks up close"},
@@ -20,22 +23,22 @@ const WEAPONS := [
 		"blurb": "Hit a wall, get zipped to it. Great escapes"},
 	{"id": 12, "name": "Digger", "color": Color("b5975f"), "cooldown": 1.2, "speed": 44.0,
 		"blurb": "Drills a 3x3 tunnel 15 blocks through anything soft"},
-	{"id": 14, "name": "Flare Gun", "color": Color("ff8ac2"), "cooldown": 3.0, "speed": 26.0,
-		"blurb": "A star in YOUR TEAM'S colour, floating down over the field"},
-	{"id": 11, "name": "Wings", "color": Color("eceff4"), "cooldown": 9.0, "speed": 1.0,
-		"blurb": "Hold to glide from high places - but you can't shoot while soaring"},
-	{"id": 8, "name": "Paint Bomb", "color": Color("b07df0"), "cooldown": 0.9, "speed": 36.0,
-		"blurb": "Splats the landscape into random wool colors"},
-	{"id": 18, "name": "Paint Sprayer", "color": Color("60d394"), "cooldown": 0.12, "speed": 46.0,
-		"blurb": "Paints ONE block in YOUR TEAM'S colour - draw, mark, sign your work"},
-	{"id": 19, "name": "Smoke Bomb", "color": Color("9aa6c4"), "cooldown": 4.0, "speed": 32.0,
-		"blurb": "One team-coloured marker at a time: THAT is where we're going"},
 	{"id": 17, "name": "Dragon Fire", "color": Color("ff7a1a"), "cooldown": 0.45, "speed": 44.0,
 		"blurb": "Breathed from dragonback: big orange booms", "hidden": true},
 	{"id": 3, "name": "Freeze Ray", "color": Color("aef7f0"), "cooldown": 0.8, "speed": 44.0,
 		"blurb": "Turns water to ice and freezes Grumps solid", "hidden": true},
 	{"id": 4, "name": "Block Sucker", "color": Color("62a851"), "cooldown": 0.5, "speed": 44.0,
 		"blurb": "Vacuums the hit block into your next slot", "hidden": true},
+	{"id": 14, "name": "Flare Gun", "color": Color("ff8ac2"), "cooldown": 3.0, "speed": 26.0,
+		"blurb": "A star in YOUR TEAM'S colour, floating down over the field"},
+	{"id": 19, "name": "Smoke Bomb", "color": Color("9aa6c4"), "cooldown": 4.0, "speed": 32.0,
+		"blurb": "One team-coloured marker at a time: THAT is where we're going"},
+	{"id": 18, "name": "Paint Sprayer", "color": Color("60d394"), "cooldown": 0.12, "speed": 46.0,
+		"blurb": "Paints ONE block in YOUR TEAM'S colour - draw, mark, sign your work"},
+	{"id": 11, "name": "Wings", "color": Color("eceff4"), "cooldown": 9.0, "speed": 1.0,
+		"blurb": "Hold to glide from high places - but you can't shoot while soaring"},
+	{"id": 8, "name": "Paint Bomb", "color": Color("b07df0"), "cooldown": 0.9, "speed": 36.0,
+		"blurb": "Splats the landscape into random wool colors"},
 	{"id": 10, "name": "Grump Whistle", "color": Color("8a5fd0"), "cooldown": 2.0, "speed": 30.0,
 		"blurb": "Summons a wild Grump right there", "hidden": true},
 	# Retired, ids left burned so nothing reuses them on the wire:
@@ -46,7 +49,21 @@ const WEAPONS := [
 ## What a player starts a battle holding. Everything else is loot.
 ## Sword to fight with, and all three TEAM-COLOUR markers: a flare to
 ## light a spot, a sprayer to paint one, smoke to point at one.
-const STARTING_KIT := [13, 14, 18, 19]
+## What you drop in with, per mode. Slot 0 is what you are HOLDING.
+##
+## Battle royale keeps the sword first: the round opens as a scramble for
+## crates and the sword is what stops it being a shoot-out before anyone
+## has found anything.
+##
+## Capture the flag opens with the Little Shooter in hand instead. There is
+## no scramble here — you start in your own base, on the ground, and the
+## fight comes to you — so starting unable to shoot back is just a player
+## standing in a doorway losing.
+const STARTING_KIT := [13, 14, 19]          # sword, flare gun, smoke bomb
+const STARTING_KIT_CTF := [0, 13, 14, 19]   # + little shooter, held
+
+static func starting_kit(mode: String) -> Array:
+	return STARTING_KIT_CTF if mode == "ctf" else STARTING_KIT
 
 static func count() -> int:
 	return WEAPONS.size()

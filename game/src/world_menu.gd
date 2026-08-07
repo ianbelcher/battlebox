@@ -583,10 +583,13 @@ func _build_game_tab() -> void:
 		_min(btn3, 130, 46)
 		_target_btns[target_val] = btn3
 	var rev_card := _section(ctf_group, "Getting back up",
-		"With picking each other up turned off, a knockout makes you a "
-		+ "ghost and the only way back is to fly home and touch your own flag.")
+		"Either way you can fly home as a ghost and touch your own flag, "
+		+ "and a team-mate capturing a flag brings your whole team back "
+		+ "at once. This only decides whether team-mates can also pick you "
+		+ "up where you fell.")
 	var rev_row := _row(rev_card)
-	for spec3 in [[1, "Team-mates can pick you up"], [0, "Fly home to your flag"]]:
+	for spec3 in [[1, "Team-mates can pick you up too"],
+			[0, "Only flying home brings you back"]]:
 		var rev_val: int = spec3[0]
 		var btn4 := _choice(rev_row, str(spec3[1]), func() -> void:
 			if Game.world != null:

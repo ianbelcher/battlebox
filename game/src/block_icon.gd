@@ -92,11 +92,17 @@ func _draw() -> void:
 					var spray := mid + Vector2(w * 0.14 + w * 0.05 * i,
 						-w * 0.2 + w * 0.055 * i)
 					draw_circle(spray, w * 0.035, ink)
-			19:  # Smoke bomb: a canister under three rising puffs.
-				draw_rect(Rect2(mid.x - w * 0.1, mid.y + w * 0.04, w * 0.2, w * 0.22), ink)
-				for i in 3:
-					draw_circle(mid + Vector2(w * (0.06 * i - 0.06), -w * (0.06 + 0.11 * i)),
-						w * (0.08 + 0.02 * i), Color(ink.r, ink.g, ink.b, 0.55))
+			19:  # Smoke bomb: a canister under one solid BANK of smoke.
+				# Drawn as a cloud, not as rising dots: as three separate
+				# puffs it read as three circles, which is exactly what the
+				# paint bomb below is, and at hotbar size the two were the
+				# same picture.
+				draw_rect(Rect2(mid.x - w * 0.09, mid.y + w * 0.08, w * 0.18, w * 0.2), ink)
+				var puff := Color(0.86, 0.89, 0.95, 0.92)
+				for puff_spec: Array in [[-0.17, -0.02, 0.13], [0.0, -0.09, 0.17],
+						[0.17, -0.02, 0.13], [-0.08, 0.03, 0.11], [0.08, 0.03, 0.11]]:
+					draw_circle(mid + Vector2(w * float(puff_spec[0]), w * float(puff_spec[1])),
+						w * float(puff_spec[2]), puff)
 			8:  # Paint: drips.
 				draw_circle(mid + Vector2(-w * 0.1, -w * 0.05), w * 0.09, Color("d63d2e"))
 				draw_circle(mid + Vector2(w * 0.1, -w * 0.02), w * 0.08, Color(0.15, 0.3, 0.75))
