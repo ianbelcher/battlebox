@@ -532,7 +532,8 @@ func _build_game_tab() -> void:
 	_creative_only.append(calm_group)
 	var calm := _section(calm_group, "What just building means")
 	for line in ["Nothing can hurt you — no hearts, no storm, no timer.",
-			"Everything anyone places stays, and the world saves itself.",
+			"Everyone builds in the same world, and it lasts until the "
+				+ "server restarts — nothing is saved to disk.",
 			"The map, how big it is and whether you can fly are on the Map tab.",
 			"Switch to Battle royale for teams, weapons and the shrinking storm."]:
 		var bullet := Label.new()

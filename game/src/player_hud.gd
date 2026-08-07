@@ -210,8 +210,11 @@ func _ready() -> void:
 	status_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	bar_stack.add_child(status_panel)
 	_selected_label = Label.new()
-	_selected_label.add_theme_font_size_override("font_size", _us(14))
-	_selected_label.add_theme_color_override("font_color", Color("ffd166"))
+	# Deliberately smaller than the hotbar it sits under. This is a status
+	# line you glance at, not a headline — at the size the hotbar numbers
+	# are drawn it read as the loudest thing on screen.
+	_selected_label.add_theme_font_size_override("font_size", _us(11))
+	_selected_label.add_theme_color_override("font_color", Color("e8d9a8"))
 	_selected_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_selected_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	status_panel.add_child(_selected_label)
