@@ -119,7 +119,15 @@ func _physics_process(delta: float) -> void:
 		if not died and orb.mine:
 			# Player hits (anyone but the shooter): pellets bonk, shells boom.
 			for child in world.players.get_children():
+				# Straight THROUGH anyone who cannot be hurt. A downed
+				# player is untouchable on the server, so an orb that
+				# stopped on one was simply thrown away — which meant two
+				# players on the same spot, one down and one reviving,
+				# could not be shot at all: every orb hit the body on the
+				# floor and died there.
 				if child is Player and child.player_id != orb.shooter_id \
+						and not child.downed \
+						and not world.ghost_ids.has(child.player_id) \
 						and child.position.distance_to(here - Vector3(0, 0.8, 0)) < 1.1:
 					if orb.kind == 1 or orb.kind >= 5:
 						world.sv_shot.rpc_id(1, orb.slot, cell, orb.kind)

@@ -130,6 +130,12 @@ func _apply_scale() -> void:
 		var vp := get_viewport_rect().size
 		var w := minf(vp.x * 0.90, 1120.0 * sc)
 		var h := minf(vp.y * 0.90, 940.0 * sc)
+		# Grow from the MIDDLE. Godot's default is to grow right and down,
+		# so the moment a tab's content needed more width than the panel
+		# had — which capture the flag's settings did — the whole menu slid
+		# off the right-hand edge of the screen instead of staying centred.
+		_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 		_panel.anchor_left = 0.5
 		_panel.anchor_right = 0.5
 		_panel.anchor_top = 0.5
@@ -526,7 +532,7 @@ func _build_game_tab() -> void:
 		var btn := _choice(mode_row, str(spec[1]), func() -> void:
 			if Game.world != null:
 				Game.world.sv_set_mode.rpc_id(1, key), UiTheme.T_TITLE - 8)
-		_min(btn, 190, 68)
+		_min(btn, 150, 62)
 		_mode_btns[key] = btn
 
 	# Creative has no settings of its own, which left this tab as one row
@@ -563,7 +569,7 @@ func _build_game_tab() -> void:
 		var btn2 := _choice(ko_row, str(spec2[1]), func() -> void:
 			if Game.world != null:
 				Game.world.sv_ctf_config.rpc_id(1, -1, -1, drop_val))
-		_min(btn2, 180, 46)
+		_min(btn2, 150, 44)
 		_drop_btns[drop_val] = btn2
 
 	# Capture-the-flag-only settings.
@@ -580,7 +586,7 @@ func _build_game_tab() -> void:
 		var btn3 := _choice(target_row, "First to %d" % t, func() -> void:
 			if Game.world != null:
 				Game.world.sv_ctf_config.rpc_id(1, -1, target_val, -1))
-		_min(btn3, 130, 46)
+		_min(btn3, 96, 44)
 		_target_btns[target_val] = btn3
 	var rev_card := _section(ctf_group, "Getting back up",
 		"Either way you can fly home as a ghost and touch your own flag, "
@@ -594,7 +600,7 @@ func _build_game_tab() -> void:
 		var btn4 := _choice(rev_row, str(spec3[1]), func() -> void:
 			if Game.world != null:
 				Game.world.sv_ctf_config.rpc_id(1, rev_val, -1, -1))
-		_min(btn4, 220, 46)
+		_min(btn4, 170, 44)
 		_revive_btns[rev_val] = btn4
 
 	# Battle-only settings are hidden outright in creative rather than

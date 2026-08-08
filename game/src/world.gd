@@ -2656,6 +2656,11 @@ func _match_eliminate(id: String, attacker := "") -> void:
 	_match_alive.erase(id)
 	_downed_ids.erase(id)
 	_drop_weapons(id, fell_at)
+	# ghost_ids is written by cl_eliminated, which is an authority RPC and
+	# therefore never runs on the server itself — so the server had no idea
+	# who was a ghost, and "touch your own flag to come back" could never
+	# fire for anybody.
+	ghost_ids[id] = true
 	cl_eliminated.rpc(id)
 	_emit_feed(id, attacker)
 	_check_match_win()
@@ -4458,7 +4463,10 @@ func _burst_particles(pos: Vector3i, color: Color) -> void:
 ## big enough for four people to stand in and build.
 const CTF_BASE_HALF := 6
 const CTF_BASE_HEIGHT := 6
-const CTF_FLAG_TOUCH := 2.8
+const CTF_FLAG_TOUCH := 3.2
+## How far above or below the flag's foot still counts. The pole is three
+## high and the walls six, so this has to clear both.
+const CTF_FLAG_REACH_Y := 7.0
 ## How long a captured flag stays gone before it reappears at home.
 const CTF_FLAG_RETURN_MS := 6000
 
@@ -4613,7 +4621,7 @@ func _ctf_tick(_delta: float) -> void:
 			# reports the failure instead.
 			var mine_at: Vector3 = mine.get("home", Vector3.INF)
 			if not mine.is_empty() and int(mine.back_at) == 0 \
-					and pos.distance_to(mine_at) < CTF_FLAG_TOUCH + 1.0:
+					and _at_flag(pos, mine_at):
 				_ctf_respawn(id)
 			continue
 		if _downed_ids.has(id):
@@ -4625,7 +4633,7 @@ func _ctf_tick(_delta: float) -> void:
 			if int(flag2.back_at) > 0:
 				continue
 			var flag_at2: Vector3 = flag2.pos
-			if pos.distance_to(flag_at2) < CTF_FLAG_TOUCH:
+			if _at_flag(pos, flag_at2):
 				_ctf_capture(id, team, other_team)
 				break
 
@@ -4658,6 +4666,21 @@ func _ctf_home_spot(team_i: int, seat: int) -> Vector3:
 	if spots.is_empty():
 		return home
 	return spots[seat % spots.size()]
+
+## Close enough to a flag to take it.
+##
+## Measured FLAT, with a separate and generous vertical window, because a
+## straight-line distance quietly fails in the one situation that matters:
+## the flag stands on a three-high pole inside a six-high walled box, so
+## anybody who climbs the wall, stands on the pole or jumps at it is
+## several blocks above the flag's foot and a 2.8-block sphere never
+## reaches them. You are at the flag if you are at it on the ground plan
+## and roughly at its level.
+func _at_flag(pos: Vector3, flag_at: Vector3) -> bool:
+	if flag_at == Vector3.INF:
+		return false
+	var flat := Vector2(pos.x - flag_at.x, pos.z - flag_at.z).length()
+	return flat < CTF_FLAG_TOUCH and absf(pos.y - flag_at.y) < CTF_FLAG_REACH_Y
 
 func _ctf_capture(id: String, team: int, from_team: int) -> void:
 	ctf_scores[team] = int(ctf_scores.get(team, 0)) + 1
